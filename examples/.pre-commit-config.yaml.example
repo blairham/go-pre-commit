@@ -1,0 +1,39 @@
+# Working example configuration for testing
+default_stages:
+  - commit
+repos:
+  # Local hooks that work with standard Unix tools
+  - repo: local
+    hooks:
+      # Simple echo hook
+      - id: welcome
+        name: Welcome Message
+        entry: echo
+        language: system
+        args: ["🎉 Running pre-commit hooks!"]
+        always_run: true
+        verbose: true
+
+      # Count lines in files
+      - id: line-count
+        name: Line Count
+        entry: wc
+        language: system
+        args: ["-l"]
+        files: \.(go|py|js|ts|md)$
+
+      # Check for TODO comments
+      - id: check-todos
+        name: Check TODOs
+        entry: grep
+        language: system
+        args: ["-n", "TODO"]
+        files: \.(go|py|js|ts)$
+
+      # Go formatting (if files exist)
+      - id: go-fmt-check
+        name: Go Format Check
+        entry: gofmt
+        language: system
+        args: ["-d"]
+        files: \.go$

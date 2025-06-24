@@ -1,0 +1,57 @@
+# Prettier Configuration
+# https://prettier.io/docs/en/configuration.html
+
+# Core formatting options
+printWidth: 100
+tabWidth: 2
+useTabs: false
+semi: true
+singleQuote: true
+quoteProps: as-needed
+jsxSingleQuote: true
+trailingComma: es5
+bracketSpacing: true
+bracketSameLine: false
+arrowParens: avoid
+endOfLine: lf
+embeddedLanguageFormatting: auto
+
+# File-specific overrides
+overrides:
+  # YAML files
+  - files: "*.{yml,yaml}"
+    options:
+      tabWidth: 2
+      singleQuote: false
+
+  # JSON files
+  - files: "*.json"
+    options:
+      tabWidth: 2
+      singleQuote: false
+      trailingComma: none
+
+  # Markdown files
+  - files: "*.md"
+    options:
+      printWidth: 80
+      proseWrap: always
+      tabWidth: 2
+
+  # Shell scripts
+  - files: "*.{sh,bash}"
+    options:
+      tabWidth: 4
+
+  # Go templates
+  - files: "*.{tmpl,gotmpl}"
+    options:
+      parser: html
+      tabWidth: 2
+
+  # Package.json
+  - files: "package.json"
+    options:
+      tabWidth: 2
+      singleQuote: false
+      trailingComma: none

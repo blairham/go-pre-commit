@@ -1,0 +1,306 @@
+# golangci-lint v2 configuration for thor project
+# See: https://golangci-lint.run/usage/configuration/
+# Comprehensive configuration with all linters and proper settings
+
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+
+output:
+  formats:
+    text:
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+
+linters:
+  enable:
+  # Core linters (enabled by default)
+  - errcheck # Check for unchecked errors
+  - govet # Go vet analysis
+  - ineffassign # Detect ineffectual assignments
+  - staticcheck # Static analysis (includes stylecheck, gosimple)
+  - unused # Check for unused constants, variables, functions and types
+
+  # Code quality and style
+  - misspell # Finds commonly misspelled English words in comments
+  - whitespace # Tool for detection of leading and trailing whitespace
+  - unconvert # Remove unnecessary type conversions
+  - unparam # Reports unused function parameters
+  - dupl # Tool for code clone detection
+  - goconst # Finds repeated strings that could be replaced by a constant
+  - gocritic # Provides diagnostics that check for bugs, performance and style issues
+  - revive # Fast, configurable, extensible, flexible, and beautiful linter for Go
+
+  # Bug detection
+  - bodyclose # Check whether HTTP response body is closed successfully
+  - contextcheck # Check if function use a non-inherited context
+  - nilerr # Check that there is no simultaneous return of nil error and an invalid value
+  - rowserrcheck # Check whether Err of rows is checked successfully
+  - sqlclosecheck # Check that sql.Rows and sql.Stmt are closed
+  - errname # Checks that sentinel errors are prefixed with the `Err` and error types are suffixed with the `Error`
+  - errorlint # Errorlint is a linter for that can be used to find code that will cause problems with the error wrapping scheme
+  - forcetypeassert # Finds forced type assertions
+  - makezero # Finds slice declarations with non-zero initial length
+  - nilnil # Checks that there is no simultaneous return of `nil` error and an invalid value
+  - noctx # Noctx finds sending http request without context.Context
+  - predeclared # Find code that shadows one of Go's predeclared identifiers
+
+  # Performance
+  - prealloc # Find slice declarations that could potentially be preallocated
+  - sloglint # Ensure consistent code style when using log/slog
+
+  # Security
+  - gosec # Inspects source code for security problems
+
+  # Code complexity
+  - gocyclo # Computes and checks the cyclomatic complexity of functions
+  - gocognit # Computes and checks the cognitive complexity of functions
+  - nestif # Reports deeply nested if statements
+  - cyclop # Checks function and package cyclomatic complexity
+  - funlen # Checks for long functions
+  - maintidx # Maintidx measures the maintainability index of each function
+
+  # Testing
+  - thelper # Thelper detects tests helpers which is not start with t.Helper() method
+  - tparallel # Tparallel detects inappropriate usage of t.Parallel() method
+  - testableexamples # Testableexamples checks if examples are testable
+
+  # Import and dependency management
+  - importas # Enforces consistent import aliases
+  - grouper # An analyzer to analyze expression groups
+
+  # Documentation and naming
+  - godox # Detects usage of FIXME, TODO and other keywords inside comments
+  - interfacebloat # Checks the number of methods in an interface
+
+  # Performance and memory
+  - wastedassign # Wastedassign finds wasted assignment statements
+
+  disable:
+  # Too strict for this project
+  - varnamelen # Checks that the length of a variable's name matches its scope
+  - exhaustive # Check exhaustiveness of enum switch statements
+  - exhaustruct # Checks if all structure fields are initialized
+  - tagliatelle # Checks the struct tags
+  - wrapcheck # Checks that errors returned from external packages are wrapped
+  - depguard # Go linter that checks if package imports are in a list of acceptable packages
+  - gochecknoglobals # Check that no global variables exist
+  - gochecknoinits # Checks that no init functions are present
+  - godot # Check if comments end in a period
+  - paralleltest # Detects missing usage of t.Parallel()
+  - testpackage # Linter that makes you use a separate _test package
+  - lll # Reports long lines
+  - wsl # Whitespace linter
+  - nlreturn # Nlreturn checks for a new line before return
+
+  exclusions:
+    rules:
+    # Exclude magefile.go from linting (build scripts have different standards)
+    - path: magefile\.go
+      linters:
+      - errcheck
+      - gocyclo
+      - gocognit
+      - cyclop
+      - funlen
+      - gocritic
+      - revive
+      - unparam
+      - goconst
+      - gci
+      - nestif
+      - maintidx
+
+    # Exclude test files from some strict checks
+    - path: _test\.go
+      linters:
+      - gocyclo
+      - errcheck
+      - gosec
+      - gocritic
+      - funlen
+      - gocognit
+      - cyclop
+      - maintidx
+
+    # Exclude known linter issues for main packages
+    - path: cmd/
+      linters:
+      - gochecknoinits # main packages often use init()
+
+    # Exclude magic number warnings in test files
+    - path: _test\.go
+      text: "Magic number"
+      linters:
+      - gocritic
+
+    # Exclude certain checks for example files
+    - path: examples/
+      linters:
+      - gochecknoglobals
+      - gochecknoinits
+      - unparam
+
+    # Exclude nestif (complex nested blocks) for test files
+    # Test files often have complex conditional logic for various test scenarios
+    - path: _test\.go
+      linters:
+      - nestif
+
+    # Disable fieldalignment for test files as these are optimization hints, not functional issues
+    - path: tests/
+      linters:
+      - govet
+      text: "fieldalignment"
+    # Also disable for config package where we prioritize readability over micro-optimizations
+    - path: pkg/config/
+      linters:
+      - govet
+      text: "fieldalignment"
+
+    # Disable duplication checks for language test implementations
+    # These files follow similar patterns by design as they implement the same interface
+    - path: tests/integration/languages/
+      linters:
+      - dupl
+
+    # Disable thelper for validation functions in language tests
+    # These are not test helpers but validation functions that take *testing.T
+    - path: tests/integration/languages/
+      linters:
+      - thelper
+
+  settings:
+    misspell:
+      locale: US
+
+    gosec:
+      severity: medium
+      confidence: medium
+      excludes:
+      - G107 # URL provided to HTTP request as taint input
+      - G204 # Subprocess launched with variable
+      - G404 # Weak random number generator
+      - G115 # Integer overflow conversion (safe when values are properly clamped)
+
+    gocyclo:
+      min-complexity: 15
+
+    gocognit:
+      min-complexity: 20
+
+    nestif:
+      # Minimum complexity to trigger nestif warnings
+      # Test files are excluded via exclude-rules section
+      min-complexity: 5
+
+    funlen:
+      lines: 80
+      statements: 50
+
+    cyclop:
+      max-complexity: 15
+      package-average: 10.0
+
+    maintidx:
+      under: 20
+
+    gocritic:
+      enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+      disabled-checks:
+      - hugeParam # Can be noisy for AWS SDK structs
+      - rangeValCopy # Can be noisy for AWS SDK structs
+      - unnamedResult # Can be acceptable in some cases
+      - paramTypeCombine # Sometimes explicit types are clearer
+
+    revive:
+      severity: warning
+      rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    govet:
+      enable:
+      - atomicalign
+      - deepequalerrors
+      - fieldalignment
+      - findcall
+      - nilness
+      - reflectvaluecompare
+      - shadow
+      - sortslice
+      - timeformat
+      - unusedwrite
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+formatters:
+  enable:
+  # Code formatting
+  - gofmt # Checks if the code is formatted according to 'gofmt' command
+  - gofumpt # Checks if code and import statements are formatted, with additional rules
+  - goimports # Checks if the code and import statements are formatted according to the 'goimports' command
+  - gci # Checks if code and import statements are formatted, with additional rules
+  - golines # Checks if code is formatted, and fixes long lines
+
+  settings:
+    goimports:
+      local-prefixes:
+      - github.com/blairham/go-pre-commit
+
+    gofumpt:
+      extra-rules: true
+
+    gci:
+      sections:
+      - standard
+      - default
+      - prefix(github.com/blairham/go-pre-commit)
+
+    golines:
+      max-len: 120
+      tab-len: 1
+      reformat-tags: false
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
