@@ -1,0 +1,61 @@
+# Markdownlint configuration for Go project documentation
+# See: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# MD013/line-length - Line length
+MD013:
+  # Number of characters
+  line_length: 120
+  # Number of characters for headings
+  heading_line_length: 120
+  # Number of characters for code blocks
+  code_block_line_length: 120
+  # Include code blocks
+  code_blocks: true
+  # Include tables
+  tables: true
+  # Include headings
+  headings: true
+  # Strict length checking
+  strict: false
+  # Stern length checking
+  stern: false
+
+# MD024/no-duplicate-heading - Multiple headings with the same content
+MD024:
+  # Only check sibling headings
+  siblings_only: true
+
+# MD033/no-inline-html - Inline HTML
+MD033:
+  # Allowed elements
+  allowed_elements: ['br', 'sub', 'sup', 'kbd', 'details', 'summary']
+
+# MD041/first-line-heading - First line in file should be a top level heading
+MD041:
+  # Level of the first heading
+  level: 1
+  # RegExp for matching the expected first heading
+  front_matter_title: "^\\s*title\\s*[:=]"
+
+# MD046/code-block-style - Code block style
+MD046:
+  # Block style
+  style: "fenced"
+
+# MD048/code-fence-style - Code fence style
+MD048:
+  # Code fence style
+  style: "backtick"
+
+# Disable rules that are not suitable for technical documentation
+MD001: false  # heading-increment - Allow non-incremental heading levels
+MD007: false  # ul-indent - Unordered list indentation
+MD012: false  # no-multiple-blanks - Multiple consecutive blank lines
+MD014: false  # commands-show-output - Dollar signs used before commands without showing output
+MD022: false  # blanks-around-headings - Headings should be surrounded by blank lines
+MD025: false  # single-title - Multiple top level headings in the same document
+MD026: false  # no-trailing-punctuation - Trailing punctuation in heading
+MD029: false  # ol-prefix - Ordered list item prefix
+MD034: false  # no-bare-urls - Bare URL used
+MD036: false  # no-emphasis-as-heading - Emphasis used instead of a heading
+MD040: false  # fenced-code-language - Fenced code blocks should have a language specified

@@ -1,0 +1,36 @@
+go:
+  gotestsum:
+    importPath: "gotest.tools/gotestsum"
+    version: "v1.12.0"
+  golangci-lint:
+    importPath: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
+    version: "v2.1.6"
+  goreleaser:
+    importPath: "github.com/goreleaser/goreleaser/v2"
+    version: "v2.4.1"
+  goimports:
+    importPath: "golang.org/x/tools/cmd/goimports"
+    version: "latest"
+  gofumpt:
+    importPath: "mvdan.cc/gofumpt"
+    version: "v0.7.0"
+  gci:
+    importPath: "github.com/daixiang0/gci"
+    version: "v0.13.5"
+  golines:
+    importPath: "github.com/segmentio/golines"
+    version: "v0.12.2"
+  sver:
+    importPath: "github.com/caarlos0/svu"
+    version: "v1.12.0"
+
+bin:
+  goreleaser:
+    url: 'https://github.com/goreleaser/goreleaser/releases/download/v{{.Version}}/goreleaser_{{if eq .OS "darwin"}}Darwin{{else}}Linux{{end}}_{{.Arch}}.tar.gz'
+    version: "2.4.1"
+    sha:
+      linux-amd64: "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
+      darwin-amd64: "f13e5ad6ae0b0bdbb3d0fcb3b1c58e6d3c4ce6f7f9b34e1c3b3f8e5a2d72f4f5"
+      darwin-arm64: "a7055c4c32c84266bd18182a3094e03081672f05b9ca8dbb0472b2d048722f13"
+    tgzPaths:
+    - "goreleaser"

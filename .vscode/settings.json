@@ -1,0 +1,26 @@
+{
+    "go.buildTags": "mage",
+    "go.toolsEnvVars": {
+        "CGO_ENABLED": "1"
+    },
+    "files.associations": {
+        "magefiles/*.go": "go"
+    },
+    "go.lintOnSave": "package",
+    "go.vetOnSave": "package",
+    "go.formatTool": "gofumpt",
+    "go.lintTool": "golangci-lint",
+    "go.generateTestsFlags": [
+        "-exported"
+    ],
+    "[go]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "gopls": {
+        "build.buildFlags": ["-tags=mage"],
+        "formatting.gofumpt": true
+    }
+}
