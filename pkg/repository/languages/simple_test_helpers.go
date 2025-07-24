@@ -261,14 +261,27 @@ func testSimpleLanguageRuntime(t *testing.T, lang language.Manager, expectedName
 	t.Helper()
 
 	t.Run("IsRuntimeAvailable", func(t *testing.T) {
-		// Simple languages should return false since they have no executable name to check
-		// The base implementation checks for the executable in PATH, but simple languages have empty executable name
 		available := lang.IsRuntimeAvailable()
-		if available {
-			t.Errorf(
-				"IsRuntimeAvailable() should return false for %s language (no executable)",
-				expectedName,
-			)
+
+		// Special cases: fail and script languages always return true
+		// - fail language: designed to be available but fail during execution
+		// - script language: uses shell commands so always available
+		if expectedName == "fail" || expectedName == "script" {
+			if !available {
+				t.Errorf(
+					"IsRuntimeAvailable() should return true for %s language (always available)",
+					expectedName,
+				)
+			}
+		} else {
+			// Simple languages should return false since they have no executable name to check
+			// The base implementation checks for the executable in PATH, but simple languages have empty executable name
+			if available {
+				t.Errorf(
+					"IsRuntimeAvailable() should return false for %s language (no executable)",
+					expectedName,
+				)
+			}
 		}
 	})
 }

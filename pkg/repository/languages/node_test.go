@@ -439,15 +439,15 @@ func TestNodeLanguage_ComprehensiveSetupEnvironmentWithRepo(t *testing.T) {
 
 		tempCacheDir := t.TempDir()
 
-		// Test with empty version - should normalize to default
+		// Test with empty version - should normalize to default or system depending on availability
 		envPath, err := node.SetupEnvironmentWithRepo(tempCacheDir, "", "", "", []string{})
 		if err != nil {
 			t.Logf("SetupEnvironmentWithRepo with empty version failed: %v", err)
 		} else {
 			t.Logf("SetupEnvironmentWithRepo with empty version succeeded: %s", envPath)
-			// Should contain default in the path
-			if !strings.Contains(envPath, "nodeenv-default") {
-				t.Errorf("Expected path to contain 'nodeenv-default', got: %s", envPath)
+			// Should contain either default or system in the path (depending on Node.js availability)
+			if !strings.Contains(envPath, "nodeenv-default") && !strings.Contains(envPath, "nodeenv-system") {
+				t.Errorf("Expected path to contain 'nodeenv-default' or 'nodeenv-system', got: %s", envPath)
 			}
 		}
 	})

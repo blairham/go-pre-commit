@@ -22,8 +22,9 @@ channels:
   - conda-forge
 dependencies:
   - python=3.8
-  - black
-  - flake8
+  - black>=22.0
+  - flake8>=4.0
+  - pytest>=6.0
 `
 )
 
@@ -1374,33 +1375,54 @@ dependencies:
 		originalPath := os.Getenv("PATH")
 		defer os.Setenv("PATH", originalPath)
 
-		// Since we know micromamba and mamba are available, test their detection
-		t.Setenv("PATH", "/opt/homebrew/bin:/usr/bin:/bin")
-
-		// Test micromamba detection
+		// Test micromamba detection (only if available)
 		t.Setenv("PRE_COMMIT_USE_MICROMAMBA", "yes") // Non-empty value
 		t.Setenv("PRE_COMMIT_USE_MAMBA", "")
 		result1 := lang.IsRuntimeAvailable()
-		if !result1 {
-			t.Error("Expected micromamba to be available")
+		if _, err := exec.LookPath("micromamba"); err == nil {
+			// micromamba is available, should be detected
+			if !result1 {
+				t.Error("Expected micromamba to be available when micromamba is in PATH")
+			}
+		} else {
+			// micromamba is not available, should not be detected
+			if result1 {
+				t.Error("Expected micromamba to be unavailable when micromamba is not in PATH")
+			}
 		}
 		t.Logf("✓ Micromamba detection: %v", result1)
 
-		// Test mamba detection
+		// Test mamba detection (only if available)
 		t.Setenv("PRE_COMMIT_USE_MICROMAMBA", "")
 		t.Setenv("PRE_COMMIT_USE_MAMBA", "yes") // Non-empty value
 		result2 := lang.IsRuntimeAvailable()
-		if !result2 {
-			t.Error("Expected mamba to be available")
+		if _, err := exec.LookPath("mamba"); err == nil {
+			// mamba is available, should be detected
+			if !result2 {
+				t.Error("Expected mamba to be available when mamba is in PATH")
+			}
+		} else {
+			// mamba is not available, should not be detected
+			if result2 {
+				t.Error("Expected mamba to be unavailable when mamba is not in PATH")
+			}
 		}
 		t.Logf("✓ Mamba detection: %v", result2)
 
-		// Test conda detection (should fail since conda is not installed)
+		// Test conda detection
 		t.Setenv("PRE_COMMIT_USE_MAMBA", "")
 		result3 := lang.IsRuntimeAvailable()
-		if result3 {
-			t.Log("⚠ Conda unexpectedly available")
+		if _, err := exec.LookPath("conda"); err == nil {
+			// conda is available, should be detected
+			if !result3 {
+				t.Error("Expected conda to be available when conda is in PATH")
+			}
+			t.Log("✓ Conda correctly detected")
 		} else {
+			// conda is not available, should not be detected
+			if result3 {
+				t.Error("Expected conda to be unavailable when conda is not in PATH")
+			}
 			t.Log("✓ Conda correctly not detected")
 		}
 	})

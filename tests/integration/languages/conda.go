@@ -31,7 +31,8 @@ func (c *CondaLanguageTest) GetLanguageName() string {
 func (c *CondaLanguageTest) SetupRepositoryFiles(
 	repoPath string,
 ) error { //nolint:funlen // Setup function naturally has many file creation steps
-	// Create environment.yml file
+	// Create environment.yml file with comprehensive Python tooling dependencies
+	// This ensures black and other tools are available in the conda environment
 	envYml := `name: test-conda-env
 channels:
   - defaults
@@ -39,11 +40,13 @@ channels:
 dependencies:
   - python=3.9
   - pip
-  - pytest
-  - flake8
-  - black
+  - pytest>=6.0
+  - flake8>=4.0
+  - black>=22.0
+  - setuptools
+  - wheel
   - pip:
-    - pre-commit-hooks
+    - pre-commit-hooks>=4.0.0
 `
 	envPath := filepath.Join(repoPath, "environment.yml")
 	if err := os.WriteFile(envPath, []byte(envYml), 0o600); err != nil {
