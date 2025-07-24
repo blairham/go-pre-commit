@@ -34,18 +34,6 @@ LANGUAGE_CATEGORIES=(
   ["system"]="system script fail pygrep"
 )
 
-# Cache efficiency expectations by category
-typeset -A CACHE_EXPECTATIONS
-CACHE_EXPECTATIONS=(
-  ["core"]="60-80% (environment setup reuse)"
-  ["mobile"]="40-60% (toolchain reuse)"
-  ["scripting"]="30-50% (runtime setup)"
-  ["academic"]="40-60% (package management)"
-  ["enterprise"]="50-70% (SDK and dependencies)"
-  ["container"]="50-70% (image and runtime caching)"
-  ["system"]="5-15% (config parsing only - low cache value expected)"
-)
-
 # Usage information
 usage() {
   echo "Usage: $0 [COMMAND] [OPTIONS]"

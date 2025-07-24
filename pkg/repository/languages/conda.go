@@ -23,8 +23,19 @@ func NewCondaLanguage() *CondaLanguage {
 }
 
 // getCondaExecutable returns the conda executable to use
-// Simplified to only support conda (no mamba/micromamba variants)
+// Supports conda, mamba, and micromamba based on environment variables
 func (c *CondaLanguage) getCondaExecutable() string {
+	// Check for micromamba preference first (highest priority)
+	if os.Getenv("PRE_COMMIT_USE_MICROMAMBA") != "" {
+		return "micromamba"
+	}
+
+	// Check for mamba preference (medium priority)
+	if os.Getenv("PRE_COMMIT_USE_MAMBA") != "" {
+		return "mamba"
+	}
+
+	// Default to conda (lowest priority)
 	return "conda"
 }
 
@@ -35,10 +46,11 @@ func (c *CondaLanguage) CheckHealth(_, _ string) error {
 	return nil
 }
 
-// IsRuntimeAvailable checks if conda is available on the system
+// IsRuntimeAvailable checks if the configured conda executable is available on the system
 func (c *CondaLanguage) IsRuntimeAvailable() bool {
-	// Only check for conda (simplified from supporting mamba/micromamba variants)
-	if _, err := exec.LookPath("conda"); err == nil {
+	// Check for the configured executable (conda, mamba, or micromamba)
+	executable := c.getCondaExecutable()
+	if _, err := exec.LookPath(executable); err == nil {
 		return true
 	}
 
@@ -92,16 +104,17 @@ func (c *CondaLanguage) SetupEnvironmentWithRepo(
 	if err := c.createRealCondaEnvironment(envPath, envFile, additionalDeps); err != nil {
 		return "", fmt.Errorf("failed to create conda environment: %w", err)
 	}
-	
+
 	return envPath, nil
-}// createRealCondaEnvironment creates a real conda environment using conda commands
+} // createRealCondaEnvironment creates a real conda environment using the configured conda executable
 // Matches Python pre-commit's install_environment exactly
 func (c *CondaLanguage) createRealCondaEnvironment(envPath, envFile string, additionalDeps []string) error {
 	repoDir := filepath.Dir(envFile)
+	condaExe := c.getCondaExecutable()
 
-	// Create conda environment: conda env create -p envdir --file environment.yml
+	// Create conda environment: {conda_exe} env create -p envdir --file environment.yml
 	// Matches Python: cmd_output_b(conda_exe, 'env', 'create', '-p', env_dir, '--file', 'environment.yml', cwd=prefix.prefix_dir)
-	cmd := exec.Command("conda", "env", "create", "-p", envPath, "--file", "environment.yml")
+	cmd := exec.Command(condaExe, "env", "create", "-p", envPath, "--file", "environment.yml")
 	cmd.Dir = repoDir
 
 	// Capture output for debugging (matches Python's cmd_output_b behavior)
@@ -115,7 +128,7 @@ func (c *CondaLanguage) createRealCondaEnvironment(envPath, envFile string, addi
 	if len(additionalDeps) > 0 {
 		args := []string{"install", "-p", envPath, "-c", "conda-forge", "--yes"}
 		args = append(args, additionalDeps...)
-		cmd := exec.Command("conda", args...)
+		cmd := exec.Command(condaExe, args...)
 		cmd.Dir = repoDir
 
 		output, err := cmd.CombinedOutput()
@@ -154,19 +167,20 @@ func (c *CondaLanguage) InstallDependencies(envPath string, deps []string) error
 		return fmt.Errorf("conda runtime not available - install conda")
 	}
 
-	// Install real dependencies using conda
+	// Install real dependencies using the configured conda executable
+	condaExe := c.getCondaExecutable()
 	args := []string{"install", "-p", envPath, "-c", "conda-forge", "--yes"}
 	args = append(args, deps...)
-	cmd := exec.Command("conda", args...)
+	cmd := exec.Command(condaExe, args...)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to install conda dependencies: %w", err)
 	}
 	return nil
 }
 
-// GetExecutableName returns the conda executable name
+// GetExecutableName returns the configured conda executable name
 func (c *CondaLanguage) GetExecutableName() string {
-	return "conda"
+	return c.getCondaExecutable()
 }
 
 // GetEnvironmentBinPath returns the bin path for the conda environment
