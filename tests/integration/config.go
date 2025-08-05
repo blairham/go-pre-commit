@@ -140,8 +140,8 @@ func (s *Suite) GetAllLanguageTests() []LanguageCompatibilityTest {
 		{
 			Name:                     "Haskell Environment",
 			Language:                 "haskell",
-			TestRepository:           "https://github.com/mihaimaruseac/hindent",
-			TestCommit:               "v5.3.4",
+			TestRepository:           "local", // Use local repository to create Haskell hook
+			TestCommit:               "",
 			HookID:                   "hindent",
 			TestVersions:             []string{"default"}, // Haskell only supports default/system
 			NeedsRuntimeInstalled:    true,

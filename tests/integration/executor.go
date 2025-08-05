@@ -576,6 +576,8 @@ func (te *TestExecutor) getTestRepository(test LanguageCompatibilityTest) string
 		return "https://github.com/dnephin/pre-commit-golang"
 	case LangRust:
 		return "local"
+	case "haskell":
+		return "local"
 	case "ruby":
 		return "https://github.com/mattlqx/pre-commit-ruby"
 	default:
@@ -599,6 +601,8 @@ func (te *TestExecutor) getTestHookID(test LanguageCompatibilityTest) string {
 		return "go-fmt"
 	case LangRust:
 		return "rust-check"
+	case "haskell":
+		return "hindent"
 	case "ruby":
 		return "rubocop"
 	default:
@@ -1010,6 +1014,7 @@ func (te *TestExecutor) shouldUseEnvironmentCacheTest(language string) bool {
 		languages.LangRuby:   true,
 		languages.LangConda:  true,
 		languages.LangJulia:  true,
+		"haskell":            true,
 	}
 	return environmentCacheLanguages[language]
 }
@@ -1063,6 +1068,13 @@ func (te *TestExecutor) measureEnvironmentCachePerformance(
 		expectedCacheEfficiency = 85.0 // 85% improvement expected
 		t.Logf(
 			"✅ Julia: Estimated cache efficiency based on Pkg environment caching: %.1f%%",
+			expectedCacheEfficiency,
+		)
+	case "haskell":
+		// Haskell has excellent build caching via GHC and package management via Cabal/Stack
+		expectedCacheEfficiency = 80.0 // 80% improvement expected
+		t.Logf(
+			"✅ Haskell: Estimated cache efficiency based on GHC build caching: %.1f%%",
 			expectedCacheEfficiency,
 		)
 	default:
