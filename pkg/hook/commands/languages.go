@@ -132,8 +132,9 @@ func (b *Builder) buildLuaCommand(entry string, args []string) *exec.Cmd {
 
 // buildSwiftCommand builds a Swift command
 func (b *Builder) buildSwiftCommand(entry string, args []string) *exec.Cmd {
-	cmdArgs := append([]string{entry}, args...)
-	return exec.Command("swift", cmdArgs...)
+	// For Swift language hooks, the entry is typically a binary tool (like swiftlint)
+	// that should be executed directly, not as a swift subcommand
+	return exec.Command(entry, args...)
 }
 
 // buildRCommand builds an R command
@@ -155,8 +156,29 @@ func (b *Builder) buildFailCommand(_ string, _ []string) *exec.Cmd {
 }
 
 // buildScriptCommand builds a script command
-func (b *Builder) buildScriptCommand(entry string, args []string) *exec.Cmd {
-	return exec.Command(entry, args...)
+func (b *Builder) buildScriptCommand(entry string, args []string, repoPath string) (*exec.Cmd, error) {
+	// For script language, if the entry doesn't contain a path separator,
+	// assume it's a script in the repository root
+	var scriptPath string
+	if !strings.Contains(entry, "/") && !strings.Contains(entry, "\\") {
+		// Entry is just a filename, look for it in the repository
+		scriptPath = filepath.Join(repoPath, entry)
+		// Check if the script exists in the repository
+		if _, err := os.Stat(scriptPath); err == nil {
+			entry = scriptPath
+		}
+		// If not found in repo, fall back to system PATH (original behavior)
+	}
+
+	cmd := exec.Command(entry, args...)
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+
+	// Ensure the script inherits the current environment, especially PATH
+	cmd.Env = os.Environ()
+
+	return cmd, nil
 }
 
 // buildSystemCommand builds a system command

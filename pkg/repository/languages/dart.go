@@ -104,12 +104,26 @@ func (d *DartLanguage) InstallDependencies(_ string, deps []string) error {
 
 // CheckEnvironmentHealth checks if the Dart environment is healthy
 func (d *DartLanguage) CheckEnvironmentHealth(envPath string) bool {
-	// Check base health first
-	if err := d.CheckHealth(envPath, ""); err != nil {
+	// Check that the environment directory exists
+	if _, err := os.Stat(envPath); err != nil {
 		return false
 	}
 
-	// For simplified Dart, we only check if the environment directory exists
-	// and Dart runtime is available (no package dependency checks)
+	// For Dart, we use the system runtime, so check if it's available
 	return d.IsRuntimeAvailable()
+}
+
+// CheckHealth overrides the base CheckHealth to use system Dart instead of environment-local Dart
+func (d *DartLanguage) CheckHealth(envPath, _ string) error {
+	// Check that the environment directory exists
+	if _, err := os.Stat(envPath); err != nil {
+		return fmt.Errorf("environment directory not found at %s: %w", envPath, err)
+	}
+
+	// For Dart, we use the system runtime, so check if it's available and functional
+	if !d.IsRuntimeAvailable() {
+		return fmt.Errorf("dart runtime not found in system PATH")
+	}
+
+	return nil
 }

@@ -31,10 +31,10 @@ func (st *SwiftLanguageTest) GetLanguageName() string {
 func (st *SwiftLanguageTest) SetupRepositoryFiles(repoPath string) error {
 	// Create .pre-commit-hooks.yaml
 	hooksFile := filepath.Join(repoPath, ".pre-commit-hooks.yaml")
-	hooksContent := `-   id: swift-format
+	hooksContent := `-   id: swiftformat
     name: Swift Format
     description: Format Swift code
-    entry: swift-format
+    entry: swiftformat
     language: swift
     files: \.swift$
     args: ['--in-place']

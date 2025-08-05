@@ -51,7 +51,7 @@ func (b *Builder) buildLanguageCommand(
 	case LanguageSystem:
 		return b.buildSystemCommand(entry, args, repoPath)
 	case "script":
-		return b.buildScriptCommand(entry, args), nil
+		return b.buildScriptCommand(entry, args, repoPath)
 	case "rust":
 		return b.buildRustCommand(entry, args), nil
 	case "ruby":

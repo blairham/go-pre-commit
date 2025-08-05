@@ -390,26 +390,31 @@ func TestBuilder_buildScriptCommand(t *testing.T) {
 		name         string
 		entry        string
 		args         []string
+		repoPath     string
 		expectedArgs []string
 	}{
 		{
 			name:         "simple script",
 			entry:        "script.sh",
 			args:         []string{"arg1"},
+			repoPath:     "/repo",
 			expectedArgs: []string{"script.sh", "arg1"},
 		},
 		{
 			name:         "script with no args",
 			entry:        "test.py",
 			args:         []string{},
+			repoPath:     "/repo",
 			expectedArgs: []string{"test.py"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := builder.buildScriptCommand(tt.entry, tt.args)
+			cmd, err := builder.buildScriptCommand(tt.entry, tt.args, tt.repoPath)
+			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedArgs, cmd.Args)
+			assert.Equal(t, tt.repoPath, cmd.Dir)
 		})
 	}
 }
