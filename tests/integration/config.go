@@ -177,8 +177,8 @@ func (s *Suite) GetAllLanguageTests() []LanguageCompatibilityTest {
 		{
 			Name:                     "Coursier Environment",
 			Language:                 "coursier",
-			TestRepository:           "https://github.com/coursier/coursier",
-			TestCommit:               "v2.1.6",
+			TestRepository:           "https://github.com/coyainsurance/pre-commit-scalafmt",
+			TestCommit:               "master",
 			HookID:                   "scalafmt",
 			TestVersions:             []string{"default"}, // Python pre-commit only supports 'default' version
 			NeedsRuntimeInstalled:    true,

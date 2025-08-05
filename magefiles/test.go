@@ -97,6 +97,24 @@ func ensureTestBinarySymlink() error {
 	return nil
 }
 
+// getAbsoluteBinaryPath returns the absolute path to the pre-commit binary
+func getAbsoluteBinaryPath() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get working directory: %w", err)
+	}
+	return filepath.Join(wd, "bin", "pre-commit"), nil
+}
+
+// getTestEnv returns the environment variables needed for running tests
+func getTestEnv() (map[string]string, error) {
+	binaryPath, err := getAbsoluteBinaryPath()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"GO_PRECOMMIT_BINARY": binaryPath}, nil
+}
+
 // Unit runs unit tests using gotestsum with parallel execution
 func (Test) Unit() error {
 	fmt.Println("Running unit tests with parallel execution...")
@@ -235,8 +253,17 @@ func (Test) LanguagesCore() error {
 	if err := ensureTestBinarySymlink(); err != nil {
 		return fmt.Errorf("failed to ensure test binary symlink: %w", err)
 	}
+
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+
 	fmt.Println("Running tests for core programming languages...")
-	err := sh.RunV("go", "test", "./tests", "-run", "TestCoreLanguages", "-v", "-timeout", "30m")
+	err = sh.RunWithV(
+		env,
+		"go", "test", "./tests", "-run", "TestCoreLanguages", "-v", "-timeout", "30m",
+	)
 
 	// Generate summary after tests complete (regardless of test result)
 	if summaryErr := generateTestSummary(); summaryErr != nil {
@@ -253,10 +280,21 @@ func (Test) LanguagesSystem() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for system-level languages...")
-	return sh.RunWithV(
-		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	err = sh.RunWithV(
+		env,
 		"go", "test", "./tests", "-run", "TestSystemLanguages", "-v", "-timeout", "10m",
 	)
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesContainer runs tests for container-based languages (docker, docker_image)
@@ -266,10 +304,21 @@ func (Test) LanguagesContainer() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for container-based languages...")
-	return sh.RunWithV(
-		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	err = sh.RunWithV(
+		env,
 		"go", "test", "./tests", "-run", "TestContainerLanguages", "-v", "-timeout", "15m",
 	)
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesMobile runs tests for mobile and modern development languages (dart, swift)
@@ -279,10 +328,21 @@ func (Test) LanguagesMobile() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for mobile and modern development languages...")
-	return sh.RunWithV(
-		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	err = sh.RunWithV(
+		env,
 		"go", "test", "./tests", "-run", "TestMobileLanguages", "-v", "-timeout", "15m",
 	)
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesScripting runs tests for scripting and data analysis languages (lua, perl, r)
@@ -292,8 +352,12 @@ func (Test) LanguagesScripting() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for scripting and data analysis languages...")
-	err := sh.RunWithV(
-		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	err = sh.RunWithV(
+		env,
 		"go", "test", "./tests", "-run", "TestScriptingLanguages", "-v", "-timeout", "20m",
 	)
 
@@ -312,10 +376,21 @@ func (Test) LanguagesAcademic() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for functional and academic programming languages...")
-	return sh.RunWithV(
-		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	err = sh.RunWithV(
+		env,
 		"go", "test", "./tests", "-run", "TestAcademicLanguages", "-v", "-timeout", "25m",
 	)
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesEnterprise runs tests for enterprise and JVM languages (dotnet, coursier)
@@ -325,10 +400,21 @@ func (Test) LanguagesEnterprise() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for enterprise and JVM languages...")
-	return sh.RunWithV(
-		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	err = sh.RunWithV(
+		env,
 		"go", "test", "./tests", "-run", "TestEnterpriseLanguages", "-v", "-timeout", "20m",
 	)
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesByCategory runs tests for all languages grouped by category
@@ -338,8 +424,12 @@ func (Test) LanguagesByCategory() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for all languages grouped by category...")
-	err := sh.RunWithV(
-		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	err = sh.RunWithV(
+		env,
 		"go", "test", "./tests", "-run", "TestLanguagesByCategory", "-v", "-timeout", "60m",
 	)
 
@@ -358,11 +448,13 @@ func (Test) LanguagesSingleGo(language string) error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Printf("Running Go integration tests for %s language...\n", language)
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	env["TEST_LANGUAGE"] = language
 	return sh.RunWithV(
-		map[string]string{
-			"GO_PRECOMMIT_BINARY": "./bin/pre-commit",
-			"TEST_LANGUAGE":       language,
-		},
+		env,
 		"go", "test", "./tests", "-run", "TestSingleLanguage", "-v", "-timeout", "15m",
 	)
 }
@@ -370,7 +462,14 @@ func (Test) LanguagesSingleGo(language string) error {
 // LanguagesList shows all configured languages and their properties
 func (Test) LanguagesList() error {
 	fmt.Println("Listing all configured languages...")
-	return sh.RunV("go", "test", "./tests", "-run", "TestListAllLanguages", "-v")
+	env, err := getTestEnv()
+	if err != nil {
+		return fmt.Errorf("failed to get test environment: %w", err)
+	}
+	return sh.RunWithV(
+		env,
+		"go", "test", "./tests", "-run", "TestListAllLanguages", "-v",
+	)
 }
 
 // GetCPUCores returns the number of available CPU cores

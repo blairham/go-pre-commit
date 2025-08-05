@@ -413,11 +413,17 @@ func (te *TestExecutor) generatePreCommitConfig(test LanguageCompatibilityTest) 
 		return te.generateLocalRepoConfig(test, hookID)
 	}
 
+	// Use the TestCommit from the test config, or fall back to getRevisionForRepo if empty
+	revision := test.TestCommit
+	if revision == "" {
+		revision = getRevisionForRepo(repo)
+	}
+
 	config := fmt.Sprintf(`repos:
 -   repo: %s
     rev: %s
     hooks:
-    -   id: %s`, repo, getRevisionForRepo(repo), hookID)
+    -   id: %s`, repo, revision, hookID)
 
 	// Add specific configurations for certain hooks
 	if hookID == "black" {
@@ -627,6 +633,8 @@ func getRevisionForRepo(repo string) string {
 		return "v8.0.453106"
 	case "https://github.com/hadolint/hadolint":
 		return "v2.12.0"
+	case "https://github.com/coursier/coursier":
+		return "v2.1.6"
 	default:
 		return "v4.4.0"
 	}
