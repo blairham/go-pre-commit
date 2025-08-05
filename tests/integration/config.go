@@ -166,7 +166,7 @@ func (s *Suite) GetAllLanguageTests() []LanguageCompatibilityTest {
 			Name:                     ".NET Environment",
 			Language:                 "dotnet",
 			TestRepository:           "https://github.com/dotnet/format",
-			TestCommit:               "v5.1.250801",
+			TestCommit:               "v8.0.453106",
 			HookID:                   "dotnet-format",
 			TestVersions:             []string{"default"},
 			NeedsRuntimeInstalled:    true,

@@ -624,7 +624,7 @@ func getRevisionForRepo(repo string) string {
 	case "https://github.com/mihaimaruseac/hindent":
 		return "v5.3.4"
 	case "https://github.com/dotnet/format":
-		return "v5.1.225507"
+		return "v8.0.453106"
 	case "https://github.com/hadolint/hadolint":
 		return "v2.12.0"
 	default:
