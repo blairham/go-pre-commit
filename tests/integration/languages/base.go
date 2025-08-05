@@ -266,15 +266,14 @@ func (bt *BaseLanguageTest) TestEnvironmentHealth(
 				version,
 				err,
 			)
-		} else {
-			// If runtime is optional, just log a warning
-			t.Logf(
-				"    ⚠️ Warning: Environment health check failed for %s version %s: %v",
-				runner.GetLanguageName(),
-				version,
-				err,
-			)
 		}
+		// If runtime is optional, just log a warning
+		t.Logf(
+			"    ⚠️ Warning: Environment health check failed for %s version %s: %v",
+			runner.GetLanguageName(),
+			version,
+			err,
+		)
 	} else {
 		t.Logf("    ✅ Environment health check passed for %s version %s", runner.GetLanguageName(), version)
 	}

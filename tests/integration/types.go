@@ -85,12 +85,12 @@ func (tr *TestResults) AddWarning(warning string) {
 }
 
 // AddErrorf adds a formatted error message to the test results
-func (tr *TestResults) AddErrorf(format string, args ...interface{}) {
+func (tr *TestResults) AddErrorf(format string, args ...any) {
 	tr.AddError(fmt.Sprintf(format, args...))
 }
 
 // AddWarningf adds a formatted warning message to the test results
-func (tr *TestResults) AddWarningf(format string, args ...interface{}) {
+func (tr *TestResults) AddWarningf(format string, args ...any) {
 	tr.AddWarning(fmt.Sprintf(format, args...))
 }
 
