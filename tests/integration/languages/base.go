@@ -239,7 +239,7 @@ func (bt *BaseLanguageTest) TestEnvironmentSetup(
 	// Environment created successfully
 
 	// Run environment health check
-	return bt.TestEnvironmentHealth(t, version, envPath, lang, runner)
+	return bt.TestEnvironmentHealth(t, version, envPath, lang, runner, test)
 }
 
 // TestEnvironmentHealth tests the health of an environment
@@ -249,6 +249,7 @@ func (bt *BaseLanguageTest) TestEnvironmentHealth(
 	envPath string,
 	lang language.Manager,
 	runner LanguageTestRunner,
+	test LanguageCompatibilityTest,
 ) error {
 	t.Helper()
 
@@ -257,13 +258,23 @@ func (bt *BaseLanguageTest) TestEnvironmentHealth(
 	}
 
 	if err := lang.CheckHealth(envPath, version); err != nil {
-		t.Logf(
-			"    ⚠️ Warning: Environment health check failed for %s version %s: %v",
-			runner.GetLanguageName(),
-			version,
-			err,
-		)
-		// Don't fail the test for health check issues, just log them
+		if test.NeedsRuntimeInstalled {
+			// If runtime is required, health check failure should fail the test
+			return fmt.Errorf(
+				"environment health check failed for %s version %s (runtime required): %w",
+				runner.GetLanguageName(),
+				version,
+				err,
+			)
+		} else {
+			// If runtime is optional, just log a warning
+			t.Logf(
+				"    ⚠️ Warning: Environment health check failed for %s version %s: %v",
+				runner.GetLanguageName(),
+				version,
+				err,
+			)
+		}
 	} else {
 		t.Logf("    ✅ Environment health check passed for %s version %s", runner.GetLanguageName(), version)
 	}

@@ -269,7 +269,11 @@ func (j *JuliaLanguage) CheckHealth(envPath, _ string) error {
 		strings.Contains(envPath, "JuliaProjectVerificationFailure")
 
 	if testMode && !isPathModified {
-		// In test mode, just check that the files exist
+		// In test mode, still verify runtime is available if it should be
+		if !j.IsRuntimeAvailable() {
+			return fmt.Errorf("julia runtime not available on system")
+		}
+		// Runtime is available, just check that the files exist
 		return nil
 	}
 

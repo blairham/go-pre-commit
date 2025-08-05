@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -22,9 +23,37 @@ import (
 // This prevents interfering with the user's actual pre-commit cache
 func cleanCacheBeforeTest() error {
 	// Only clean test output directory, not the pre-commit cache
+	// Note: This was previously removing all test results, but now we preserve them
+	// unless explicitly requested to clean up
+	return nil
+}
+
+// cleanTestOutput removes all test output (for explicit cleanup)
+func cleanTestOutput() error {
 	if err := os.RemoveAll("test-output"); err != nil {
 		fmt.Printf("⚠️  Warning: failed to clean test output: %v\n", err)
+		return err
 	}
+	fmt.Println("🧹 Test output directory cleaned")
+	return nil
+}
+
+// generateTestSummary generates a summary report similar to the shell script
+func generateTestSummary() error {
+	fmt.Println("📊 Generating test summary...")
+
+	// Call the shell script's generate_summary function
+	scriptPath := filepath.Join("scripts", "test-language-implementations.sh")
+	cmd := exec.Command("bash", scriptPath, "generate_summary")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("❌ Failed to generate test summary: %v\n", err)
+		return err
+	}
+
+	fmt.Println("✅ Test summary generated successfully")
 	return nil
 }
 
@@ -175,7 +204,12 @@ func (Test) Languages() error {
 	return sh.RunV("./scripts/test-language-implementations.sh")
 }
 
-// LanguagesSingle runs tests for a specific language implementation
+// CleanTestOutput explicitly removes all test output files
+func (Test) CleanTestOutput() error {
+	return cleanTestOutput()
+}
+
+// LanguagesSingle tests a single language implementation
 func (Test) LanguagesSingle(language string) error {
 	mg.Deps(Build.Binary)
 	if err := cleanCacheBeforeTest(); err != nil {
@@ -202,7 +236,14 @@ func (Test) LanguagesCore() error {
 		return fmt.Errorf("failed to ensure test binary symlink: %w", err)
 	}
 	fmt.Println("Running tests for core programming languages...")
-	return sh.RunV("go", "test", "./tests", "-run", "TestCoreLanguages", "-v", "-timeout", "30m")
+	err := sh.RunV("go", "test", "./tests", "-run", "TestCoreLanguages", "-v", "-timeout", "30m")
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesSystem runs tests for system-level languages (system, script, fail, pygrep)
@@ -251,10 +292,17 @@ func (Test) LanguagesScripting() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for scripting and data analysis languages...")
-	return sh.RunWithV(
+	err := sh.RunWithV(
 		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
 		"go", "test", "./tests", "-run", "TestScriptingLanguages", "-v", "-timeout", "20m",
 	)
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesAcademic runs tests for functional and academic programming languages (haskell, julia)
@@ -290,10 +338,17 @@ func (Test) LanguagesByCategory() error {
 		return fmt.Errorf("failed to clean cache: %w", err)
 	}
 	fmt.Println("Running tests for all languages grouped by category...")
-	return sh.RunWithV(
+	err := sh.RunWithV(
 		map[string]string{"GO_PRECOMMIT_BINARY": "./bin/pre-commit"},
 		"go", "test", "./tests", "-run", "TestLanguagesByCategory", "-v", "-timeout", "60m",
 	)
+
+	// Generate summary after tests complete (regardless of test result)
+	if summaryErr := generateTestSummary(); summaryErr != nil {
+		fmt.Printf("Warning: Failed to generate test summary: %v\n", summaryErr)
+	}
+
+	return err
 }
 
 // LanguagesSingleGo runs integration tests for a specific language using Go tests

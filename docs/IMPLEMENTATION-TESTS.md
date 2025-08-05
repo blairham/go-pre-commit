@@ -11,9 +11,10 @@ This document provides complete documentation for the integration tests used in 
 5. [Implementation Details](#implementation-details)
 6. [Test Phases](#test-phases)
 7. [Configuration and Customization](#configuration-and-customization)
-8. [Performance Analysis](#performance-analysis)
-9. [Troubleshooting Guide](#troubleshooting-guide)
-10. [Development Guide](#development-guide)
+8. [Test Measurements and Pass/Fail Criteria](#test-measurements-and-passfail-criteria)
+9. [Performance Analysis](#performance-analysis)
+10. [Troubleshooting Guide](#troubleshooting-guide)
+11. [Development Guide](#development-guide)
 
 ## Overview
 
@@ -124,6 +125,21 @@ go test -v ./tests/ -run TestAllLanguagesCompatibility/node -timeout 5m
 go test -v ./tests/ -run TestAllLanguagesCompatibility/golang -timeout 3m
 go test -v ./tests/ -run TestAllLanguagesCompatibility/system -timeout 2m
 ```
+
+### Test Measurements Summary
+
+| Measurement | Description | Pass Criteria | Typical Values |
+|-------------|-------------|---------------|----------------|
+| **Repository/Environment Setup** | Language environment creation | ✅ Setup succeeds, health check passes | Pass/Fail |
+| **Environment Isolation** | Separate environments per test | ✅ No conflicts between tests | Always ✅ |
+| **Version Management** | Multiple version support | ✅ Multiple versions tested successfully | ✅ if len(versions) > 1 |
+| **Functional Equivalence** | Go/Python compatibility | ✅ Both implementations work | ✅ when both succeed |
+| **Go Install Time** | Hook installation performance | ✅ Installation succeeds | 4-200ms typical |
+| **Python Install Time** | Baseline comparison | ✅ Installation succeeds | 50-500ms typical |
+| **Performance Ratio** | Speed improvement | ✅ Any positive ratio | 10-50x faster |
+| **Go Cache Efficiency** | Cache performance gain | ✅ 20%+ for cacheable ops | 40-90% typical |
+| **Python Cache Efficiency** | Baseline cache performance | ✅ 20%+ for cacheable ops | 30-80% typical |
+| **Bidirectional Cache** | Cross-implementation cache | ✅ Cache sharing works | Python only |
 
 ### Output Interpretation
 
@@ -451,6 +467,191 @@ func createGoTest() LanguageCompatibilityTest {
     }
 }
 ```
+
+## Test Measurements and Pass/Fail Criteria
+
+This section provides a comprehensive overview of all measurements collected during testing and the criteria used to determine test success or failure.
+
+### Core Test Measurements
+
+#### 1. Repository and Environment Setup
+**What it measures**: Ability to create working language environments and repositories  
+**Pass criteria**: 
+- ✅ Repository successfully cloned/created
+- ✅ Language environment successfully set up (if `NeedsEnvironmentSetup() == true`)
+- ✅ Environment health check passes (if `NeedsRuntimeInstalled == true`)
+- ✅ All expected files created in repository
+
+**Fail criteria**:
+- ❌ Repository creation fails
+- ❌ Environment setup fails when required
+- ❌ Health check fails when runtime is required (`NeedsRuntimeInstalled: true`)
+- ❌ Missing required dependencies when `NeedsRuntimeInstalled: true`
+
+#### 2. Environment Isolation (`EnvironmentIsolation`)
+**What it measures**: Whether language environments are properly isolated between tests  
+**Pass criteria**: 
+- ✅ Each test gets its own separate environment directory
+- ✅ No dependency conflicts between language environments
+- ✅ Tests can run in parallel without interference
+
+**Fail criteria**:
+- ❌ Environment conflicts detected
+- ❌ Shared state between test runs
+
+#### 3. Version Management (`VersionManagement`)
+**What it measures**: Support for multiple language versions  
+**Pass criteria**: 
+- ✅ Multiple versions successfully tested (when `len(TestVersions) > 1`)
+- ✅ Version-specific environments created correctly
+
+**Automatic pass**: Languages with only one test version (e.g., `["default"]`)
+
+#### 4. Functional Equivalence (`FunctionalEquivalence`)
+**What it measures**: Whether Go and Python implementations produce equivalent results  
+**Pass criteria**: 
+- ✅ Both Go and Python implementations can install and run hooks successfully
+- ✅ Go implementation extends Python capabilities (e.g., coursier, dotnet support)
+- ✅ Hook execution produces compatible results
+
+**Fail criteria**:
+- ❌ Go implementation fails when Python succeeds
+- ❌ Incompatible output between implementations
+
+### Performance Measurements
+
+#### 5. Go Install Time (`GoInstallTime`)
+**What it measures**: Time to install hooks using Go pre-commit implementation  
+**Pass criteria**: 
+- ✅ Hook installation completes successfully
+- ✅ Reasonable performance (typically 4-50ms for most languages)
+
+**Fail criteria**:
+- ❌ Installation fails
+- ❌ Timeout exceeded
+
+#### 6. Python Install Time (`PythonInstallTime`)
+**What it measures**: Time to install hooks using Python pre-commit implementation  
+**Pass criteria**: 
+- ✅ Hook installation completes successfully (when Python binary available)
+- ✅ Comparable functionality to Go implementation
+
+**Skip conditions**: 
+- Python pre-commit binary not available
+- Language not supported by Python pre-commit (e.g., coursier, dotnet)
+
+#### 7. Performance Ratio (`PerformanceRatio`)
+**What it measures**: Speed comparison between Python and Go implementations  
+**Calculation**: `PythonInstallTime / GoInstallTime`  
+**Typical results**: 
+- ✅ 10-50x faster (typical range)
+- ✅ Any positive ratio indicates Go performance benefit
+
+**Skip conditions**: Either implementation unavailable
+
+### Cache Performance Measurements
+
+#### 8. Go Cache Efficiency (`GoCacheEfficiency`)
+**What it measures**: Performance improvement from caching in Go implementation  
+**Calculation**: `((FirstRunTime - CachedRunTime) / FirstRunTime) * 100`  
+**Pass criteria**: 
+- ✅ 20%+ improvement for cacheable operations
+- ✅ 5%+ improvement for fast operations (<200ms)
+- ✅ 0% acceptable for very fast operations where cache overhead dominates
+
+**Special handling**:
+- Compiled languages (Go, Rust): Use estimated cache efficiency based on build system characteristics
+- Fast operations: Limited cache benefit expected and acceptable
+
+#### 9. Python Cache Efficiency (`PythonCacheEfficiency`)
+**What it measures**: Performance improvement from caching in Python implementation  
+**Same calculation and criteria as Go Cache Efficiency**
+
+#### 10. Bidirectional Cache Compatibility (`CacheBidirectional`)
+**What it measures**: Whether Go and Python implementations can share cache artifacts  
+**Pass criteria**: 
+- ✅ Go can use cache created by Python
+- ✅ Python can use cache created by Go
+- ✅ No cache corruption or conflicts
+
+**Tested for**: Python language only (where both implementations are feature-complete)
+
+### Test Execution Status
+
+#### 11. Overall Success (`Success`)
+**What it determines**: Final test result  
+**Pass criteria**: ALL of the following must be true:
+- ✅ Repository/Environment setup completed successfully
+- ✅ No errors recorded during test execution
+- ✅ Required runtime available (when `NeedsRuntimeInstalled: true`)
+- ✅ All mandatory validations passed
+
+**Fail criteria**: ANY of the following:
+- ❌ Setup phase failed
+- ❌ Errors recorded in `Errors` array
+- ❌ Required runtime missing when mandatory
+- ❌ Critical validation failures
+
+### Language-Specific Considerations
+
+#### Runtime Requirements
+- **Strict requirement** (`NeedsRuntimeInstalled: true`): Lua, Perl, R, Julia, Haskell, Docker, Coursier
+  - Test fails if runtime not available
+- **Optional runtime** (`NeedsRuntimeInstalled: false`): System, Script, Fail, Pygrep
+  - Test continues with warnings if runtime unavailable
+
+#### Expected Performance Ranges
+- **Very fast** (1-10ms): System, Script, Fail, Pygrep languages
+- **Fast** (10-50ms): Node, Go, Rust (with caching)
+- **Moderate** (50-200ms): Python, Ruby, Dart
+- **Slow** (200ms+): Julia, Haskell, Docker (first run)
+
+#### Cache Efficiency Expectations
+- **High** (70-90%): Conda, Docker, compiled languages
+- **Moderate** (40-70%): Python, Ruby, Node
+- **Limited** (<40%): System commands, simple scripts
+
+### Error Handling and Warnings
+
+#### Test Warnings (Non-failing)
+- Cache test skipped due to missing dependencies
+- Environment health check failed for optional runtime
+- Performance measurement unavailable
+- Python implementation not available for comparison
+
+#### Test Errors (Failing)
+- Repository setup failure
+- Required runtime missing
+- Environment creation failure when mandatory
+- Hook installation failure
+- Critical validation errors
+
+### Interpreting Test Results
+
+#### Success Indicators in Logs
+```
+🚀 Starting comprehensive compatibility test for [language]
+✅ Repository/Environment setup completed successfully  
+✅ Environment health check passed for [language] version [version]
+✅ Functional equivalence confirmed: both implementations working
+🎉 Language compatibility test PASSED for [language] in [duration]
+```
+
+#### Failure Indicators in Logs
+```
+❌ Repository/Environment setup failed: [error]
+❌ Environment health check failed for [language] (runtime required): [error]  
+💥 Language compatibility test FAILED for [language] in [duration] (errors: [count])
+```
+
+#### Warning Indicators in Logs
+```
+⚠️ Warning: Environment health check failed for [language] version [version]
+⚠️ Cache test skipped for [language] - [reason]
+ℹ️ Language [language] does not support multiple versions
+```
+
+This measurement framework ensures comprehensive validation of compatibility, performance, and functionality across all supported languages while providing clear criteria for determining test success or failure.
 
 ## Performance Analysis
 

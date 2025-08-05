@@ -102,6 +102,7 @@ func (te *TestExecutor) testRepositoryAndEnvironmentSetup(
 		TestVersions:           test.TestVersions,
 		AdditionalDependencies: test.AdditionalDependencies,
 		TestTimeout:            test.TestTimeout,
+		NeedsRuntimeInstalled:  test.NeedsRuntimeInstalled,
 	}
 
 	// Run the test using the language-specific runner

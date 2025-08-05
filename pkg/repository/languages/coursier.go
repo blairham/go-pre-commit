@@ -295,7 +295,13 @@ func (c *CoursierLanguage) CheckHealth(envPath, version string) error {
 		strings.Contains(envPath, "HelpCommandFailure")
 
 	if testMode && !isPathModified {
-		// In test mode, just assume coursier is available and skip validation
+		// In test mode, still verify runtime is available if it should be
+		if _, err := exec.LookPath("cs"); err != nil {
+			if _, err := exec.LookPath(coursierExecutable); err != nil {
+				return fmt.Errorf("pre-commit requires system-installed \"cs\" or \"coursier\" executables in the application search path")
+			}
+		}
+		// Runtime is available, skip detailed validation in test mode
 		return nil
 	}
 

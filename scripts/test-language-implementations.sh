@@ -649,4 +649,11 @@ main() {
 }
 
 # Run main function with all arguments
-main "$@"
+if [[ "${1:-}" == "generate_summary" ]]; then
+  # Special case: just generate summary from existing test results
+  mkdir -p "$TEST_OUTPUT_DIR"
+  generate_summary
+else
+  # Normal execution: run tests and generate summary
+  main "$@"
+fi

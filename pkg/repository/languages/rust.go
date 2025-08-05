@@ -164,15 +164,16 @@ func (r *RustLanguage) CheckHealth(envPath, version string) error {
 		return nil
 	}
 
-	// For environment versions, just check if environment directory exists
-	// (matching Python pre-commit's basic_health_check pattern)
+	// For environment versions, first check if Rust runtime is available
+	// since environment versions still need the underlying rust tools
+	if !r.IsRuntimeAvailable() {
+		return fmt.Errorf("rust runtime not available on system")
+	}
+
+	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("environment directory does not exist: %s", envPath)
 	}
 
-	// Note: We don't check for rustc inside the environment directory because
-	// our current implementation doesn't fully install rust toolchains yet.
-	// This matches the behavior where Python pre-commit would only do basic
-	// directory existence checks for many languages.
 	return nil
 }
