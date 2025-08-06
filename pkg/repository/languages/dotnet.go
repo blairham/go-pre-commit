@@ -131,3 +131,31 @@ func (d *DotnetLanguage) SetupEnvironmentWithRepo(
 	// Use the simpler setup for now - can be enhanced later if needed
 	return d.GenericSetupEnvironmentWithRepo("", version, repoPath, additionalDeps)
 }
+
+// CheckEnvironmentHealth checks if the .NET environment is healthy
+func (d *DotnetLanguage) CheckEnvironmentHealth(envPath string) bool {
+	// Check that the environment directory exists
+	if _, err := os.Stat(envPath); err != nil {
+		return false
+	}
+
+	// Check base health (dotnet --version works)
+	if err := d.CheckHealth(envPath, ""); err != nil {
+		return false
+	}
+
+	// If there's a project, check if it can build
+	projectPath := filepath.Join(envPath, "PreCommitEnv")
+	csprojPath := filepath.Join(projectPath, "PreCommitEnv.csproj")
+
+	if _, err := os.Stat(csprojPath); err == nil {
+		// Project exists, check if it can build
+		cmd := exec.Command("dotnet", "build", "--no-restore")
+		cmd.Dir = projectPath
+		if err := cmd.Run(); err != nil {
+			return false
+		}
+	}
+
+	return true
+}

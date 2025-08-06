@@ -129,8 +129,8 @@ func TestSwiftLanguage(t *testing.T) {
 		}
 
 		// Check properties
-		if swift.Name != "Swift" {
-			t.Errorf("Expected name 'Swift', got '%s'", swift.Name)
+		if swift.Name != "swift" {
+			t.Errorf("Expected name 'swift', got '%s'", swift.Name)
 		}
 		if swift.ExecutableName != "swift" {
 			t.Errorf("Expected executable name 'swift', got '%s'", swift.ExecutableName)

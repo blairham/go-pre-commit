@@ -18,7 +18,7 @@ func TestGoLanguage(t *testing.T) {
 
 	config := helpers.LanguageTestConfig{
 		Language:       golang,
-		Name:           "Go",
+		Name:           "golang",
 		ExecutableName: "go",
 		VersionFlag:    "version",
 		TestVersions:   []string{"default", "system"},
@@ -40,8 +40,8 @@ func TestNewGoLanguage(t *testing.T) {
 	}
 
 	// Check that the base is configured correctly
-	if golang.GetName() != "Go" {
-		t.Errorf("Expected name 'Go', got %s", golang.GetName())
+	if golang.GetName() != "golang" {
+		t.Errorf("Expected name 'golang', got %s", golang.GetName())
 	}
 
 	if golang.GetExecutableName() != "go" {

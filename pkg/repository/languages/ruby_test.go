@@ -19,7 +19,7 @@ func TestRubyLanguage(t *testing.T) {
 
 	config := helpers.LanguageTestConfig{
 		Language:       ruby,
-		Name:           "Ruby",
+		Name:           "ruby",
 		ExecutableName: "ruby",
 		VersionFlag:    "--version",
 		TestVersions:   []string{"", "2.7", "3.0", "3.1", "3.2"},

@@ -409,7 +409,7 @@ func (te *TestExecutor) generatePreCommitConfig(test LanguageCompatibilityTest) 
 	hookID := te.getTestHookID(test)
 
 	// Handle local repositories differently (they need name field)
-	if repo == "local" {
+	if repo == localRepo {
 		return te.generateLocalRepoConfig(test, hookID)
 	}
 
@@ -441,9 +441,39 @@ func (te *TestExecutor) generateLocalRepoConfig(
 	test LanguageCompatibilityTest,
 	hookID string,
 ) string {
-	switch test.Language {
-	case "script":
-		return `repos:
+	configMap := te.getLocalRepoConfigMap()
+
+	if configFunc, exists := configMap[test.Language]; exists {
+		return configFunc()
+	}
+
+	return te.generateDefaultConfig(hookID, test.Language)
+}
+
+// getLocalRepoConfigMap returns a map of language to config generator functions
+func (te *TestExecutor) getLocalRepoConfigMap() map[string]func() string {
+	return map[string]func() string{
+		"script":             te.generateScriptConfig,
+		languages.LangGolang: te.generateGolangConfig,
+		LangRust:             te.generateRustConfig,
+		"julia":              te.generateJuliaConfig,
+		"conda":              te.generateCondaConfig,
+		"system":             te.generateSystemConfig,
+		"pygrep":             te.generatePygrepConfig,
+		failLang:             te.generateFailConfig,
+		"coursier":           te.generateCoursierConfig,
+		haskellLang:          te.generateHaskellConfig,
+		"perl":               te.generatePerlConfig,
+		"lua":                te.generateLuaConfig,
+		"r":                  te.generateRConfig,
+		"swift":              te.generateSwiftConfig,
+	}
+}
+
+// Helper functions for generateLocalRepoConfig to reduce cyclomatic complexity
+
+func (te *TestExecutor) generateScriptConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: simple-shell-script
@@ -452,8 +482,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         language: script
         files: \.txt$
 `
-	case languages.LangGolang:
-		return `repos:
+}
+
+func (te *TestExecutor) generateGolangConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: go-test-simple
@@ -462,8 +494,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         language: golang
         files: \.go$
 `
-	case LangRust:
-		return `repos:
+}
+
+func (te *TestExecutor) generateRustConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: rust-check
@@ -472,8 +506,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         language: system
         files: \.rs$
 `
-	case "julia":
-		return `repos:
+}
+
+func (te *TestExecutor) generateJuliaConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: julia-formatter
@@ -482,8 +518,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         language: julia
         files: \.jl$
 `
-	case "conda":
-		return `repos:
+}
+
+func (te *TestExecutor) generateCondaConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: conda-black
@@ -492,8 +530,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         language: conda
         files: \.py$
 `
-	case "system":
-		return `repos:
+}
+
+func (te *TestExecutor) generateSystemConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: simple-system-command
@@ -502,8 +542,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         language: system
         files: \.txt$
 `
-	case "pygrep":
-		return `repos:
+}
+
+func (te *TestExecutor) generatePygrepConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: python-check-blanket-noqa
@@ -512,8 +554,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         language: pygrep
         files: \.py$
 `
-	case "fail":
-		return `repos:
+}
+
+func (te *TestExecutor) generateFailConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: no-commit-to-branch
@@ -523,8 +567,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         files: .*
         args: ['--branch', 'main', '--branch', 'master']
 `
-	case "coursier":
-		return `repos:
+}
+
+func (te *TestExecutor) generateCoursierConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: scalafmt
@@ -535,8 +581,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         files: \.scala$
         additional_dependencies: ['scalafmt:3.7.12']
 `
-	case "haskell":
-		return `repos:
+}
+
+func (te *TestExecutor) generateHaskellConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: hindent
@@ -547,8 +595,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         files: \.hs$
         additional_dependencies: ['base']
 `
-	case "perl":
-		return `repos:
+}
+
+func (te *TestExecutor) generatePerlConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: perl-syntax-check
@@ -560,8 +610,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         args: ['-c']
         pass_filenames: true
 `
-	case "lua":
-		return `repos:
+}
+
+func (te *TestExecutor) generateLuaConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: lua-syntax-check
@@ -573,8 +625,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         args: ['-p']
         pass_filenames: true
 `
-	case "r":
-		return `repos:
+}
+
+func (te *TestExecutor) generateRConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: r-syntax-check
@@ -585,8 +639,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         files: \.[rR]$
         args: ['-e', 'print("R syntax OK")']
 `
-	case "swift":
-		return `repos:
+}
+
+func (te *TestExecutor) generateSwiftConfig() string {
+	return `repos:
 -   repo: local
     hooks:
     -   id: swiftformat
@@ -598,8 +654,10 @@ func (te *TestExecutor) generateLocalRepoConfig(
         args: ['--version']
         pass_filenames: false
 `
-	default:
-		return fmt.Sprintf(`repos:
+}
+
+func (te *TestExecutor) generateDefaultConfig(hookID, language string) string {
+	return fmt.Sprintf(`repos:
 -   repo: local
     hooks:
     -   id: %s
@@ -607,8 +665,7 @@ func (te *TestExecutor) generateLocalRepoConfig(
         entry: echo "test"
         language: %s
         files: .*
-`, hookID, test.Language, test.Language)
-	}
+`, hookID, language, language)
 }
 
 // getTestRepository returns the repository URL for the test
@@ -626,9 +683,9 @@ func (te *TestExecutor) getTestRepository(test LanguageCompatibilityTest) string
 	case "golang":
 		return "https://github.com/dnephin/pre-commit-golang"
 	case LangRust:
-		return "local"
-	case "haskell":
-		return "local"
+		return localRepo
+	case haskellLang:
+		return localRepo
 	case "ruby":
 		return "https://github.com/mattlqx/pre-commit-ruby"
 	default:
@@ -652,7 +709,7 @@ func (te *TestExecutor) getTestHookID(test LanguageCompatibilityTest) string {
 		return "go-fmt"
 	case LangRust:
 		return "rust-check"
-	case "haskell":
+	case haskellLang:
 		return "hindent"
 	case "ruby":
 		return "rubocop"
@@ -1139,7 +1196,7 @@ func (te *TestExecutor) shouldUseEnvironmentCacheTest(language string) bool {
 		languages.LangRuby:   true,
 		languages.LangConda:  true,
 		languages.LangJulia:  true,
-		"haskell":            true,
+		haskellLang:          true,
 	}
 	return environmentCacheLanguages[language]
 }
@@ -1195,7 +1252,7 @@ func (te *TestExecutor) measureEnvironmentCachePerformance(
 			"✅ Julia: Estimated cache efficiency based on Pkg environment caching: %.1f%%",
 			expectedCacheEfficiency,
 		)
-	case "haskell":
+	case haskellLang:
 		// Haskell has excellent build caching via GHC and package management via Cabal/Stack
 		expectedCacheEfficiency = 80.0 // 80% improvement expected
 		t.Logf(

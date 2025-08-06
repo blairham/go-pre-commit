@@ -918,7 +918,7 @@ func TestCoursierLanguage_ComprehensiveCheckHealth(t *testing.T) {
 		}
 
 		// Test various unsupported versions
-		unsupportedVersions := []string{"2.13", "3.0", "latest", "2.1.0", ""}
+		unsupportedVersions := []string{"2.13", "3.0", "latest", "2.1.0"}
 		for _, version := range unsupportedVersions {
 			if version == testDefaultStr {
 				continue // This is the only supported version
@@ -932,6 +932,12 @@ func TestCoursierLanguage_ComprehensiveCheckHealth(t *testing.T) {
 					t.Errorf("Expected version error for %s, got: %v", version, err)
 				}
 			}
+		}
+
+		// Test empty version (should be treated as default and succeed)
+		err := coursier.CheckHealth(envPath, "")
+		if err != nil {
+			t.Errorf("CheckHealth should succeed for empty version (treated as default), got: %v", err)
 		}
 	})
 }

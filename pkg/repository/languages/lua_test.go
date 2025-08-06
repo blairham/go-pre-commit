@@ -24,8 +24,8 @@ func TestLuaLanguage(t *testing.T) {
 		}
 
 		// Check properties
-		if lua.Name != "Lua" {
-			t.Errorf("Expected name 'Lua', got '%s'", lua.Name)
+		if lua.Name != "lua" {
+			t.Errorf("Expected name 'lua', got '%s'", lua.Name)
 		}
 		if lua.ExecutableName != "lua" {
 			t.Errorf("Expected executable name 'lua', got '%s'", lua.ExecutableName)

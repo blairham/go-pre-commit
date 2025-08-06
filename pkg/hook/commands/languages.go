@@ -132,9 +132,8 @@ func (b *Builder) buildLuaCommand(entry string, args []string) *exec.Cmd {
 
 // buildSwiftCommand builds a Swift command
 func (b *Builder) buildSwiftCommand(entry string, args []string) *exec.Cmd {
-	// For Swift language hooks, the entry is typically a binary tool (like swiftlint)
-	// that should be executed directly, not as a swift subcommand
-	return exec.Command(entry, args...)
+	cmdArgs := append([]string{entry}, args...)
+	return exec.Command("swift", cmdArgs...)
 }
 
 // buildRCommand builds an R command

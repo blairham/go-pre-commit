@@ -11,6 +11,7 @@ import (
 const (
 	localRepo   = "local"
 	haskellLang = "haskell"
+	failLang    = "fail"
 )
 
 // WorkspaceManager handles creation and management of test workspaces
@@ -186,7 +187,7 @@ description: Test YAML file
 		wm.fileGenerator.CreatePerlFiles(t, repoDir)
 	case "r":
 		wm.fileGenerator.CreateRFiles(t, repoDir)
-	case "haskell":
+	case haskellLang:
 		wm.fileGenerator.CreateHaskellFiles(t, repoDir)
 	case "dotnet":
 		wm.fileGenerator.CreateDotNetFiles(t, repoDir)
