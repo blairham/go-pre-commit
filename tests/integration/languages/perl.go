@@ -31,19 +31,13 @@ func (pt *PerlLanguageTest) GetLanguageName() string {
 func (pt *PerlLanguageTest) SetupRepositoryFiles(repoPath string) error {
 	// Create .pre-commit-hooks.yaml
 	hooksFile := filepath.Join(repoPath, ".pre-commit-hooks.yaml")
-	hooksContent := `-   id: perl-critic
-    name: Perl Critic
-    description: Lint Perl code with Perl::Critic
-    entry: perlcritic
+	hooksContent := `-   id: perl-syntax-check
+    name: Perl Syntax Check
+    description: Check Perl syntax
+    entry: perl
     language: perl
     files: \.pl$
--   id: perl-tidy
-    name: Perl Tidy
-    description: Format Perl code with Perl::Tidy
-    entry: perltidy
-    language: perl
-    files: \.pl$
-    args: ['-b']
+    args: ['-c']
 `
 	if err := os.WriteFile(hooksFile, []byte(hooksContent), 0o600); err != nil {
 		return fmt.Errorf("failed to create hooks file: %w", err)

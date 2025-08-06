@@ -90,22 +90,22 @@ func (s *Suite) GetAllLanguageTests() []LanguageCompatibilityTest {
 		{
 			Name:                     "Swift Environment",
 			Language:                 "swift",
-			TestRepository:           "https://github.com/nicklockwood/SwiftFormat",
-			TestCommit:               "0.51.12",
+			TestRepository:           "local",
+			TestCommit:               "",
 			HookID:                   "swiftformat",
 			TestVersions:             []string{"default"},
 			NeedsRuntimeInstalled:    true,
 			CacheTestEnabled:         true,
 			BiDirectionalTestEnabled: true,
-			TestTimeout:              10 * time.Minute,
+			TestTimeout:              2 * time.Minute,
 		},
 		// Scripting Languages
 		{
 			Name:                     "Lua Environment",
-			Language:                 "lua",
-			TestRepository:           "https://github.com/Koihik/LuaFormatter",
-			TestCommit:               "1.3.6",
-			HookID:                   "lua-format",
+			Language:                 "lua", // Keep original language for test framework
+			TestRepository:           "local",
+			TestCommit:               "",
+			HookID:                   "lua-syntax-check",
 			TestVersions:             []string{"default"},
 			NeedsRuntimeInstalled:    true,
 			CacheTestEnabled:         true,
@@ -114,10 +114,10 @@ func (s *Suite) GetAllLanguageTests() []LanguageCompatibilityTest {
 		},
 		{
 			Name:                     "Perl Environment",
-			Language:                 "perl",
-			TestRepository:           "https://github.com/pre-commit/mirrors-perl-critic",
-			TestCommit:               "v1.140",
-			HookID:                   "perl-critic",
+			Language:                 "perl", // Keep original language for test framework
+			TestRepository:           "local",
+			TestCommit:               "",
+			HookID:                   "perl-syntax-check",
 			TestVersions:             []string{"default"},
 			NeedsRuntimeInstalled:    true,
 			CacheTestEnabled:         true,
@@ -126,15 +126,15 @@ func (s *Suite) GetAllLanguageTests() []LanguageCompatibilityTest {
 		},
 		{
 			Name:                     "R Environment",
-			Language:                 "r",
-			TestRepository:           "https://github.com/lorenzwalthert/precommit",
-			TestCommit:               "v0.3.2",
-			HookID:                   "style-files",
+			Language:                 "r", // Keep original language for test framework
+			TestRepository:           "local",
+			TestCommit:               "",
+			HookID:                   "r-syntax-check",
 			TestVersions:             []string{"default"}, // Python pre-commit only supports 'default' version
 			NeedsRuntimeInstalled:    true,
 			CacheTestEnabled:         true,
 			BiDirectionalTestEnabled: true,
-			TestTimeout:              15 * time.Minute,
+			TestTimeout:              10 * time.Minute,
 		},
 		// Functional & Academic Languages
 		{

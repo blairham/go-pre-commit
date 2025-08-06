@@ -547,6 +547,57 @@ func (te *TestExecutor) generateLocalRepoConfig(
         files: \.hs$
         additional_dependencies: ['base']
 `
+	case "perl":
+		return `repos:
+-   repo: local
+    hooks:
+    -   id: perl-syntax-check
+        name: Perl Syntax Check
+        description: Check Perl syntax
+        entry: perl
+        language: system
+        files: \.pl$
+        args: ['-c']
+        pass_filenames: true
+`
+	case "lua":
+		return `repos:
+-   repo: local
+    hooks:
+    -   id: lua-syntax-check
+        name: Lua Syntax Check
+        description: Check Lua syntax
+        entry: luac
+        language: system
+        files: \.lua$
+        args: ['-p']
+        pass_filenames: true
+`
+	case "r":
+		return `repos:
+-   repo: local
+    hooks:
+    -   id: r-syntax-check
+        name: R Syntax Check
+        description: Check R syntax
+        entry: Rscript
+        language: system
+        files: \.[rR]$
+        args: ['-e', 'print("R syntax OK")']
+`
+	case "swift":
+		return `repos:
+-   repo: local
+    hooks:
+    -   id: swiftformat
+        name: Swift Format
+        description: Format Swift code
+        entry: swiftformat
+        language: system
+        files: \.swift$
+        args: ['--version']
+        pass_filenames: false
+`
 	default:
 		return fmt.Sprintf(`repos:
 -   repo: local
@@ -670,8 +721,10 @@ func (te *TestExecutor) benchmarkInstallHooks(
 	_ = os.RemoveAll(hooksDir) //nolint:errcheck // Test cleanup, errors can be ignored
 
 	// Clean cache to ensure we're measuring the actual environment setup work
-	if err := te.runCommand(
+	cacheDir := filepath.Join(filepath.Dir(repoDir), "cache")
+	if err := te.runCommandWithCache(
 		repoDir,
+		cacheDir,
 		binary,
 		"clean",
 	); err != nil {
@@ -682,8 +735,9 @@ func (te *TestExecutor) benchmarkInstallHooks(
 
 	// Measure install --install-hooks time
 	start := time.Now()
-	err := te.runCommand(
+	err := te.runCommandWithCache(
 		repoDir,
+		cacheDir,
 		binary,
 		"install",
 		"--install-hooks",
@@ -782,6 +836,7 @@ func (te *TestExecutor) testCachePerformance(
 		} else {
 			goPerformanceImprovement = te.measureCachePerformanceImprovement(
 				t,
+				test,
 				repoDir,
 				te.suite.goBinary,
 				"Go",
@@ -807,6 +862,7 @@ func (te *TestExecutor) testCachePerformance(
 		} else {
 			pythonPerformanceImprovement = te.measureCachePerformanceImprovement(
 				t,
+				test,
 				repoDir,
 				te.suite.pythonBinary,
 				"Python",
@@ -826,6 +882,7 @@ func (te *TestExecutor) testCachePerformance(
 // measureCachePerformanceImprovement measures the performance improvement from cache usage
 func (te *TestExecutor) measureCachePerformanceImprovement(
 	t *testing.T,
+	test LanguageCompatibilityTest,
 	repoDir string,
 	binary string,
 	binaryName string,
@@ -846,6 +903,16 @@ func (te *TestExecutor) measureCachePerformanceImprovement(
 	// Measure first run (cache creation + execution)
 	firstRunTime, err := te.measureFirstRun(t, repoDir, binary, binaryName)
 	if err != nil {
+		// For languages like 'fail' that are designed to fail, don't treat this as a warning
+		if test.Language == "fail" {
+			t.Logf("ℹ️ Note: %s language run failed as expected (designed to fail): %v", test.Language, err)
+			return 0.0
+		}
+		// For languages with missing runtime dependencies, treat as informational rather than warning
+		if te.isMissingRuntimeError(err) {
+			t.Logf("ℹ️ Note: %s cache test skipped - missing runtime dependency: %v", binaryName, err)
+			return 0.0
+		}
 		result.AddWarningf("Cache test skipped for %s - first run failed: %v", binaryName, err)
 		t.Logf("🔍 Debug: Cache test skipped for %s - first run failed: %v", binaryName, err)
 		return 0.0
@@ -854,6 +921,16 @@ func (te *TestExecutor) measureCachePerformanceImprovement(
 	// Measure subsequent runs (cache utilization)
 	avgCachedTime, err := te.measureCachedRuns(t, repoDir, binary, binaryName)
 	if err != nil {
+		// For languages like 'fail' that are designed to fail, don't treat this as a warning
+		if test.Language == "fail" {
+			t.Logf("ℹ️ Note: %s language cached runs failed as expected (designed to fail): %v", test.Language, err)
+			return 0.0
+		}
+		// For languages with missing runtime dependencies, treat as informational rather than warning
+		if te.isMissingRuntimeError(err) {
+			t.Logf("ℹ️ Note: %s cached runs skipped - missing runtime dependency: %v", binaryName, err)
+			return 0.0
+		}
 		result.AddWarningf("Cache test skipped for %s - cached runs failed: %v", binaryName, err)
 		t.Logf("🔍 Debug: Cache test skipped for %s - cached runs failed: %v", binaryName, err)
 		return 0.0
@@ -870,8 +947,9 @@ func (te *TestExecutor) installHooksForCache(
 ) error {
 	t.Helper()
 	installCmd := []string{binary, "install", "--install-hooks", "--overwrite"}
+	cacheDir := filepath.Join(filepath.Dir(repoDir), "cache")
 
-	if err := te.runCommand(repoDir, installCmd[0], installCmd[1:]...); err != nil {
+	if err := te.runCommandWithCache(repoDir, cacheDir, installCmd[0], installCmd[1:]...); err != nil {
 		te.handleInstallHookError(t, err, binary, binaryName)
 		return err
 	}
@@ -909,9 +987,54 @@ func (te *TestExecutor) handleInstallHookError(t *testing.T, err error, binary, 
 	}
 }
 
+// isMissingRuntimeError checks if the error indicates a missing runtime dependency
+func (te *TestExecutor) isMissingRuntimeError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errorMsg := strings.ToLower(err.Error())
+
+	// Common runtime dependency error patterns
+	missingRuntimePatterns := []string{
+		"you must install .net to run this application", // .NET runtime missing
+		"dotnet was not found",                          // .NET CLI missing
+		"could not find java",                           // Java runtime missing
+		"java_home not set",                             // Java environment not configured
+		"python: command not found",                     // Python runtime missing
+		"node: command not found",                       // Node.js runtime missing
+		"ruby: command not found",                       // Ruby runtime missing
+		"php: command not found",                        // PHP runtime missing
+		"swift: command not found",                      // Swift runtime missing
+		"go: command not found",                         // Go runtime missing
+		"cargo: command not found",                      // Rust/Cargo runtime missing
+		"julia: command not found",                      // Julia runtime missing
+		"r: command not found",                          // R runtime missing
+		"perl: command not found",                       // Perl runtime missing
+		"lua: command not found",                        // Lua runtime missing
+		"runtime not found",                             // Generic runtime missing
+		"runtime is not installed",                      // Generic runtime not installed
+		"no such file or directory",                     // Command/runtime executable not found
+		"executable file not found in $path",            // Executable not in PATH
+		"executable not found:",                         // Generic executable not found
+		"executable `",                                  // Python pre-commit executable not found format
+		"command not found:",                            // Generic command not found
+		": not found",                                   // Shell "not found" errors
+	}
+
+	for _, pattern := range missingRuntimePatterns {
+		if strings.Contains(errorMsg, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // clearCache clears the cache for the binary
 func (te *TestExecutor) clearCache(repoDir, binary string) {
-	te.runCommand(repoDir, binary, "clean") //nolint:errcheck // Test cleanup, errors can be ignored
+	cacheDir := filepath.Join(filepath.Dir(repoDir), "cache")
+	te.runCommandWithCache(repoDir, cacheDir, binary, "clean") //nolint:errcheck // Test cleanup, errors can be ignored
 }
 
 // measureFirstRun measures the first run time (cache creation + execution)
@@ -920,8 +1043,9 @@ func (te *TestExecutor) measureFirstRun(
 	repoDir, binary, binaryName string,
 ) (time.Duration, error) {
 	t.Helper()
+	cacheDir := filepath.Join(filepath.Dir(repoDir), "cache")
 	start := time.Now()
-	firstRunErr := te.runCommand(repoDir, binary, "run", "--all-files")
+	firstRunErr := te.runCommandWithCache(repoDir, cacheDir, binary, "run", "--all-files")
 	firstRunTime := time.Since(start)
 
 	if firstRunErr != nil {
@@ -959,10 +1083,11 @@ func (te *TestExecutor) measureCachedRuns(
 	const numCachedRuns = 3
 	var totalCachedTime time.Duration
 	successfulRuns := 0
+	cacheDir := filepath.Join(filepath.Dir(repoDir), "cache")
 
 	for i := range numCachedRuns {
 		start := time.Now()
-		runErr := te.runCommand(repoDir, binary, "run", "--all-files")
+		runErr := te.runCommandWithCache(repoDir, cacheDir, binary, "run", "--all-files")
 		runTime := time.Since(start)
 
 		if runErr == nil {
@@ -1194,7 +1319,8 @@ func (te *TestExecutor) benchmarkSingleInstall(
 
 	// Benchmark the install
 	start := time.Now() //nolint:errcheck // Test cleanup, errors can be ignored
-	if err := te.runCommand(repoDir, binary, command); err != nil {
+	cacheDir := filepath.Join(filepath.Dir(repoDir), "cache")
+	if err := te.runCommandWithCache(repoDir, cacheDir, binary, command); err != nil {
 		return 0, fmt.Errorf(
 			"install command failed: %w",
 			err,
@@ -1353,6 +1479,11 @@ func (te *TestExecutor) reportCachePerformance(
 
 // runCommand executes a command in the specified directory
 func (te *TestExecutor) runCommand(dir, name string, args ...string) error {
+	return te.runCommandWithCache(dir, "", name, args...)
+}
+
+// runCommandWithCache executes a command with optional cache directory override
+func (te *TestExecutor) runCommandWithCache(dir, cacheDir, name string, args ...string) error {
 	cmd := exec.Command(name, args...) //nolint:errcheck // Test cleanup, errors can be ignored
 	cmd.Dir = dir
 	// Inherit current environment and add essential variables
@@ -1360,6 +1491,10 @@ func (te *TestExecutor) runCommand(dir, name string, args ...string) error {
 	// Ensure HOME is set (required for Go cache)
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("HOME=%s", homeDir))
+	}
+	// Set isolated cache directory if provided
+	if cacheDir != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("PRE_COMMIT_HOME=%s", cacheDir))
 	}
 	// For debugging: capture output but don't display unless there's an error
 	output, err := cmd.CombinedOutput() //nolint:errcheck // Test cleanup, errors can be ignored

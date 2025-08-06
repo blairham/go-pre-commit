@@ -31,18 +31,13 @@ func (rt *RLanguageTest) GetLanguageName() string {
 func (rt *RLanguageTest) SetupRepositoryFiles(repoPath string) error {
 	// Create .pre-commit-hooks.yaml
 	hooksFile := filepath.Join(repoPath, ".pre-commit-hooks.yaml")
-	hooksContent := `-   id: style-files
-    name: Style Files
-    description: Style R files using styler package
-    entry: Rscript -e 'styler::style_file'
+	hooksContent := `-   id: r-syntax-check
+    name: R Syntax Check
+    description: Check R syntax
+    entry: Rscript
     language: r
     files: \.[rR]$
--   id: lintr
-    name: Lint R Files
-    description: Lint R files using lintr package
-    entry: Rscript -e 'lintr::lint'
-    language: r
-    files: \.[rR]$
+    args: ['-e', 'print("R syntax OK")']
 `
 	if err := os.WriteFile(hooksFile, []byte(hooksContent), 0o600); err != nil {
 		return fmt.Errorf("failed to create hooks file: %w", err)

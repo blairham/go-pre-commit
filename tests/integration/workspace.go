@@ -44,6 +44,12 @@ func (wm *WorkspaceManager) CreateTestWorkspace(
 		t.Fatalf("Failed to create test repo directory: %v", err)
 	}
 
+	// Create isolated cache directory for this test to prevent race conditions
+	cacheDir := filepath.Join(testDir, "cache")
+	if err := os.MkdirAll(cacheDir, 0o750); err != nil {
+		t.Fatalf("Failed to create test cache directory: %v", err)
+	}
+
 	// Initialize git repository
 	if err := wm.runGitCommand(repoDir, "init"); err != nil {
 		t.Fatalf("Failed to initialize git repository: %v", err)

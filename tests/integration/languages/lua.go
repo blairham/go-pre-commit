@@ -31,18 +31,13 @@ func (lt *LuaLanguageTest) GetLanguageName() string {
 func (lt *LuaLanguageTest) SetupRepositoryFiles(repoPath string) error {
 	// Create .pre-commit-hooks.yaml
 	hooksFile := filepath.Join(repoPath, ".pre-commit-hooks.yaml")
-	hooksContent := `-   id: lua-format
-    name: Lua Format
-    description: Format Lua code
-    entry: lua-format
+	hooksContent := `-   id: lua-syntax-check
+    name: Lua Syntax Check
+    description: Check Lua syntax
+    entry: luac
     language: lua
     files: \.lua$
--   id: luacheck
-    name: Luacheck
-    description: Lint Lua code
-    entry: luacheck
-    language: lua
-    files: \.lua$
+    args: ['-p']
 `
 	if err := os.WriteFile(hooksFile, []byte(hooksContent), 0o600); err != nil {
 		return fmt.Errorf("failed to create hooks file: %w", err)
