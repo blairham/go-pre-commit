@@ -199,6 +199,30 @@ func (Test) Coverage() error {
 	)
 }
 
+// Fast runs tests with coverage but excludes slow download/installation tests
+func (Test) Fast() error {
+	fmt.Println("Running fast tests with coverage (excluding slow download and language implementation tests)...")
+	return sh.RunV(
+		"go",
+		"test",
+		"-coverprofile=coverage.out",
+		"-p", "4", // Run up to 4 packages in parallel
+		"-parallel", "8", // Run up to 8 tests in parallel within each package
+		"-short", // Skip slow tests marked with testing.Short()
+		"./pkg/cache",
+		"./pkg/config",
+		"./pkg/constants",
+		"./pkg/environment",
+		"./pkg/git",
+		"./pkg/hook/...",
+		"./pkg/interfaces",
+		"./pkg/language",
+		"./pkg/repository",
+		"./internal/...",
+		"./cmd/...",
+	)
+}
+
 // CoverageHTML generates HTML coverage report
 func (Test) CoverageHTML() error {
 	mg.Deps(Test.Coverage)

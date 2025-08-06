@@ -15,6 +15,10 @@ import (
 )
 
 func TestInstallation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping slow installation tests in short mode")
+	}
+	
 	tempDir := t.TempDir()
 	manager := NewManager(tempDir)
 
@@ -232,6 +236,10 @@ func TestExtractionFunctions(t *testing.T) {
 }
 
 func TestInstallPython(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping slow Python installation tests in short mode")
+	}
+	
 	tempDir := t.TempDir()
 	manager := NewManager(tempDir)
 	t.Run("TestInstallPythonUnsupportedPlatform", func(t *testing.T) {
@@ -426,6 +434,10 @@ func TestCopyPythonInstallationCoverage(t *testing.T) {
 }
 
 func TestInstallPythonAllPaths(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping slow Python installation tests in short mode")
+	}
+	
 	tempDir := t.TempDir()
 	manager := NewManager(tempDir)
 
