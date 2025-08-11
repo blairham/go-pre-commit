@@ -179,10 +179,10 @@ var WellKnownRepositories = map[string]map[string]Hook{
 	},
 	// Julia repositories
 	"https://github.com/domluna/JuliaFormatter.jl": {
-		"juliaformatter": {
-			ID:       "juliaformatter",
-			Name:     "JuliaFormatter",
-			Entry:    "julia -e 'using JuliaFormatter; format(\".\")'",
+		"julia-formatter": {
+			ID:       "julia-formatter",
+			Name:     "Julia Formatter",
+			Entry:    "julia -e 'import JuliaFormatter: format; format(ARGS)'",
 			Language: "julia",
 		},
 	},

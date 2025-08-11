@@ -1,16 +1,16 @@
 # go-pre-commit
 
-A blazingly fast, dependency-free alternative to pre-commit written in Go. Features **16x faster installation**, **21x faster startup**, and **2.4x better memory efficiency** compared to the original Python implementation.
+A blazingly fast, dependency-free alternative to pre-commit written in Go. Features **significant performance improvements**, comprehensive **21-language support**, and **zero dependencies** compared to the original Python implementation.
 
 **🎯 2025 Modernization Complete**: Fully modernized codebase with **zero technical debt**, **90%+ test coverage**, and **comprehensive quality assurance**.
 
 ## ⚡ Performance Highlights
 
-- **16x faster installation** across all supported languages
-- **21x faster startup** time for cold starts  
-- **2.4x better memory efficiency**
-- **15x faster cache operations**
+- **2-7x faster installation** for real language environments (Python, Node.js, Go, .NET, etc.)
+- **10-15x faster** for lightweight system hooks and utilities
 - **Zero Python dependency** - single binary installation
+- **Comprehensive language support** - 21 languages with full integration testing
+- **Production-ready performance** - All tested languages showing measurable improvements
 
 ## 🚀 Code Quality & Modernization
 
@@ -29,7 +29,7 @@ A blazingly fast, dependency-free alternative to pre-commit written in Go. Featu
 ## Features
 
 - ✅ **Full pre-commit compatibility** - Works with existing `.pre-commit-config.yaml` files
-- ✅ **22 fully tested languages** - Python, Node.js, Go, Rust, Ruby, .NET, Dart, Swift, Lua, Perl, R, Haskell, Docker, and more
+- ✅ **21 fully tested languages** - Python, Node.js, Go, Rust, Ruby, .NET, Dart, Swift, Lua, Perl, R, Haskell, Docker, Conda, Coursier, Julia, and more
 - ✅ **Remote repository support** - Clone and use hooks from GitHub and other Git repositories
 - ✅ **Local and meta hooks** - Support for local project hooks and built-in meta hooks
 - ✅ **Parallel execution** - Run multiple hooks concurrently for maximum performance
@@ -37,9 +37,9 @@ A blazingly fast, dependency-free alternative to pre-commit written in Go. Featu
 - ✅ **Git integration** - Seamless integration with Git hooks (pre-commit, pre-push, etc.)
 - ✅ **Advanced file filtering** - Comprehensive file type and pattern matching
 - ✅ **Smart environment management** - Automatic language environment setup and isolation
-- 🚀 **Exceptional performance** - Native Go implementation with **16x faster installation**
+- 🚀 **Exceptional performance** - Native Go implementation with **significant performance improvements**
 - 📦 **Single binary** - Zero dependencies, trivial installation and distribution
-- 🔧 **Comprehensive testing** - Full integration tests across all 22 supported languages
+- 🔧 **Comprehensive testing** - Full integration tests across all 21 supported languages
 - 🏗️ **Modern architecture** - Clean interfaces, composable design, zero technical debt
 - 🛡️ **Quality assurance** - 1,382 tests, zero linting issues, 90%+ coverage
 
@@ -51,17 +51,20 @@ A blazingly fast, dependency-free alternative to pre-commit written in Go. Featu
 
 | Operation | Go Implementation | Python Implementation | Performance Gain |
 |-----------|-------------------|----------------------|------------------|
-| **Startup Time** | 36ms | 390ms | **10.8x faster** |
-| **Installation** | ~13ms avg | ~205ms avg | **16x faster** |
-| **Cache Operations** | 0.8ms | 12.1ms | **15x faster** |
-| **Memory Usage** | ~15MB peak | ~45MB peak | **3x more efficient** |
+| **Real Language Environments** | ~656ms avg | ~2,821ms avg | **4.3x faster** |
+| **System/Utility Hooks** | ~13ms avg | ~168ms avg | **13x faster** |
+| **Configuration Parsing** | ~14ms avg | ~9,578ms avg | **684x faster*** |
+| **Best Real Case (.NET)** | 1,716ms | 9,499ms | **5.5x faster** |
+| **Worst Case (Docker)** | 1,064ms | 1,236ms | **1.2x faster** |
+
+*Note: Configuration parsing improvements reflect Python interpreter overhead rather than environment setup*
 
 ### 🎯 Real-World Impact
 
 ```bash
 # First-time setup
-$ time go-precommit install --install-hooks
-real    0m0.089s  # Go implementation
+$ time go-precommit install
+real    0m0.089s  # Go implementation (eager setup by default)
 
 $ time pre-commit install --install-hooks  
 real    0m1.247s  # Python implementation
@@ -85,7 +88,33 @@ real    0m0.724s  # Python implementation
 - **Reduced infrastructure costs**: Lower CPU/memory usage
 - **Better laptop performance**: Less battery drain, more responsive
 
+### 🎯 Language-Specific Performance (Integration Test Results)
+
+Our comprehensive integration testing across 21 languages shows consistent performance improvements:
+
+**🏆 Real Language Environment Performance:**
+- **.NET**: 5.5x faster (1.7s vs 9.5s) - Full SDK and NuGet setup
+- **Go**: 6.7x faster (501ms vs 3.4s) - Complete Go toolchain setup  
+- **Node.js**: 5.8x faster (572ms vs 3.3s) - npm environment with dependencies
+- **Dart**: 5.3x faster (408ms vs 2.1s) - Flutter/Dart SDK installation
+- **Python**: 2.2x faster (1.98s vs 4.4s) - Virtual environment creation
+
+**💼 Practical Development Languages:**
+- **Coursier (Scala)**: 4x faster (304ms vs 1.2s) - JVM dependency management
+- **Ruby**: 3.8x faster (289ms vs 1.1s) - Gem environment setup
+- **Conda**: 2x faster (2.3s vs 4.6s) - Conda environment creation
+- **Docker**: 1.2x faster (1.0s vs 1.2s) - Container environment setup
+
+**🔧 System & Utility Hooks** (Lightweight testing):
+- **Rust, Swift, Haskell, Julia**: 10-969x faster* - Configuration parsing only
+- **System/Script/Perl/R**: 10-15x faster - Simple command execution
+
+*Note: Extreme speedups for some languages reflect lightweight test configurations (local hooks with minimal setup) rather than full language environment installation. These tests validate configuration parsing and basic hook execution.*
+
+> 📈 **For detailed test results and methodology, see [test-output/test_summary.md](test-output/test_summary.md)**
+
 > 📈 **For detailed performance analysis and benchmarks, see [PERFORMANCE.md](docs/PERFORMANCE.md)**
+> 🧪 **For complete integration test results, see [test-output/test_summary.md](test-output/test_summary.md)**
 
 ## 🏗️ Development & Quality Assurance
 
@@ -160,7 +189,7 @@ go install github.com/blairham/go-pre-commit/cmd/pre-commit@latest
 
    ```bash
    pre-commit sample-config > .pre-commit-config.yaml
-   pre-commit install
+   pre-commit install  # Installs hooks AND sets up all environments
    ```
 
 2. **Run hooks manually:**
@@ -193,7 +222,7 @@ go install github.com/blairham/go-pre-commit/cmd/pre-commit@latest
 
 ### Core Commands
 
-- `pre-commit install` - Install Git hooks in your repository
+- `pre-commit install` - Install Git hooks and set up environments in your repository
 - `pre-commit uninstall` - Remove Git hooks from your repository
 - `pre-commit run [hook-id]` - Run hooks manually
 - `pre-commit run --all-files` - Run hooks on all files in repository
@@ -271,7 +300,7 @@ Each hook can be configured with various options:
 
 ### Language Support
 
-go-pre-commit provides comprehensive support for **22 fully tested languages** with environment management and isolation, plus advanced file type detection for 40+ additional languages:
+go-pre-commit provides comprehensive support for **21 fully tested languages** with environment management and isolation, plus advanced file type detection for 40+ additional languages:
 
 **Core Programming Languages** (Fully tested with optimized caching and isolation):
 - **Python** (`python`, `python3`) - Virtual environments with pip/conda, **60-80% cache efficiency**
@@ -316,7 +345,7 @@ go-pre-commit provides comprehensive support for **22 fully tested languages** w
 - ✅ Environment isolation and version management
 - ✅ Integration with popular community hooks
 
-**See [Language Testing Summary](docs/LANGUAGE_TESTING_SUMMARY.md) and [Language Support Documentation](docs/LANGUAGE_SUPPORT.md) for detailed compatibility information.**
+**See [Language Testing Summary](test-output/test_summary.md) and [Integration Test Results](test-output/) for detailed compatibility and performance information.**
 
 ### Meta Hooks
 
@@ -394,14 +423,14 @@ pre-commit doctor
 
 | Feature | go-pre-commit | Python pre-commit |
 |---------|---------------|-------------------|
-| **Performance** | ⚡ **16x faster installation**, 21x faster startup | 🐍 Python, slower startup |
+| **Performance** | ⚡ **2-7x faster installation** for real environments | 🐍 Python, slower startup |
 | **Dependencies** | 📦 Single 8MB binary, zero deps | 🔗 Python + 150MB+ dependencies |
 | **Memory Usage** | 💾 **3x more efficient** (~15MB peak) | 📈 Higher memory usage (~45MB peak) |
 | **Startup Time** | ⚡ **36ms** instant startup | ⏳ **390ms** Python interpreter overhead |
 | **Cache Performance** | 🚀 **30-55% hit rates**, 15x faster ops | 📉 Lower cache efficiency |
 | **Compatibility** | ✅ **99% feature parity** + enhancements | ✅ Original implementation |
 | **Deployment** | 🚀 Copy single binary, instant setup | 📦 Python environment setup required |
-| **Language Support** | 🌍 **22 fully tested** languages | 🌍 Similar language support |
+| **Language Support** | 🌍 **21 fully tested** languages | 🌍 Similar language support |
 
 ## Migration from Python pre-commit
 
@@ -446,7 +475,7 @@ pre-commit run --all-files
 ```bash
 # Rebuild environments
 pre-commit clean
-pre-commit install --install-hooks
+pre-commit install  # Environments are rebuilt automatically
 
 # Check specific language environment
 pre-commit run --verbose <hook-id>
@@ -502,7 +531,7 @@ mage test:coverageHTML
 
 ### Language Integration Testing
 
-The project includes a comprehensive language integration testing framework that systematically verifies compatibility with the Python pre-commit implementation across all 22 supported languages:
+The project includes a comprehensive language integration testing framework that systematically verifies compatibility with the Python pre-commit implementation across all 21 supported languages:
 
 ```bash
 # Run all language integration tests (comprehensive)
@@ -542,9 +571,12 @@ mage test:languagesList
 - ✅ Version management and compatibility
 
 **Test Reports:**
-- Results are saved to `test-output/` directory
-- Summary reports generated in `docs/LANGUAGE_TESTING_SUMMARY.md`
-- CI artifacts available for detailed analysis
+- **Live Results**: [test-output/test_summary.md](test-output/test_summary.md) - Latest integration test results
+- **Individual Results**: [test-output/](test-output/) - Per-language detailed test results  
+- **Performance Data**: Measurements of `install` time across different test configurations (Go now includes environment setup by default)
+- **Test Date**: August 7, 2025 - All 21 languages passing with functional equivalence verified
+
+**Test Methodology Note**: Performance measurements reflect the time to execute `pre-commit install` for each language. Go pre-commit now performs eager environment setup by default (no `--install-hooks` flag needed). Languages using remote repositories (Python, Node.js, .NET, etc.) measure full environment setup time, while languages using local test configurations measure configuration parsing and basic hook setup time. This explains the variation in performance improvements across different language types.
 
 ### Other Development Tasks
 
@@ -569,7 +601,8 @@ mage install:dev
 
 - [Development Guide](docs/DEVELOPMENT.md) - Comprehensive development setup, architecture, and contribution guide
 - [Performance Analysis](docs/PERFORMANCE.md) - Comprehensive performance analysis and benchmarks
-- [Language Testing Summary](docs/LANGUAGE_TESTING_SUMMARY.md) - Comprehensive language compatibility testing results
+- [Integration Test Results](test-output/test_summary.md) - Complete language compatibility and performance testing results
+- [Individual Language Results](test-output/) - Detailed per-language test results and metrics
 - [Language Expansion Summary](docs/LANGUAGE_EXPANSION_SUMMARY.md) - Details on expanded language testing framework
 - [Language Support](docs/LANGUAGE_SUPPORT.md) - Complete language support documentation
 - [Implementation Comparison](docs/COMPARISON.md) - Go vs Python implementation analysis
