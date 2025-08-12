@@ -151,8 +151,44 @@ func (r *RustLanguage) SetupEnvironmentWithRepo(
 	return envPath, nil
 }
 
-// CheckHealth performs health check for rust environments
-func (r *RustLanguage) CheckHealth(envPath, version string) error {
+// SetupEnvironment sets up a Rust environment
+func (r *RustLanguage) SetupEnvironment(cacheDir, version string, additionalDeps []string) (string, error) {
+	// For Rust, we use the repository-based setup with cache directory as repo path
+	return r.SetupEnvironmentWithRepo(cacheDir, version, cacheDir, "", additionalDeps)
+}
+
+// CheckEnvironmentHealth checks if the Rust environment is healthy
+func (r *RustLanguage) CheckEnvironmentHealth(envPath string) bool {
+	// First check if the environment directory exists
+	if _, err := os.Stat(envPath); err != nil {
+		return false
+	}
+
+	// Check if Rust runtime is available on the system (required for Rust environments)
+	if !r.IsRuntimeAvailable() {
+		return false
+	}
+
+	// Try the health check with default version
+	if err := r.CheckHealthWithVersion(envPath, language.VersionDefault); err != nil {
+		return false
+	}
+
+	return true
+}
+
+// GetEnvironmentBinPath returns the bin directory path for the Rust environment
+func (r *RustLanguage) GetEnvironmentBinPath(envPath string) string {
+	return filepath.Join(envPath, "bin")
+}
+
+// CheckHealth verifies the environment is healthy (interface method)
+func (r *RustLanguage) CheckHealth(envPath string) error {
+	return r.CheckHealthWithVersion(envPath, language.VersionDefault)
+}
+
+// CheckHealthWithVersion performs health check for rust environments with version
+func (r *RustLanguage) CheckHealthWithVersion(envPath, version string) error {
 	// For system version, check if rust is available in system PATH
 	if version == language.VersionSystem {
 		if _, err := exec.LookPath("rustc"); err != nil {

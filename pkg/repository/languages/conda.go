@@ -42,10 +42,13 @@ func (c *CondaLanguage) getCondaExecutable() string {
 	return condaExecutable
 }
 
-// CheckHealth implements health check - conda uses basic_health_check (always healthy)
-func (c *CondaLanguage) CheckHealth(_, _ string) error {
-	// Python pre-commit: health_check = lang_base.basic_health_check
-	// basic_health_check returns None (always healthy)
+// CheckHealth verifies that Conda is working correctly
+func (c *CondaLanguage) CheckHealth(_ string) error {
+	// Check if conda is available in the system PATH
+	if !c.IsRuntimeAvailable() {
+		return fmt.Errorf("conda runtime not found in PATH")
+	}
+
 	return nil
 }
 

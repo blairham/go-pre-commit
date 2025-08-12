@@ -49,19 +49,18 @@ func (l *LuaLanguage) SetupEnvironmentWithRepoInfo(
 	return l.SetupEnvironmentWithRepo(cacheDir, version, repoPath, repoURL, additionalDeps)
 }
 
-// CheckHealth overrides the base health check to handle system runtime fallback
-func (l *LuaLanguage) CheckHealth(envPath, _ string) error {
-	// First try the base health check (looks for lua in environment bin directory)
-	if err := l.Base.CheckHealth(envPath, ""); err == nil {
-		return nil // Found lua in environment
+// CheckHealth verifies that Lua is working in the environment
+func (l *LuaLanguage) CheckHealth(envPath string) error {
+	// Check if environment directory exists
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		return fmt.Errorf("lua environment directory does not exist: %s", envPath)
 	}
 
-	// Environment lua not found, check if system lua is available as fallback
+	// For Lua, we use the system runtime, so check if it's available
 	if !l.IsRuntimeAvailable() {
-		return fmt.Errorf("lua runtime not available in environment or system")
+		return fmt.Errorf("lua runtime not found in system PATH")
 	}
 
-	// System lua is available, environment is considered healthy for execution
 	return nil
 }
 
@@ -166,7 +165,7 @@ func (l *LuaLanguage) CheckEnvironmentHealth(envPath string) bool {
 	}
 
 	// Try the base health check (looks for lua in environment bin directory)
-	if err := l.CheckHealth(envPath, ""); err != nil {
+	if err := l.CheckHealth(envPath); err != nil {
 		// Environment lua not found, check if system lua is available as fallback
 		if !l.IsRuntimeAvailable() {
 			return false

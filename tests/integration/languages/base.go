@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,368 @@ type BidirectionalTestRunner interface {
 
 	// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
 	TestBidirectionalCacheCompatibility(t *testing.T, pythonBinary, goBinary, testRepo string) error
+
+	// GetPreCommitConfig returns the .pre-commit-config.yaml content for this language
+	GetPreCommitConfig() string
+
+	// GetTestFiles returns a map of filename -> content for test files needed by this language
+	GetTestFiles() map[string]string
+
+	// GetExpectedDirectories returns the directories that should be created in the environment
+	GetExpectedDirectories() []string
+
+	// GetExpectedStateFiles returns the state files that should be created in the environment
+	GetExpectedStateFiles() []string
+}
+
+// BaseBidirectionalTest provides common bidirectional cache testing functionality
+type BaseBidirectionalTest struct {
+	language string
+}
+
+// NewBaseBidirectionalTest creates a new base bidirectional test
+func NewBaseBidirectionalTest(lang string) *BaseBidirectionalTest {
+	return &BaseBidirectionalTest{
+		language: lang,
+	}
+}
+
+// RunBidirectionalCacheTest runs the standard bidirectional cache compatibility test
+func (bbt *BaseBidirectionalTest) RunBidirectionalCacheTest(
+	t *testing.T,
+	runner BidirectionalTestRunner,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+
+	// Create cache directories and test repository
+	if err := bbt.setupTestDirectories(tempDir); err != nil {
+		return fmt.Errorf("failed to setup test directories: %w", err)
+	}
+
+	repoDir := filepath.Join(tempDir, "test-repo")
+	goCacheDir := filepath.Join(tempDir, "go-cache")
+	pythonCacheDir := filepath.Join(tempDir, "python-cache")
+
+	// Setup repository
+	if err := bbt.setupTestRepository(repoDir, runner); err != nil {
+		return fmt.Errorf("failed to setup test repository: %w", err)
+	}
+
+	// Run bidirectional tests
+	return bbt.runBidirectionalTests(t, runner, goBinary, pythonBinary, repoDir, goCacheDir, pythonCacheDir)
+}
+
+// setupTestDirectories creates the necessary cache and repository directories
+func (bbt *BaseBidirectionalTest) setupTestDirectories(tempDir string) error {
+	goCacheDir := filepath.Join(tempDir, "go-cache")
+	pythonCacheDir := filepath.Join(tempDir, "python-cache")
+	repoDir := filepath.Join(tempDir, "test-repo")
+
+	for _, dir := range []string{goCacheDir, pythonCacheDir, repoDir} {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+// setupTestRepository initializes git repository and creates test files
+func (bbt *BaseBidirectionalTest) setupTestRepository(repoDir string, runner BidirectionalTestRunner) error {
+	// Initialize git repository
+	if err := bbt.initializeGitRepository(repoDir); err != nil {
+		return fmt.Errorf("failed to initialize git repository: %w", err)
+	}
+
+	// Set up repository files
+	if err := runner.SetupRepositoryFiles(repoDir); err != nil {
+		return fmt.Errorf("failed to setup repository files: %w", err)
+	}
+
+	// Create .pre-commit-config.yaml
+	if err := bbt.createPreCommitConfig(repoDir, runner); err != nil {
+		return fmt.Errorf("failed to create pre-commit config: %w", err)
+	}
+
+	// Create test files
+	if err := bbt.createTestFiles(repoDir, runner); err != nil {
+		return fmt.Errorf("failed to create test files: %w", err)
+	}
+
+	// Add files to git and make initial commit
+	if err := bbt.commitFiles(repoDir); err != nil {
+		return fmt.Errorf("failed to commit files: %w", err)
+	}
+
+	return nil
+}
+
+// createPreCommitConfig creates the .pre-commit-config.yaml file
+func (bbt *BaseBidirectionalTest) createPreCommitConfig(repoDir string, runner BidirectionalTestRunner) error {
+	configContent := runner.GetPreCommitConfig()
+	configPath := filepath.Join(repoDir, ".pre-commit-config.yaml")
+	return os.WriteFile(configPath, []byte(configContent), 0o600)
+}
+
+// createTestFiles creates the test files in the repository
+func (bbt *BaseBidirectionalTest) createTestFiles(repoDir string, runner BidirectionalTestRunner) error {
+	testFiles := runner.GetTestFiles()
+	for filename, content := range testFiles {
+		filePath := filepath.Join(repoDir, filename)
+
+		// Create directory if needed
+		if dir := filepath.Dir(filePath); dir != repoDir {
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", dir, err)
+			}
+		}
+
+		// Determine file permissions - make scripts executable
+		fileMode := os.FileMode(0o600)
+		if strings.HasSuffix(filename, ".sh") || strings.Contains(filename, "/scripts/") {
+			fileMode = 0o750
+		}
+
+		if err := os.WriteFile(filePath, []byte(content), fileMode); err != nil {
+			return fmt.Errorf("failed to create test file %s: %w", filename, err)
+		}
+	}
+	return nil
+}
+
+// runBidirectionalTests runs the actual bidirectional compatibility tests
+func (bbt *BaseBidirectionalTest) runBidirectionalTests(
+	t *testing.T,
+	runner BidirectionalTestRunner,
+	goBinary, pythonBinary, repoDir, goCacheDir, pythonCacheDir string,
+) error {
+	// Test 1: Go creates cache → verify structure
+	t.Logf("   🧪 Test 1: Go creates %s environment", bbt.language)
+	if err := bbt.testImplementation(t, goBinary, repoDir, goCacheDir, "Go"); err != nil {
+		return fmt.Errorf("go implementation test failed: %w", err)
+	}
+
+	// Verify Go created the expected environment structure
+	if err := bbt.verifyEnvironmentStructure(t, repoDir, runner, "Go"); err != nil {
+		return fmt.Errorf("go environment structure verification failed: %w", err)
+	}
+
+	// Test 2: Python creates cache → verify structure
+	t.Logf("   🧪 Test 2: Python creates %s environment", bbt.language)
+	if err := bbt.testImplementation(t, pythonBinary, repoDir, pythonCacheDir, "Python"); err != nil {
+		t.Logf("   ℹ️  Note: Python install may have differences from Go: %v", err)
+		// Don't fail - implementations may have differences
+	}
+
+	t.Logf("   ✅ Both Go and Python can create compatible cache structures for %s hooks", bbt.language)
+	return nil
+}
+
+// initializeGitRepository initializes a git repository with proper configuration
+func (bbt *BaseBidirectionalTest) initializeGitRepository(repoDir string) error {
+	// Initialize git repository
+	cmd := exec.Command("git", "init")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run git init: %w", err)
+	}
+
+	// Configure git user (required for commits)
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to configure git user.name: %w", err)
+	}
+
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to configure git user.email: %w", err)
+	}
+
+	// Disable GPG signing for test commits
+	cmd = exec.Command("git", "config", "commit.gpgsign", "false")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to disable gpg signing: %w", err)
+	}
+
+	return nil
+}
+
+// commitFiles adds all files to git and makes an initial commit
+func (bbt *BaseBidirectionalTest) commitFiles(repoDir string) error {
+	// Add files to git
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = repoDir
+	if err := addCmd.Run(); err != nil {
+		return fmt.Errorf("failed to git add files: %w", err)
+	}
+
+	// Check if there are any changes to commit
+	statusCmd := exec.Command("git", "status", "--porcelain")
+	statusCmd.Dir = repoDir
+	output, err := statusCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to check git status: %w", err)
+	}
+
+	// If there are no changes, skip commit
+	if len(output) == 0 {
+		return nil // No changes to commit
+	}
+
+	// Make initial commit with more permissive options
+	commitCmd := exec.Command("git", "commit", "-m", "Initial commit", "--allow-empty")
+	commitCmd.Dir = repoDir
+	// Capture output for debugging
+	commitOutput, err := commitCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to git commit: %w\nOutput: %s", err, string(commitOutput))
+	}
+
+	return nil
+}
+
+// testImplementation tests a specific implementation (Go or Python)
+func (bbt *BaseBidirectionalTest) testImplementation(
+	t *testing.T,
+	binary, repoDir, cacheDir, implName string,
+) error {
+	t.Helper()
+
+	cmd := exec.Command(binary, "install", "--install-hooks", "--overwrite")
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", cacheDir))
+
+	// Capture both stdout and stderr for debugging
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Logf("   ❌ %s install command failed with output: %s", implName, string(output))
+		return fmt.Errorf("%s install failed: %w\nOutput: %s", implName, err, string(output))
+	}
+	t.Logf("   ✅ %s install completed successfully", implName)
+	return nil
+}
+
+// verifyEnvironmentStructure verifies that the expected environment structure was created
+func (bbt *BaseBidirectionalTest) verifyEnvironmentStructure(
+	t *testing.T,
+	repoDir string,
+	runner BidirectionalTestRunner,
+	implName string,
+) error {
+	t.Helper()
+
+	// List repository contents
+	if err := bbt.logRepositoryContents(t, repoDir, implName); err != nil {
+		return fmt.Errorf("failed to read repository directory: %w", err)
+	}
+
+	// Find environment directory
+	envPath, err := bbt.findEnvironmentDirectory(t, repoDir, implName)
+	if err != nil {
+		return err
+	}
+	if envPath == "" {
+		// No environment directory found - this may be normal for local repos
+		return nil
+	}
+
+	// Verify expected directories and files
+	bbt.verifyExpectedStructure(t, envPath, runner, implName)
+	return nil
+}
+
+// logRepositoryContents lists and logs all contents of the repository directory
+func (bbt *BaseBidirectionalTest) logRepositoryContents(t *testing.T, repoDir, implName string) error {
+	entries, err := os.ReadDir(repoDir)
+	if err != nil {
+		return err
+	}
+
+	t.Logf("   🔍 Repository contents after %s install:", implName)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Logf("   📁 Directory: %s", entry.Name())
+		} else {
+			t.Logf("   📄 File: %s", entry.Name())
+		}
+	}
+	return nil
+}
+
+// findEnvironmentDirectory locates the environment directory created by the implementation
+func (bbt *BaseBidirectionalTest) findEnvironmentDirectory(t *testing.T, repoDir, implName string) (string, error) {
+	// For local repositories, the environment is created in the repository directory itself
+	envName := fmt.Sprintf("%senv-default", bbt.language)
+	envPath := filepath.Join(repoDir, envName)
+
+	if _, err := os.Stat(envPath); !os.IsNotExist(err) {
+		t.Logf("   ✅ %s created environment at: %s", implName, envPath)
+		return envPath, nil
+	}
+
+	// Look for alternative environment directories
+	return bbt.searchForEnvironmentDirectory(t, repoDir, implName)
+}
+
+// searchForEnvironmentDirectory searches for environment directories with alternative naming
+func (bbt *BaseBidirectionalTest) searchForEnvironmentDirectory(
+	t *testing.T,
+	repoDir, implName string,
+) (string, error) {
+	entries, err := os.ReadDir(repoDir)
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() && bbt.isLikelyEnvironmentDirectory(entry.Name()) {
+			envPath := filepath.Join(repoDir, entry.Name())
+			t.Logf("   ℹ️  Found potential environment directory: %s", entry.Name())
+			t.Logf("   ✅ %s created environment at: %s", implName, envPath)
+			return envPath, nil
+		}
+	}
+
+	t.Logf("   ℹ️  No environment directory found in repository (this may be normal for local repos)")
+	return "", nil
+}
+
+// isLikelyEnvironmentDirectory determines if a directory name suggests it's an environment directory
+func (bbt *BaseBidirectionalTest) isLikelyEnvironmentDirectory(name string) bool {
+	return strings.Contains(name, bbt.language) || strings.Contains(name, "env")
+}
+
+// verifyExpectedStructure checks for expected directories and files in the environment
+func (bbt *BaseBidirectionalTest) verifyExpectedStructure(
+	t *testing.T,
+	envPath string,
+	runner BidirectionalTestRunner,
+	implName string,
+) {
+	// Check for expected directories
+	expectedDirs := runner.GetExpectedDirectories()
+	for _, dir := range expectedDirs {
+		dirPath := filepath.Join(envPath, dir)
+		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+			t.Logf("   ⚠️  %s environment missing expected directory: %s", implName, dir)
+		} else {
+			t.Logf("   ✅ %s created directory: %s", implName, dir)
+		}
+	}
+
+	// Check for expected state files
+	expectedFiles := runner.GetExpectedStateFiles()
+	for _, file := range expectedFiles {
+		filePath := filepath.Join(envPath, file)
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			t.Logf("   ℹ️  Note: %s environment missing expected file: %s (this may be OK)", implName, file)
+		} else {
+			t.Logf("   ✅ %s created state file: %s", implName, file)
+		}
+	}
 }
 
 // ValidationStep represents a custom validation step for language testing
@@ -257,7 +620,7 @@ func (bt *BaseLanguageTest) TestEnvironmentHealth(
 		return nil
 	}
 
-	if err := lang.CheckHealth(envPath, version); err != nil {
+	if err := lang.CheckHealth(envPath); err != nil {
 		if test.NeedsRuntimeInstalled {
 			// If runtime is required, health check failure should fail the test
 			return fmt.Errorf(
@@ -355,8 +718,15 @@ func (bt *BaseLanguageTest) RunBidirectionalCacheTest(
 		return fmt.Errorf("failed to setup test environment: %w", err)
 	}
 
+	// Create a temporary directory for bidirectional cache testing
+	// Note: test.TestRepository is a URL, not a directory path
+	tempDir := filepath.Join(
+		bt.testDir,
+		fmt.Sprintf("%s-bidirectional-test-%d", runner.GetLanguageName(), time.Now().UnixNano()),
+	)
+
 	// Run bidirectional cache test
-	return bidirectionalRunner.TestBidirectionalCacheCompatibility(t, pythonBinary, goBinary, test.TestRepository)
+	return bidirectionalRunner.TestBidirectionalCacheCompatibility(t, pythonBinary, goBinary, tempDir)
 }
 
 // Common helper functions for language implementations

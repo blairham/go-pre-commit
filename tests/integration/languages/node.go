@@ -17,14 +17,16 @@ import (
 // NodeLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for Node.js
 type NodeLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 	testVersions []string // Store the configured test versions
 }
 
 // NewNodeLanguageTest creates a new Node.js language test
 func NewNodeLanguageTest(testDir string) *NodeLanguageTest {
 	return &NodeLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangNode, testDir),
-		testVersions:     []string{"default"}, // Default to only testing default version
+		BaseLanguageTest:      NewBaseLanguageTest(LangNode, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangNode),
+		testVersions:          []string{"default"}, // Default to only testing default version
 	}
 }
 
@@ -137,40 +139,79 @@ func (nt *NodeLanguageTest) GetLanguageName() string {
 	return LangNode
 }
 
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Node.js testing
+func (nt *NodeLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-node
+        name: Test Node Hook
+        entry: node -e "console.log('Node hook test passed')"
+        language: node
+        files: '\.js$'
+`
+}
+
+// GetTestFiles returns test files needed for Node.js testing
+func (nt *NodeLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"test.js": `#!/usr/bin/env node
+/**
+ * Test JavaScript file for hook testing.
+ */
+
+function hello() {
+    console.log("Hello from Node.js!");
+}
+
+if (require.main === module) {
+    hello();
+}
+
+module.exports = { hello };
+`,
+		"package.json": `{
+    "name": "test-node-hooks",
+    "version": "1.0.0",
+    "description": "Test Node.js hooks for pre-commit",
+    "main": "test.js",
+    "scripts": {
+        "test": "node test.js"
+    },
+    "engines": {
+        "node": ">=16.0.0"
+    }
+}`,
+	}
+}
+
+// GetExpectedDirectories returns directories expected to be created by Node.js environment setup
+func (nt *NodeLanguageTest) GetExpectedDirectories() []string {
+	return []string{"node_modules", ".bin"}
+}
+
+// GetExpectedStateFiles returns state files that should remain unchanged during bidirectional testing
+func (nt *NodeLanguageTest) GetExpectedStateFiles() []string {
+	return []string{".git", ".pre-commit-config.yaml", ".pre-commit-hooks.yaml", "package.json"}
+}
+
 // TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
 // For Node.js, this test is simplified due to environment complexity between implementations
 func (nt *NodeLanguageTest) TestBidirectionalCacheCompatibility(
 	t *testing.T,
-	pythonBinary, goBinary, _ string,
+	pythonBinary, goBinary string,
+	tempDir string,
 ) error {
 	t.Helper()
+	t.Logf("🔄 Testing Node.js language bidirectional cache compatibility")
+	t.Logf("   📋 Node.js hooks use npm environments - testing cache compatibility")
 
-	t.Logf("🔄 Testing Node.js bidirectional cache compatibility")
-	t.Logf("   Note: Node.js environments have complex internal structures")
-	t.Logf("   Testing basic cache directory compatibility only")
-
-	// Create temporary directories for testing
-	tempDir, err := os.MkdirTemp("", "node-bidirectional-test-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp directory: %w", err)
-	}
-	defer func() {
-		if removeErr := os.RemoveAll(tempDir); removeErr != nil {
-			// Use cleanup-specific logging (less verbose for cleanup operations)
-			t.Logf("🧹 Cleanup: failed to remove temp directory: %v", removeErr)
-		}
-	}()
-
-	// Test basic cache structure compatibility (not full environment compatibility)
-	if err := nt.testBasicCacheCompatibility(t, pythonBinary, goBinary, tempDir); err != nil {
-		// This is a known limitation, not a critical issue
-		t.Logf("ℹ️ Info: Basic cache compatibility test encountered expected limitations: %v", err)
-		// Don't fail the test - Node.js environment compatibility is complex
-	} else {
-		t.Logf("✅ Basic cache directory structure is compatible")
+	// Use the base bidirectional test framework
+	if err := nt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, nt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("node.js bidirectional cache test failed: %w", err)
 	}
 
-	t.Logf("✅ Node.js bidirectional cache compatibility test completed")
+	t.Logf("✅ Node.js language bidirectional cache compatibility test completed")
 	return nil
 }
 
@@ -842,102 +883,6 @@ func (nt *NodeLanguageTest) benchmarkDependencyResolution(
 	}
 
 	return time.Since(start), nil
-}
-
-// testBasicCacheCompatibility tests basic cache directory compatibility
-func (nt *NodeLanguageTest) testBasicCacheCompatibility(
-	t *testing.T,
-	pythonBinary, goBinary, tempDir string,
-) error {
-	t.Helper()
-
-	// Create cache directories
-	goCacheDir := filepath.Join(tempDir, "go-cache")
-	pythonCacheDir := filepath.Join(tempDir, "python-cache")
-
-	// Create a simple repository for testing
-	repoDir := filepath.Join(tempDir, "test-repo")
-	if err := nt.setupTestRepository(t, repoDir, ""); err != nil {
-		return fmt.Errorf("failed to setup test repository: %w", err)
-	}
-
-	// Simple config with system hooks (no Node.js environment needed)
-	configContent := `repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
-    hooks:
-    -   id: check-json
-        files: \.json$
-`
-	configPath := filepath.Join(repoDir, ".pre-commit-config.yaml")
-	if err := os.WriteFile(configPath, []byte(configContent), 0o600); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-
-	// Test 1: Go creates cache
-	cmd := exec.Command(goBinary, "install-hooks", "--config", configPath)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", goCacheDir))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go install-hooks failed: %w", err)
-	}
-
-	// Test 2: Python creates cache
-	cmd = exec.Command(pythonBinary, "install-hooks", "--config", configPath)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", pythonCacheDir))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("python install-hooks failed: %w", err)
-	}
-
-	// Verify both caches were created
-	if _, err := os.Stat(goCacheDir); err != nil {
-		return fmt.Errorf("go cache directory not created: %w", err)
-	}
-	if _, err := os.Stat(pythonCacheDir); err != nil {
-		return fmt.Errorf("python cache directory not created: %w", err)
-	}
-
-	t.Logf("   ✅ Both Go and Python can create compatible cache structures")
-	return nil
-}
-
-func (nt *NodeLanguageTest) setupTestRepository(t *testing.T, repoDir, _ string) error {
-	t.Helper()
-
-	if err := os.MkdirAll(repoDir, 0o750); err != nil {
-		return fmt.Errorf("failed to create repository directory: %w", err)
-	}
-
-	// Initialize git repository
-	cmd := exec.Command("git", "init")
-	cmd.Dir = repoDir
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to initialize git repository: %w", err)
-	}
-
-	// Create test files for Node.js hooks
-	testFiles := map[string]string{
-		"package.json": `{"name": "test", "version": "1.0.0"}`,
-		"test.json":    `{"valid": "json"}`,
-		"test.js":      `console.log("Hello, World!");`,
-	}
-
-	for fileName, content := range testFiles {
-		filePath := filepath.Join(repoDir, fileName)
-		if err := os.WriteFile(filePath, []byte(content), 0o600); err != nil {
-			return fmt.Errorf("failed to create test file %s: %w", fileName, err)
-		}
-	}
-
-	// Add files to git
-	cmd = exec.Command("git", "add", ".")
-	cmd.Dir = repoDir
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to add files to git: %w", err)
-	}
-
-	return nil
 }
 
 // createSymlinksForTest creates symlinks for testing environments

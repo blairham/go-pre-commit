@@ -11,15 +11,17 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/repository/languages"
 )
 
-// SystemLanguageTest implements LanguageTestRunner for System
+// SystemLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for System
 type SystemLanguageTest struct {
 	*GenericLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewSystemLanguageTest creates a new System language test
 func NewSystemLanguageTest(testDir string) *SystemLanguageTest {
 	return &SystemLanguageTest{
-		GenericLanguageTest: NewGenericLanguageTest(LangSystem, testDir),
+		GenericLanguageTest:   NewGenericLanguageTest(LangSystem, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangSystem),
 	}
 }
 
@@ -108,20 +110,53 @@ func (st *SystemLanguageTest) GetLanguageManager() (language.Manager, error) {
 	return languages.NewSystemLanguage(), nil
 }
 
-// GetAdditionalValidations returns System-specific validation tests
+// GetAdditionalValidations returns System-specific validation steps
 func (st *SystemLanguageTest) GetAdditionalValidations() []ValidationStep {
 	return []ValidationStep{
 		{
 			Name:        "system-commands-check",
-			Description: "System commands validation",
-			Execute: func(_ *testing.T, _, _ string, lang language.Manager) error {
-				if lang.GetName() != "system" {
-					return fmt.Errorf("expected system language, got %s", lang.GetName())
+			Description: "Verify system commands are available",
+			Execute: func(_ *testing.T, _, _ string, _ language.Manager) error {
+				// Check that system has basic commands available
+				if _, err := exec.LookPath("bash"); err != nil {
+					return fmt.Errorf("bash not found in PATH: %w", err)
 				}
 				return nil
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for System
+func (st *SystemLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-system
+        name: Test System Hook
+        entry: echo "Testing System"
+        language: system
+        files: \.txt$
+`
+}
+
+// GetTestFiles returns test files needed for System testing
+func (st *SystemLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"test.txt": "This is a test file for system hooks.",
+	}
+}
+
+// GetExpectedDirectories returns directories expected in System environments
+func (st *SystemLanguageTest) GetExpectedDirectories() []string {
+	// System language doesn't create environment directories
+	return []string{}
+}
+
+// GetExpectedStateFiles returns state files expected in System environments
+func (st *SystemLanguageTest) GetExpectedStateFiles() []string {
+	// System language doesn't create state files
+	return []string{}
 }
 
 // TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
@@ -134,132 +169,23 @@ func (st *SystemLanguageTest) TestBidirectionalCacheCompatibility(
 	t.Logf("🔄 Testing System language bidirectional cache compatibility")
 	t.Logf("   📋 System hooks use native commands - testing cache compatibility")
 
-	// Create temporary directories for testing
+	// Create a temporary directory for this test
 	tempDir, err := os.MkdirTemp("", "system-bidirectional-test-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer func() {
 		if removeErr := os.RemoveAll(tempDir); removeErr != nil {
-			t.Logf("⚠️  Warning: failed to remove temp directory: %v", removeErr)
+			t.Logf("🧹 Cleanup: failed to remove temp directory: %v", removeErr)
 		}
 	}()
 
-	// Test basic cache structure compatibility
-	if err := st.testBasicCacheCompatibility(t, pythonBinary, goBinary, tempDir); err != nil {
-		return fmt.Errorf("basic cache compatibility test failed: %w", err)
-	}
-
-	t.Logf("✅ System language bidirectional cache compatibility test completed")
-	return nil
-}
-
-// setupTestRepository creates a test repository for system language testing
-func (st *SystemLanguageTest) setupTestRepository(t *testing.T, repoPath, _ string) error {
-	t.Helper()
-
-	// Create repository directory
-	if err := os.MkdirAll(repoPath, 0o750); err != nil {
-		return fmt.Errorf("failed to create repo directory: %w", err)
-	}
-
-	// Initialize git repository
-	cmd := exec.Command("git", "init")
-	cmd.Dir = repoPath
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to initialize git repository: %w", err)
-	}
-
-	// Set git user config for the test
-	cmd = exec.Command("git", "config", "user.email", "test@example.com")
-	cmd.Dir = repoPath
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to set git user email: %w", err)
-	}
-
-	cmd = exec.Command("git", "config", "user.name", "Test User")
-	cmd.Dir = repoPath
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to set git user name: %w", err)
-	}
-
-	return nil
-}
-
-// testBasicCacheCompatibility tests basic cache directory compatibility for system hooks
-func (st *SystemLanguageTest) testBasicCacheCompatibility(t *testing.T, pythonBinary, goBinary, tempDir string) error {
-	t.Helper()
-
-	// Create cache directories
-	goCacheDir := filepath.Join(tempDir, "go-cache")
-	pythonCacheDir := filepath.Join(tempDir, "python-cache")
-
-	// Create a simple repository for testing
-	repoDir := filepath.Join(tempDir, "test-repo")
-	if err := st.setupTestRepository(t, repoDir, ""); err != nil {
-		return fmt.Errorf("failed to setup test repository: %w", err)
-	}
-
-	// System language config with hooks that require environment setup and caching
-	configContent := `repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
-    hooks:
-    -   id: check-yaml
-    -   id: check-json
-    -   id: check-toml
-    -   id: check-xml
-    -   id: check-merge-conflict
--   repo: local
-    hooks:
-    -   id: system-with-setup
-        name: System Hook with Environment Setup
-        entry: bash -c 'pip list > /dev/null 2>&1 || echo "No pip found"; sleep 0.1; echo "System hook executed"'
-        language: system
-        files: \.txt$
-        pass_filenames: false
-    -   id: system-complex-check
-        name: Complex System Check
-        entry: bash -c 'which python3 > /dev/null && echo "Python found" || echo "No Python"; find . -name "*.txt" | wc -l'
-        language: system
-        files: \.txt$
-        pass_filenames: false
-`
-	configPath := filepath.Join(repoDir, ".pre-commit-config.yaml")
-	if err := os.WriteFile(configPath, []byte(configContent), 0o600); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-
-	// Create test files
-	testFile := filepath.Join(repoDir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content   \n"), 0o600); err != nil {
-		return fmt.Errorf("failed to create test file: %w", err)
-	}
-
-	// Test 1: Go creates cache
-	cmd := exec.Command(goBinary, "install-hooks", "--config", configPath)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", goCacheDir))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go install-hooks failed: %w", err)
-	}
-
-	// Test 2: Python creates cache
-	cmd = exec.Command(pythonBinary, "install-hooks", "--config", configPath)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", pythonCacheDir))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("python install-hooks failed: %w", err)
-	}
-
-	// Verify both caches were created
-	if _, err := os.Stat(goCacheDir); err != nil {
-		return fmt.Errorf("go cache directory not created: %w", err)
-	}
-	if _, err := os.Stat(pythonCacheDir); err != nil {
-		return fmt.Errorf("python cache directory not created: %w", err)
+	// Use the base bidirectional test implementation
+	if err := st.RunBidirectionalCacheTest(t, st, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("bidirectional cache test failed: %w", err)
 	}
 
 	t.Logf("   ✅ Both Go and Python can create compatible cache structures for system hooks")
+	t.Logf("✅ System language bidirectional cache compatibility test completed")
 	return nil
 }

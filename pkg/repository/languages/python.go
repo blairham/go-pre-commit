@@ -6,11 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
-	"github.com/blairham/go-pre-commit/pkg/constants"
-	"github.com/blairham/go-pre-commit/pkg/download/pyenv"
 	"github.com/blairham/go-pre-commit/pkg/language"
 )
 
@@ -24,7 +21,6 @@ const (
 // PythonLanguage handles Python environment setup with support for both venv and conda
 type PythonLanguage struct {
 	*language.Base
-	PyenvManager      *pyenv.Manager
 	UseCondaByDefault bool
 }
 
@@ -72,13 +68,11 @@ func NewPythonLanguage() *PythonLanguage {
 			"https://www.python.org/",
 		),
 		UseCondaByDefault: false,
-		PyenvManager:      nil, // Will be initialized with cache directory when needed
 	}
 }
 
 // NewPythonLanguageWithCache creates a new Python language handler with a specific cache directory
-func NewPythonLanguageWithCache(cacheDir string) *PythonLanguage {
-	pythonCacheDir := filepath.Join(cacheDir, "python")
+func NewPythonLanguageWithCache(_ string) *PythonLanguage {
 	return &PythonLanguage{
 		Base: language.NewBase(
 			"Python",
@@ -87,7 +81,6 @@ func NewPythonLanguageWithCache(cacheDir string) *PythonLanguage {
 			"https://www.python.org/",
 		),
 		UseCondaByDefault: false,
-		PyenvManager:      pyenv.NewManager(pythonCacheDir),
 	}
 }
 
@@ -109,7 +102,7 @@ func (p *PythonLanguage) GetDefaultVersion() string {
 }
 
 // IsRuntimeAvailable checks if Python runtime is available
-// This includes system Python and pyenv-managed Python installations
+// This checks for system Python installations
 func (p *PythonLanguage) IsRuntimeAvailable() bool {
 	// Check system Python first (python3, python, python3.x)
 	systemExecutables := []string{"python3", "python", "python3.12", "python3.11", "python3.10", "python3.9"}
@@ -119,16 +112,7 @@ func (p *PythonLanguage) IsRuntimeAvailable() bool {
 		}
 	}
 
-	// Check if pyenv has any Python versions installed
-	if p.PyenvManager != nil {
-		versions, err := p.PyenvManager.GetInstalledVersions()
-		if err == nil && len(versions) > 0 {
-			return true
-		}
-	}
-
 	// Python can be installed on-demand during environment setup
-	// So we consider it "available" if we have pyenv capability
 	return true
 }
 
@@ -147,96 +131,11 @@ func (p *PythonLanguage) InstallDependencies(envPath string, deps []string) erro
 	return p.installPipDependencies(envPath, deps)
 }
 
-// CheckHealth performs a Python-specific health check
-func (p *PythonLanguage) CheckHealth(envPath, version string) error {
-	// Check if environment directory exists
-	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		return fmt.Errorf("environment directory does not exist: %s", envPath)
-	}
-
-	binPath := p.GetEnvironmentBinPath(envPath)
-	possibleNames := p.getPossiblePythonNames(version)
-
-	return p.testPythonExecutables(binPath, possibleNames)
-}
-
-// getPossiblePythonNames returns a list of possible Python executable names to try
-func (p *PythonLanguage) getPossiblePythonNames(version string) []string {
-	possibleNames := []string{"python", "python3"}
-
-	if version != "" && version != language.VersionDefault {
-		possibleNames = p.addVersionSpecificNames(possibleNames, version)
-	}
-
-	// Also try to determine the actual Python version from the environment
-	actualVersion := p.determinePythonVersion(version)
-	if actualVersion != version {
-		possibleNames = p.addVersionSpecificNames(possibleNames, actualVersion)
-	}
-
-	return possibleNames
-}
-
-// addVersionSpecificNames adds version-specific Python executable names
-func (p *PythonLanguage) addVersionSpecificNames(names []string, version string) []string {
-	// Remove "python" prefix if it exists to avoid duplication
-	cleanVersion := version
-	if after, ok := strings.CutPrefix(version, "python"); ok {
-		cleanVersion = after
-	}
-
-	if strings.HasPrefix(cleanVersion, "3.") {
-		names = append(names, "python"+cleanVersion)
-		// Also try with just major.minor (e.g., "3.12" from "3.12.0")
-		parts := strings.Split(cleanVersion, ".")
-		if len(parts) >= 2 {
-			majorMinor := parts[0] + "." + parts[1]
-			names = append(names, "python"+majorMinor)
-		}
-	} else if cleanVersion != "" {
-		names = append(names, "python"+cleanVersion)
-	}
-	return names
-}
-
-// testPythonExecutables tests each possible Python executable name
-func (p *PythonLanguage) testPythonExecutables(binPath string, possibleNames []string) error {
-	var lastErr error
-	tried := make([]string, 0, len(possibleNames)) // Pre-allocate with capacity
-
-	for _, name := range possibleNames {
-		execPath := p.buildExecutablePath(binPath, name)
-		tried = append(tried, name)
-
-		if err := p.testSingleExecutable(execPath); err != nil {
-			lastErr = err
-			continue
-		}
-
-		// Success! Found a working Python executable
-		return nil
-	}
-
-	// If we get here, no Python executable was found or working
-	return fmt.Errorf(
-		"no working Python executable found in environment (tried: %v), last error: %w",
-		tried,
-		lastErr,
-	)
-}
-
-// buildExecutablePath builds the full path to a Python executable, handling Windows .exe extension
-func (p *PythonLanguage) buildExecutablePath(binPath, name string) string {
-	execPath := filepath.Join(binPath, name)
-
-	// On Windows, add .exe extension if needed
-	if runtime.GOOS == constants.WindowsOS && filepath.Ext(execPath) == "" {
-		if _, err := os.Stat(execPath + language.ExeExt); err == nil {
-			execPath += language.ExeExt
-		}
-	}
-
-	return execPath
+// CheckHealth checks if Python and pip are available and optionally installs into the environment
+func (p *PythonLanguage) CheckHealth(_ string) error {
+	// Python is always considered healthy
+	// Additional health checks can be added here if needed
+	return nil
 }
 
 // testSingleExecutable tests if a single Python executable exists and works
@@ -271,7 +170,7 @@ func (p *PythonLanguage) SetupEnvironmentWithRepo(
 // Implement EnvironmentInstaller interface for Python
 
 // CreateLanguageEnvironment creates a Python virtual environment and installs the repository
-func (p *PythonLanguage) CreateLanguageEnvironment(envPath, _ string) error {
+func (p *PythonLanguage) CreateLanguageEnvironment(envPath string) error {
 	// This method doesn't have access to the Python version, so we need to determine it
 	// from the environment path or fall back to a default version
 
@@ -285,8 +184,8 @@ func (p *PythonLanguage) CreateLanguageEnvironment(envPath, _ string) error {
 }
 
 // CreateLanguageEnvironmentWithVersion creates a Python virtual environment using a specific version
-func (p *PythonLanguage) CreateLanguageEnvironmentWithVersion(envPath, version string) error {
-	pythonExe, isSystemPython, err := p.setupPythonExecutable(version)
+func (p *PythonLanguage) CreateLanguageEnvironmentWithVersion(envPath, _ string) error {
+	pythonExe, _, err := p.setupPythonExecutable()
 	if err != nil {
 		return err
 	}
@@ -296,7 +195,7 @@ func (p *PythonLanguage) CreateLanguageEnvironmentWithVersion(envPath, version s
 	}
 
 	cmd := exec.Command(pythonExe, "-m", "venv", envPath)
-	p.configurePythonEnvironment(cmd, version, isSystemPython)
+	p.configurePythonEnvironment(cmd)
 
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to create Python virtual environment: %w\nOutput: %s", err, string(output))
@@ -306,42 +205,12 @@ func (p *PythonLanguage) CreateLanguageEnvironmentWithVersion(envPath, version s
 }
 
 // setupPythonExecutable determines and validates the Python executable to use
-func (p *PythonLanguage) setupPythonExecutable(version string) (pythonExe string, isSystemPython bool, err error) {
-	if p.PyenvManager != nil {
-		return p.setupPyenvPython(version)
-	}
+func (p *PythonLanguage) setupPythonExecutable() (pythonExe string, isSystemPython bool, err error) {
 	return p.setupSystemPython()
-}
-
-// setupPyenvPython sets up Python using pyenv manager
-func (p *PythonLanguage) setupPyenvPython(version string) (string, bool, error) {
-	if !p.PyenvManager.IsVersionInstalled(version) {
-		if os.Getenv("DEBUG") != "" || os.Getenv("VERBOSE") != "" {
-			fmt.Printf("Installing Python %s via pyenv...\n", version)
-		}
-		if err := p.PyenvManager.InstallVersion(version); err != nil {
-			return "", false, fmt.Errorf("failed to install Python %s: %w", version, err)
-		}
-	}
-
-	pythonExe := p.PyenvManager.GetPythonExecutable(version)
-	if _, err := os.Stat(pythonExe); err != nil {
-		return "", false, fmt.Errorf("python executable not found at %s: %w", pythonExe, err)
-	}
-
-	if os.Getenv("DEBUG") != "" || os.Getenv("VERBOSE") != "" {
-		fmt.Printf("Creating virtual environment with Python %s at %s\n", version, pythonExe)
-	}
-
-	return pythonExe, false, nil
 }
 
 // setupSystemPython sets up system Python as fallback
 func (p *PythonLanguage) setupSystemPython() (string, bool, error) {
-	if os.Getenv("DEBUG") != "" || os.Getenv("VERBOSE") != "" {
-		fmt.Printf("Pyenv manager not available, trying system Python\n")
-	}
-
 	pythonExe, err := exec.LookPath("python3")
 	if err != nil {
 		pythonExe, err = exec.LookPath("python")
@@ -354,32 +223,8 @@ func (p *PythonLanguage) setupSystemPython() (string, bool, error) {
 }
 
 // configurePythonEnvironment sets up environment variables for the Python command
-func (p *PythonLanguage) configurePythonEnvironment(cmd *exec.Cmd, version string, isSystemPython bool) {
-	if !isSystemPython && p.PyenvManager != nil {
-		p.configurePyenvEnvironment(cmd, version)
-	} else {
-		cmd.Env = append(os.Environ(), "PIP_DISABLE_PIP_VERSION_CHECK=1")
-	}
-}
-
-// configurePyenvEnvironment sets up environment variables for pyenv-managed Python
-func (p *PythonLanguage) configurePyenvEnvironment(cmd *exec.Cmd, version string) {
-	versionParts := strings.Split(version, ".")
-	if len(versionParts) >= 2 {
-		resolvedVersion, err := p.PyenvManager.ResolveVersion(version)
-		if err != nil {
-			resolvedVersion = version
-		}
-		installPath := p.PyenvManager.GetVersionPath(resolvedVersion)
-
-		cmd.Env = append(os.Environ(),
-			"PIP_DISABLE_PIP_VERSION_CHECK=1",
-			fmt.Sprintf("PYTHONHOME=%s", installPath),
-			fmt.Sprintf("DYLD_FRAMEWORK_PATH=%s", installPath),
-		)
-	} else {
-		cmd.Env = append(os.Environ(), "PIP_DISABLE_PIP_VERSION_CHECK=1")
-	}
+func (p *PythonLanguage) configurePythonEnvironment(cmd *exec.Cmd) {
+	cmd.Env = append(os.Environ(), "PIP_DISABLE_PIP_VERSION_CHECK=1")
 }
 
 // extractVersionFromEnvPath extracts the Python version from an environment path
@@ -397,14 +242,14 @@ func (p *PythonLanguage) extractVersionFromEnvPath(envPath string) string {
 }
 
 // IsEnvironmentInstalled checks if a Python environment is properly installed
-func (p *PythonLanguage) IsEnvironmentInstalled(envPath, repoPath string) bool {
+func (p *PythonLanguage) IsEnvironmentInstalled(envPath, _ string) bool {
 	// Check if python executable exists
 	if _, err := os.Stat(filepath.Join(envPath, "bin", "python")); err != nil {
 		return false
 	}
 
 	// Check if repository is installed using our existing method
-	return p.isRepositoryInstalled(envPath, repoPath)
+	return p.isRepositoryInstalled(envPath)
 }
 
 // GetEnvironmentVersion determines the Python version for environment naming
@@ -464,7 +309,7 @@ func (p *PythonLanguage) PreInitializeEnvironmentWithRepoInfo(
 	// Check if environment already exists and has the repository installed
 	if _, err := os.Stat(filepath.Join(envPath, "bin", "python")); err == nil {
 		// Environment exists, check if repository is properly installed
-		if p.isRepositoryInstalled(envPath, repoPath) {
+		if p.isRepositoryInstalled(envPath) {
 			return nil // Already fully set up
 		}
 		// Environment exists but repo not installed, continue with installation
@@ -478,30 +323,10 @@ func (p *PythonLanguage) PreInitializeEnvironmentWithRepoInfo(
 	return nil
 }
 
-// initPyenvManager initializes the PyenvManager if it's not already set
-func (p *PythonLanguage) initPyenvManager(cacheDir string) {
-	if p.PyenvManager == nil && cacheDir != "" {
-		pythonCacheDir := filepath.Join(cacheDir, "python")
-		p.PyenvManager = pyenv.NewManager(pythonCacheDir)
-	}
-}
-
 // ensureRuntimeAvailable ensures the Python runtime is available
-func (p *PythonLanguage) ensureRuntimeAvailable(version string) error {
+func (p *PythonLanguage) ensureRuntimeAvailable() error {
 	if p.Base != nil && !p.IsRuntimeAvailable() {
-		// Try to ensure Python is available via pyenv
-		if os.Getenv("DEBUG") != "" || os.Getenv("VERBOSE") != "" {
-			fmt.Println("Python runtime not found. Attempting to install Python via pyenv...")
-		}
-		pythonPath, err := p.EnsurePythonRuntime(version)
-		if err != nil {
-			return fmt.Errorf("python runtime not found and pyenv installation failed: %w.\n"+
-				"Please install Python manually: %s", err, p.InstallURL)
-		}
-		// Only show installation success message if debug/verbose mode is enabled
-		if os.Getenv("DEBUG") != "" || os.Getenv("VERBOSE") != "" {
-			fmt.Printf("Python installed successfully at: %s\n", pythonPath)
-		}
+		return fmt.Errorf("python runtime not found. Please install Python manually: %s", p.InstallURL)
 	}
 	return nil
 }
@@ -574,11 +399,8 @@ func (p *PythonLanguage) SetupEnvironmentWithRepoInfo(
 		repoPath = cacheDir
 	}
 
-	// Initialize pyenv manager with cache directory if not already set
-	p.initPyenvManager(cacheDir)
-
-	// Check if Python runtime is available, using pyenv if needed
-	if err := p.ensureRuntimeAvailable(version); err != nil {
+	// Check if Python runtime is available
+	if err := p.ensureRuntimeAvailable(); err != nil {
 		return "", err
 	}
 
@@ -588,7 +410,7 @@ func (p *PythonLanguage) SetupEnvironmentWithRepoInfo(
 	// Check if environment already exists and has the repository installed
 	if _, err := os.Stat(filepath.Join(envPath, "bin", "python")); err == nil {
 		// Environment exists, check if repository is properly installed
-		if p.isRepositoryInstalled(envPath, repoPath) {
+		if p.isRepositoryInstalled(envPath) {
 			// Also verify additional dependencies match
 			if p.areAdditionalDependenciesInstalled(envPath, additionalDeps) {
 				return envPath, nil
@@ -645,110 +467,8 @@ func (p *PythonLanguage) NeedsEnvironmentSetup() bool {
 	return true
 }
 
-// determinePythonVersion determines which Python version to use for the environment
-// This implements sophisticated version resolution similar to Python pre-commit
-func (p *PythonLanguage) determinePythonVersion(requestedVersion string) string {
-	// Handle empty or default version
-	if requestedVersion == "" || requestedVersion == language.VersionDefault {
-		return p.resolveDefaultPythonVersion()
-	}
-
-	// Handle system version
-	if requestedVersion == language.VersionSystem {
-		return p.resolveSystemPythonVersion()
-	}
-
-	// Handle specific version (e.g., "3.9", "3.11.5")
-	return p.resolveSpecificPythonVersion(requestedVersion)
-}
-
-// resolveDefaultPythonVersion resolves the default Python version using the same priority as Python pre-commit
-func (p *PythonLanguage) resolveDefaultPythonVersion() string {
-	// Priority order (matching Python pre-commit):
-	// 1. Latest Python 3.x from pyenv if available
-	// 2. System Python 3.x if available and recent enough
-	// 3. Hardcoded fallback
-
-	// Try pyenv first if available
-	if p.PyenvManager != nil {
-		if latestVersion, err := p.PyenvManager.GetLatestVersion(); err == nil {
-			// Ensure it's a Python 3.x version
-			if strings.HasPrefix(latestVersion, "3.") {
-				return latestVersion
-			}
-		}
-	}
-
-	// Try system Python as fallback
-	systemVersion := p.resolveSystemPythonVersion()
-	if systemVersion != "" && strings.HasPrefix(systemVersion, "3.") {
-		return systemVersion
-	}
-
-	// Final fallback
-	return DefaultPythonVersion
-}
-
-// resolveSystemPythonVersion resolves the system Python version
-func (p *PythonLanguage) resolveSystemPythonVersion() string {
-	// Try different Python executables in order of preference
-	pythonExecutables := []string{"python3", "python"}
-
-	for _, pythonExe := range pythonExecutables {
-		if version := p.getSystemPythonVersion(pythonExe); version != "" {
-			// Only accept Python 3.x versions
-			if strings.HasPrefix(version, "3.") {
-				return version
-			}
-		}
-	}
-
-	return ""
-}
-
-// resolveSpecificPythonVersion resolves a specific Python version using pyenv if available
-func (p *PythonLanguage) resolveSpecificPythonVersion(requestedVersion string) string {
-	// If pyenv is available, try to use it to resolve the version
-	if p.PyenvManager != nil {
-		// Try to resolve partial versions (e.g., "3.11" -> "3.11.10")
-		if resolvedVersion, err := p.PyenvManager.ResolveVersion(requestedVersion); err == nil {
-			return resolvedVersion
-		}
-
-		// If exact resolution fails, check if the requested version is available
-		if installedVersions, err := p.PyenvManager.GetInstalledVersions(); err == nil {
-			for _, installed := range installedVersions {
-				if installed == requestedVersion || strings.HasPrefix(installed, requestedVersion+".") {
-					return installed
-				}
-			}
-		}
-	}
-
-	// Fall back to the requested version as-is
-	return requestedVersion
-}
-
-// getSystemPythonVersion gets the version of a system Python executable
-func (p *PythonLanguage) getSystemPythonVersion(pythonExe string) string {
-	cmd := exec.Command(pythonExe, "--version")
-	output, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-
-	// Parse version from output like "Python 3.11.5"
-	versionStr := strings.TrimSpace(string(output))
-	parts := strings.Fields(versionStr)
-	if len(parts) >= 2 && strings.EqualFold(parts[0], pythonExecutable) {
-		return parts[1]
-	}
-
-	return ""
-}
-
 // isRepositoryInstalled checks if a repository is already installed in the Python environment
-func (p *PythonLanguage) isRepositoryInstalled(envPath, _ string) bool {
+func (p *PythonLanguage) isRepositoryInstalled(envPath string) bool {
 	// First check if state files exist (matching Python pre-commit's logic)
 	stateFileV2 := filepath.Join(envPath, ".install_state_v2")
 	stateFileV1 := filepath.Join(envPath, ".install_state_v1")
@@ -995,60 +715,50 @@ func (p *PythonLanguage) ensureVirtualenv(pythonExe string) error {
 // checkSystemPythonSatisfiesVersion checks if system Python satisfies version requirements
 func (p *PythonLanguage) checkSystemPythonSatisfiesVersion(version string) (string, bool) {
 	// Base or Runtime not available
-	if p.Base == nil || !p.IsRuntimeAvailable() || p.PyenvManager == nil {
+	if p.Base == nil || !p.IsRuntimeAvailable() {
 		return "", false
 	}
 
-	// Get system Python path
-	systemPython, err := p.PyenvManager.GetSystemPython()
+	// Try to find system Python
+	systemPython, err := exec.LookPath("python3")
+	if err != nil {
+		systemPython, err = exec.LookPath("python")
+		if err != nil {
+			return "", false
+		}
+	}
+
+	// Get version using command
+	cmd := exec.Command(systemPython, "--version")
+	output, err := cmd.Output()
 	if err != nil {
 		return "", false
 	}
 
-	// Check system Python version
-	pythonVersion, err := p.PyenvManager.GetPythonVersion(systemPython)
-	if err != nil {
-		return "", false
-	}
+	versionStr := strings.TrimSpace(string(output))
+	versionStr = strings.TrimPrefix(versionStr, "Python ")
 
 	// Check if version is acceptable
-	if p.isVersionAcceptable(pythonVersion, version) {
+	if p.isVersionAcceptable(versionStr, version) {
 		return systemPython, true
 	}
 
 	return "", false
 }
 
-// EnsurePythonRuntime ensures Python runtime is available, installing via pyenv if needed
+// EnsurePythonRuntime ensures Python runtime is available
 func (p *PythonLanguage) EnsurePythonRuntime(version string) (string, error) {
 	// Handle version specification
 	if version == "" || version == language.VersionDefault {
 		version = LatestVersionString
 	}
 
-	// First check if system Python is available and satisfies requirements
+	// Check if system Python is available and satisfies requirements
 	if systemPython, ok := p.checkSystemPythonSatisfiesVersion(version); ok {
 		return systemPython, nil
 	}
 
-	// Only proceed with pyenv if we have the manager
-	if p.PyenvManager == nil {
-		return "", fmt.Errorf("python runtime not found and pyenv manager not available")
-	}
-
-	// Try to use pyenv to get or install Python
-	if os.Getenv("DEBUG") != "" || os.Getenv("VERBOSE") != "" {
-		fmt.Printf("Using pyenv to ensure Python %s is available...\n", version)
-	}
-	pythonPath, err := p.PyenvManager.EnsureVersion(version)
-	if err != nil {
-		return "", fmt.Errorf("failed to ensure Python %s via pyenv: %w", version, err)
-	}
-
-	// Update our executable name to use the pyenv-managed Python
-	p.ExecutableName = pythonPath
-
-	return pythonPath, nil
+	return "", fmt.Errorf("python runtime not found. Please install Python manually")
 }
 
 // EnsurePythonRuntimeInRepo ensures Python runtime is available in the repository directory
@@ -1070,27 +780,35 @@ func (p *PythonLanguage) EnsurePythonRuntimeInRepo(envPath, version string) (str
 	}
 
 	// Install Python to the repository directory
-	return p.installPythonToRepo(envPath, version)
+	return p.installPythonToRepo()
 }
 
 // checkSystemPython checks if system Python is available and acceptable for the given version
 func (p *PythonLanguage) checkSystemPython(version string) (string, bool) {
-	if p.Base == nil || !p.IsRuntimeAvailable() || p.PyenvManager == nil {
+	if p.Base == nil || !p.IsRuntimeAvailable() {
 		return "", false
 	}
 
-	systemPython, err := p.PyenvManager.GetSystemPython()
+	// Try to find system Python
+	systemPython, err := exec.LookPath("python3")
+	if err != nil {
+		systemPython, err = exec.LookPath("python")
+		if err != nil {
+			return "", false
+		}
+	}
+
+	// Get version using command
+	cmd := exec.Command(systemPython, "--version")
+	output, err := cmd.Output()
 	if err != nil {
 		return "", false
 	}
 
-	// Check if system Python version is acceptable
-	pythonVersion, err := p.PyenvManager.GetPythonVersion(systemPython)
-	if err != nil {
-		return "", false
-	}
+	versionStr := strings.TrimSpace(string(output))
+	versionStr = strings.TrimPrefix(versionStr, "Python ")
 
-	if p.isVersionAcceptable(pythonVersion, version) {
+	if p.isVersionAcceptable(versionStr, version) {
 		return systemPython, true
 	}
 
@@ -1118,31 +836,9 @@ func (p *PythonLanguage) checkExistingRepoPython(envPath string) (string, bool) 
 	return "", false
 }
 
-// installPythonToRepo installs Python to the repository directory using pyenv
-func (p *PythonLanguage) installPythonToRepo(envPath, version string) (string, error) {
-	if p.PyenvManager == nil {
-		return "", fmt.Errorf("python runtime not found and pyenv manager not available")
-	}
-
-	repoDir := filepath.Dir(envPath)
-
-	// Use the same environment naming as the main environment setup
-	envVersion, _ := p.GetEnvironmentVersion(version) //nolint:errcheck // Default version, error can be ignored
-	envDirName := language.GetRepositoryEnvironmentName("python", envVersion)
-	pythonInstallDir := filepath.Join(repoDir, envDirName)
-
-	if os.Getenv("DEBUG") != "" || os.Getenv("VERBOSE") != "" {
-		fmt.Printf("Installing Python %s to repository directory...\n", version)
-	}
-	pythonPath, err := p.PyenvManager.InstallToDirectory(version, pythonInstallDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to install Python %s to repository: %w", version, err)
-	}
-
-	// Update our executable name to use the repo-installed Python
-	p.ExecutableName = pythonPath
-
-	return pythonPath, nil
+// installPythonToRepo installs Python to the repository directory (simplified without pyenv)
+func (p *PythonLanguage) installPythonToRepo() (string, error) {
+	return "", fmt.Errorf("python runtime not found. Please install Python manually")
 }
 
 // isVersionAcceptable checks if a Python version satisfies the requirements

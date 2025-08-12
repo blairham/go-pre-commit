@@ -47,7 +47,7 @@ func (b *Builder) buildLanguageCommand(
 	case "golang":
 		return b.buildGoCommand(entry, args), nil
 	case LanguageFail:
-		return b.buildFailCommand(entry, args), nil
+		return b.buildFailCommand(), nil
 	case LanguageSystem:
 		return b.buildSystemCommand(entry, args, repoPath)
 	case "script":

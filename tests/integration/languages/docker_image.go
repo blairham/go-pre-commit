@@ -10,15 +10,17 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/repository/languages"
 )
 
-// DockerImageLanguageTest implements LanguageTestRunner for Docker Image
+// DockerImageLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for Docker Image
 type DockerImageLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewDockerImageLanguageTest creates a new Docker Image language test
 func NewDockerImageLanguageTest(testDir string) *DockerImageLanguageTest {
 	return &DockerImageLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangDockerImage, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangDockerImage, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangDockerImage),
 	}
 }
 
@@ -92,4 +94,62 @@ func (dit *DockerImageLanguageTest) GetAdditionalValidations() []ValidationStep 
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Docker Image testing
+func (dit *DockerImageLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-docker-image
+        name: Test Docker Image Hook
+        entry: echo "Testing Docker Image"
+        language: docker_image
+        files: \.sh$
+`
+}
+
+// GetTestFiles returns test files needed for Docker Image testing
+func (dit *DockerImageLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"test.sh": `#!/bin/bash
+echo "Hello from Docker Image!"
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Docker Image environments
+func (dit *DockerImageLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"docker", // Docker context
+		"images", // Docker images
+		"cache",  // Docker cache
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Docker Image environments
+func (dit *DockerImageLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"Dockerfile",    // Docker image definition
+		".dockerignore", // Docker ignore file
+		"image.tar",     // Docker image archive
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (dit *DockerImageLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Docker Image bidirectional cache compatibility")
+	t.Logf("   📋 Docker Image environments manage pre-built images - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := dit.BaseBidirectionalTest.RunBidirectionalCacheTest(t, dit, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("docker image bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Docker Image bidirectional cache compatibility test completed")
+	return nil
 }

@@ -97,7 +97,7 @@ func (c *GcCommand) Run(args []string) int {
 		return 0
 	}
 
-	removedCount, err := c.gcRepos(cacheDir, dbPath, opts.Verbose)
+	removedCount, err := c.gcRepos(dbPath, opts.Verbose)
 	if err != nil {
 		fmt.Printf("Error during garbage collection: %v\n", err)
 		return 1
@@ -109,7 +109,7 @@ func (c *GcCommand) Run(args []string) int {
 
 // Helper functions to reduce cognitive complexity in gcRepos
 
-func (c *GcCommand) initializeDatabase(dbPath string, _ bool) (*sql.DB, error) {
+func (c *GcCommand) initializeDatabase(dbPath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -247,9 +247,9 @@ func (c *GcCommand) removeUnusedRepos(db *sql.DB, unusedRepos map[string]string,
 }
 
 // gcRepos implements the core garbage collection logic
-func (c *GcCommand) gcRepos(_ /* cacheDir */, dbPath string, verbose bool) (int, error) {
+func (c *GcCommand) gcRepos(dbPath string, verbose bool) (int, error) {
 	// Open database
-	db, err := c.initializeDatabase(dbPath, verbose)
+	db, err := c.initializeDatabase(dbPath)
 	if err != nil {
 		return 0, err
 	}

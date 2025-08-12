@@ -73,7 +73,7 @@ type RuntimeInfo interface {
 	IsRuntimeAvailable() bool
 	GetExecutableName() string
 	GetEnvironmentBinPath(envPath string) string
-	CheckHealth(envPath, version string) error
+	CheckHealth(envPath string) error
 	GetDefaultVersion() string // Returns 'system' if language is installed, otherwise 'default'
 }
 
@@ -215,7 +215,7 @@ func (bl *Base) PrintNotFoundMessage() {
 }
 
 // CheckHealth checks the health of a language environment
-func (bl *Base) CheckHealth(envPath, _ string) error {
+func (bl *Base) CheckHealth(envPath string) error {
 	binPath := bl.GetEnvironmentBinPath(envPath)
 	execPath := filepath.Join(binPath, bl.ExecutableName)
 
@@ -301,7 +301,7 @@ func (bl *Base) PreInitializeEnvironmentWithRepoInfo(
 }
 
 // InstallDependencies installs additional dependencies (base implementation)
-func (bl *Base) InstallDependencies(_ string, deps []string) error { // envPath is unused in base implementation
+func (bl *Base) InstallDependencies(deps []string) error {
 	if len(deps) > 0 {
 		fmt.Printf("[INFO] %s: Installing additional dependencies: %v\n", bl.Name, deps)
 		// This is a base implementation - specific languages should override
@@ -418,7 +418,7 @@ func (bl *Base) GenericSetupEnvironmentWithRepo(
 }
 
 // GenericInstallDependencies does nothing for generic languages (no dependencies to install)
-func (bl *Base) GenericInstallDependencies(_ string, deps []string) error {
+func (bl *Base) GenericInstallDependencies(deps []string) error {
 	if len(deps) > 0 {
 		fmt.Printf("[WARN] %s language ignoring additional dependencies: %v\n", bl.Name, deps)
 	}
@@ -431,7 +431,7 @@ func (bl *Base) GenericIsRuntimeAvailable() bool {
 }
 
 // GenericCheckHealth always passes for generic languages
-func (bl *Base) GenericCheckHealth(envPath, _ string) error {
+func (bl *Base) GenericCheckHealth(envPath string) error {
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("%s environment directory does not exist: %s", bl.Name, envPath)
 	}

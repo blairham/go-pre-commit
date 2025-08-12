@@ -49,9 +49,9 @@ func (d *DockerImageLanguage) SetupEnvironmentWithRepo(
 	return repoPath, nil
 }
 
-// InstallDependencies does nothing for Docker image (image is pre-built)
+// InstallDependencies does nothing for docker_image (dependencies are in the image)
 func (d *DockerImageLanguage) InstallDependencies(_ string, deps []string) error {
-	// Docker image language doesn't install dependencies - use pre-built image
+	// docker_image language doesn't install dependencies - they're in the image
 	if len(deps) > 0 {
 		fmt.Printf(
 			"[WARN] Docker image language ignoring additional dependencies (use pre-built image): %v\n",
@@ -62,7 +62,7 @@ func (d *DockerImageLanguage) InstallDependencies(_ string, deps []string) error
 }
 
 // CheckHealth verifies Docker is working
-func (d *DockerImageLanguage) CheckHealth(envPath, _ string) error {
+func (d *DockerImageLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("docker image environment directory does not exist: %s", envPath)

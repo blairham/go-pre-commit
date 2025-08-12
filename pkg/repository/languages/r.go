@@ -107,7 +107,7 @@ install.packages("%s", lib = "%s", repos = "https://cran.r-project.org/")
 // CheckEnvironmentHealth checks if the R environment is healthy
 func (r *RLanguage) CheckEnvironmentHealth(envPath string) bool {
 	// Check base health first
-	if err := r.CheckHealth(envPath, ""); err != nil {
+	if err := r.CheckHealth(envPath); err != nil {
 		return false
 	}
 
@@ -186,12 +186,7 @@ func (r *RLanguage) SetupEnvironmentWithRepo(
 }
 
 // CheckHealth performs health check for R environments matching Python pre-commit's health_check
-func (r *RLanguage) CheckHealth(envPath, version string) error {
-	// Python pre-commit only supports 'default' version
-	if version != language.VersionDefault {
-		return fmt.Errorf("r only supports version 'default', got: %s", version)
-	}
-
+func (r *RLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("environment directory does not exist: %s", envPath)

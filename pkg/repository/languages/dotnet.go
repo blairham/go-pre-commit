@@ -90,7 +90,7 @@ func (d *DotnetLanguage) InstallDependencies(envPath string, deps []string) erro
 }
 
 // CheckHealth checks if .NET is available and functional
-func (d *DotnetLanguage) CheckHealth(envPath, _ string) error {
+func (d *DotnetLanguage) CheckHealth(envPath string) error {
 	// For .NET, we check the system-installed dotnet rather than an environment-specific one
 	// since .NET is typically installed system-wide, not in isolated environments
 
@@ -140,7 +140,7 @@ func (d *DotnetLanguage) CheckEnvironmentHealth(envPath string) bool {
 	}
 
 	// Check base health (dotnet --version works)
-	if err := d.CheckHealth(envPath, ""); err != nil {
+	if err := d.CheckHealth(envPath); err != nil {
 		return false
 	}
 

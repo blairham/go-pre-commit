@@ -13,12 +13,14 @@ import (
 // JuliaLanguageTest implements LanguageTestRunner for Julia
 type JuliaLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewJuliaLanguageTest creates a new Julia language test
 func NewJuliaLanguageTest(testDir string) *JuliaLanguageTest {
 	return &JuliaLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangJulia, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangJulia, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(testDir),
 	}
 }
 
@@ -144,4 +146,74 @@ func (j *JuliaLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Julia testing
+func (j *JuliaLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-julia
+        name: Test Julia Hook
+        entry: echo "Testing Julia"
+        language: julia
+        files: \.jl$
+`
+}
+
+// GetTestFiles returns test files needed for Julia testing
+func (j *JuliaLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"main.jl": `println("Hello from Julia!")
+
+function greet(name)
+    println("Hello, $name!")
+end
+
+greet("World")
+`,
+		"Project.toml": `name = "TestProject"
+uuid = "12345678-1234-1234-1234-123456789abc"
+version = "0.1.0"
+
+[deps]
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Julia environments
+func (j *JuliaLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"src",      // Julia source directory
+		"test",     // Julia test directory
+		"deps",     // Julia dependencies
+		"packages", // Julia packages
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Julia environments
+func (j *JuliaLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"Project.toml",  // Julia project configuration
+		"Manifest.toml", // Julia package manifest
+		"Pkg.toml",      // Julia package configuration
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (j *JuliaLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Julia bidirectional cache compatibility")
+	t.Logf("   📋 Julia environments manage packages and dependencies - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := j.BaseBidirectionalTest.RunBidirectionalCacheTest(t, j, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("julia bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Julia bidirectional cache compatibility test completed")
+	return nil
 }

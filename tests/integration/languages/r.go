@@ -13,12 +13,14 @@ import (
 // RLanguageTest implements LanguageTestRunner for R
 type RLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewRLanguageTest creates a new R language test
 func NewRLanguageTest(testDir string) *RLanguageTest {
 	return &RLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangR, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangR, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(testDir),
 	}
 }
 
@@ -103,4 +105,84 @@ func (rt *RLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for R testing
+func (rt *RLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-r
+        name: Test R Hook
+        entry: echo "Testing R"
+        language: r
+        files: \.R$
+`
+}
+
+// GetTestFiles returns test files needed for R testing
+func (rt *RLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"main.R": `# R script
+cat("Hello from R!\n")
+
+greet <- function(name) {
+    cat("Hello,", name, "!\n")
+}
+
+greet("World")
+`,
+		"test.R": `# Test R script
+source("main.R")
+
+cat("Test completed\n")
+`,
+		"DESCRIPTION": `Package: TestPackage
+Title: Test R Package
+Version: 0.1.0
+Description: A test R package for pre-commit testing.
+Author: Test Author
+Maintainer: Test Maintainer <test@example.com>
+License: MIT
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in R environments
+func (rt *RLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"R",         // R source code directory
+		"man",       // R documentation
+		"tests",     // R tests
+		"vignettes", // R vignettes
+		"renv",      // R environment management
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in R environments
+func (rt *RLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"DESCRIPTION", // R package description
+		"NAMESPACE",   // R namespace file
+		"renv.lock",   // R environment lock file
+		".Rprofile",   // R profile
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (rt *RLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing R bidirectional cache compatibility")
+	t.Logf("   📋 R environments manage packages and libraries - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := rt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, rt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("r bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ R bidirectional cache compatibility test completed")
+	return nil
 }

@@ -49,19 +49,18 @@ func (p *PerlLanguage) SetupEnvironmentWithRepoInfo(
 		cacheDir, version, repoPath, repoURL, additionalDeps, "perl")
 }
 
-// CheckHealth overrides the base health check to handle system runtime fallback
-func (p *PerlLanguage) CheckHealth(envPath, _ string) error {
-	// First try the base health check (looks for perl in environment bin directory)
-	if err := p.Base.CheckHealth(envPath, ""); err == nil {
-		return nil // Found perl in environment
+// CheckHealth verifies that Perl is working correctly
+func (p *PerlLanguage) CheckHealth(envPath string) error {
+	// Check if environment directory exists
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		return fmt.Errorf("perl environment directory does not exist: %s", envPath)
 	}
 
-	// Environment perl not found, check if system perl is available as fallback
+	// For Perl, we use the system runtime, so check if it's available
 	if !p.IsRuntimeAvailable() {
-		return fmt.Errorf("perl runtime not available in environment or system")
+		return fmt.Errorf("perl runtime not found in system PATH")
 	}
 
-	// System perl is available, environment is considered healthy for execution
 	return nil
 }
 
@@ -171,7 +170,7 @@ func (p *PerlLanguage) CheckEnvironmentHealth(envPath string) bool {
 	}
 
 	// Try the base health check (looks for perl in environment bin directory)
-	if err := p.CheckHealth(envPath, ""); err != nil {
+	if err := p.CheckHealth(envPath); err != nil {
 		// Environment perl not found, check if system perl is available as fallback
 		if !p.IsRuntimeAvailable() {
 			return false

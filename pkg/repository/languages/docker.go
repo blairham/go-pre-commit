@@ -77,7 +77,7 @@ func (d *DockerLanguage) InstallDependencies(_ string, deps []string) error {
 }
 
 // CheckHealth verifies Docker is working
-func (d *DockerLanguage) CheckHealth(envPath, _ string) error {
+func (d *DockerLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("docker environment directory does not exist: %s", envPath)

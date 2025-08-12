@@ -10,15 +10,17 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/repository/languages"
 )
 
-// DartLanguageTest implements LanguageTestRunner for Dart
+// DartLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for Dart
 type DartLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewDartLanguageTest creates a new Dart language test
 func NewDartLanguageTest(testDir string) *DartLanguageTest {
 	return &DartLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangDart, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangDart, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangDart),
 	}
 }
 
@@ -102,4 +104,63 @@ func (dt *DartLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Dart testing
+func (dt *DartLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-dart
+        name: Test Dart Hook
+        entry: echo "Testing Dart"
+        language: dart
+        files: \.dart$
+`
+}
+
+// GetTestFiles returns test files needed for Dart testing
+func (dt *DartLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"test.dart": `void main() {
+  print('Hello from Dart!');
+}
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Dart environments
+func (dt *DartLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"bin",        // Dart executables
+		".dart_tool", // Dart tool directory
+		"build",      // Build output
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Dart environments
+func (dt *DartLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"pubspec.yaml", // Dart package specification
+		"pubspec.lock", // Dart dependency lock file
+		".packages",    // Package mapping file
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (dt *DartLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Dart bidirectional cache compatibility")
+	t.Logf("   📋 Dart environments manage pub packages - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := dt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, dt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("dart bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Dart bidirectional cache compatibility test completed")
+	return nil
 }

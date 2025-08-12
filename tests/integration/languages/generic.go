@@ -143,7 +143,7 @@ func (mlm *MockLanguageManager) CheckEnvironmentHealth(_ string) bool {
 }
 
 // CheckHealth always returns nil for mock languages
-func (mlm *MockLanguageManager) CheckHealth(_, _ string) error {
+func (mlm *MockLanguageManager) CheckHealth(_ string) error {
 	return nil
 }
 

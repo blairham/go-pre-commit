@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,15 +18,17 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/repository/languages"
 )
 
-// PygrepLanguageTest implements LanguageTestRunner for Pygrep
+// PygrepLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for Pygrep
 type PygrepLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewPygrepLanguageTest creates a new Pygrep language test
 func NewPygrepLanguageTest(testDir string) *PygrepLanguageTest {
 	return &PygrepLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangPygrep, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangPygrep, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangPygrep),
 	}
 }
 
@@ -644,136 +645,63 @@ func TestPygrepLanguageTestAdditionalValidations(t *testing.T) {
 	t.Logf("All %d additional validations are properly configured", len(validations))
 }
 
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Pygrep testing
+func (pt *PygrepLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-pygrep
+        name: Test Pygrep Hook
+        entry: grep "pattern"
+        language: pygrep
+        files: '\.py$'
+`
+}
+
+// GetTestFiles returns test files needed for Pygrep testing
+func (pt *PygrepLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"test.py": `#!/usr/bin/env python3
+"""Test Python file for pygrep hook testing."""
+
+def hello():
+    print("Hello from Python! pattern found here")
+
+if __name__ == "__main__":
+    hello()
+`,
+		"bad_file.py": `# This file contains no pattern for testing
+print("No match in this file")
+`,
+	}
+}
+
+// GetExpectedDirectories returns directories expected to be created by Pygrep environment setup
+func (pt *PygrepLanguageTest) GetExpectedDirectories() []string {
+	// Pygrep doesn't create environment directories - it runs natively
+	return []string{}
+}
+
+// GetExpectedStateFiles returns state files that should remain unchanged during bidirectional testing
+func (pt *PygrepLanguageTest) GetExpectedStateFiles() []string {
+	return []string{".git", ".pre-commit-config.yaml", ".pre-commit-hooks.yaml"}
+}
+
 // TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
 func (pt *PygrepLanguageTest) TestBidirectionalCacheCompatibility(
 	t *testing.T,
-	pythonBinary, goBinary, _ string,
+	pythonBinary, goBinary string,
+	tempDir string,
 ) error {
 	t.Helper()
-
 	t.Logf("🔄 Testing Pygrep language bidirectional cache compatibility")
 	t.Logf("   📋 Pygrep hooks use pattern matching - testing cache compatibility")
 
-	// Create temporary directories for testing
-	tempDir, err := os.MkdirTemp("", "pygrep-bidirectional-test-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp directory: %w", err)
-	}
-	defer func() {
-		if removeErr := os.RemoveAll(tempDir); removeErr != nil {
-			t.Logf("⚠️  Warning: failed to remove temp directory: %v", removeErr)
-		}
-	}()
-
-	// Test basic cache structure compatibility
-	if err := pt.testBasicCacheCompatibility(t, pythonBinary, goBinary, tempDir); err != nil {
-		return fmt.Errorf("basic cache compatibility test failed: %w", err)
+	// Use the base bidirectional test framework
+	if err := pt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, pt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("pygrep bidirectional cache test failed: %w", err)
 	}
 
 	t.Logf("✅ Pygrep language bidirectional cache compatibility test completed")
-	return nil
-}
-
-// setupTestRepository creates a test repository for pygrep language testing
-func (pt *PygrepLanguageTest) setupTestRepository(t *testing.T, repoPath, _ string) error {
-	t.Helper()
-
-	// Create repository directory
-	if err := os.MkdirAll(repoPath, 0o750); err != nil {
-		return fmt.Errorf("failed to create repo directory: %w", err)
-	}
-
-	// Initialize git repository
-	cmd := exec.Command("git", "init")
-	cmd.Dir = repoPath
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to initialize git repository: %w", err)
-	}
-
-	// Set git user config for the test
-	cmd = exec.Command("git", "config", "user.email", "test@example.com")
-	cmd.Dir = repoPath
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to set git user email: %w", err)
-	}
-
-	cmd = exec.Command("git", "config", "user.name", "Test User")
-	cmd.Dir = repoPath
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to set git user name: %w", err)
-	}
-
-	return nil
-}
-
-// testBasicCacheCompatibility tests basic cache directory compatibility for pygrep hooks
-func (pt *PygrepLanguageTest) testBasicCacheCompatibility(t *testing.T, pythonBinary, goBinary, tempDir string) error {
-	t.Helper()
-
-	// Create cache directories
-	goCacheDir := filepath.Join(tempDir, "go-cache")
-	pythonCacheDir := filepath.Join(tempDir, "python-cache")
-
-	// Create a simple repository for testing
-	repoDir := filepath.Join(tempDir, "test-repo")
-	if err := pt.setupTestRepository(t, repoDir, ""); err != nil {
-		return fmt.Errorf("failed to setup test repository: %w", err)
-	}
-
-	// Pygrep language config with mixed hooks that require different setup levels
-	configContent := `repos:
--   repo: https://github.com/pre-commit/pygrep-hooks
-    rev: v1.10.0
-    hooks:
-    -   id: python-check-blanket-noqa
-    -   id: python-check-mock-methods
-    -   id: python-no-log-warn
-    -   id: rst-backticks
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
-    hooks:
-    -   id: check-yaml
-    -   id: check-json
-    -   id: check-toml
-`
-	configPath := filepath.Join(repoDir, ".pre-commit-config.yaml")
-	if err := os.WriteFile(configPath, []byte(configContent), 0o600); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-
-	// Create test Python file
-	testFile := filepath.Join(repoDir, "test.py")
-	pythonContent := `# noqa
-print("Hello, world!")
-`
-	if err := os.WriteFile(testFile, []byte(pythonContent), 0o600); err != nil {
-		return fmt.Errorf("failed to create test file: %w", err)
-	}
-
-	// Test 1: Go creates cache
-	cmd := exec.Command(goBinary, "install-hooks", "--config", configPath)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", goCacheDir))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go install-hooks failed: %w", err)
-	}
-
-	// Test 2: Python creates cache
-	cmd = exec.Command(pythonBinary, "install-hooks", "--config", configPath)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", pythonCacheDir))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("python install-hooks failed: %w", err)
-	}
-
-	// Verify both caches were created
-	if _, err := os.Stat(goCacheDir); err != nil {
-		return fmt.Errorf("go cache directory not created: %w", err)
-	}
-	if _, err := os.Stat(pythonCacheDir); err != nil {
-		return fmt.Errorf("python cache directory not created: %w", err)
-	}
-
-	t.Logf("   ✅ Both Go and Python can create compatible cache structures for pygrep hooks")
 	return nil
 }

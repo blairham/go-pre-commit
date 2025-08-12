@@ -169,65 +169,6 @@ func (m *Manager) GetDBPath() string {
 	return m.dbPath
 }
 
-// Private helper methods
-
-// verifyDatabaseTables checks if database tables exist and are accessible (for testing)
-func (m *Manager) verifyDatabaseTables() error {
-	// Check repos table
-	if _, err := m.db.ExecContext(context.Background(), "SELECT repo, ref, path FROM repos LIMIT 1"); err != nil {
-		return fmt.Errorf("repos table verification failed: %w", err)
-	}
-
-	// Check configs table
-	if _, err := m.db.ExecContext(context.Background(), "SELECT path FROM configs LIMIT 1"); err != nil {
-		return fmt.Errorf("configs table verification failed: %w", err)
-	}
-
-	return nil
-}
-
-// insertTestRepoEntry inserts a repository entry directly (for testing)
-func (m *Manager) insertTestRepoEntry(repo, ref, path string) error {
-	_, err := m.db.ExecContext(
-		context.Background(),
-		"INSERT INTO repos (repo, ref, path) VALUES (?, ?, ?)",
-		repo, ref, path,
-	)
-	return err
-}
-
-// getTestRepoEntry gets a repository entry directly (for testing)
-func (m *Manager) getTestRepoEntry(repo, ref string) (string, error) {
-	var path string
-	err := m.db.QueryRowContext(
-		context.Background(),
-		"SELECT path FROM repos WHERE repo = ? AND ref = ?",
-		repo, ref,
-	).Scan(&path)
-	return path, err
-}
-
-// getTestConfigEntry checks if a config entry exists (for testing)
-func (m *Manager) getTestConfigEntry(configPath string) error {
-	var path string
-	err := m.db.QueryRowContext(context.Background(), "SELECT path FROM configs WHERE path = ?", configPath).Scan(&path)
-	return err
-}
-
-// countTestRepoEntriesByPath counts repository entries by path (for testing)
-func (m *Manager) countTestRepoEntriesByPath(path string) (int, error) {
-	var count int
-	err := m.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM repos WHERE path = ?", path).Scan(&count)
-	return count, err
-}
-
-// countTestConfigEntries counts total config entries (for testing)
-func (m *Manager) countTestConfigEntries() (int, error) {
-	var count int
-	err := m.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM configs").Scan(&count)
-	return count, err
-}
-
 // getExistingRepoPath checks if repo exists and returns valid path
 func (m *Manager) getExistingRepoPath(dbRepoName, rev string) string {
 	var path string

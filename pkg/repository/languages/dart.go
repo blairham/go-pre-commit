@@ -61,7 +61,7 @@ func (d *DartLanguage) SetupEnvironmentWithRepo(
 	// Check if environment already exists
 	if _, err := os.Stat(envPath); err == nil {
 		// Environment exists, verify it's functional
-		if err := d.CheckHealth(envPath, ""); err == nil {
+		if err := d.CheckHealth(envPath); err == nil {
 			return envPath, nil
 		}
 		// Environment exists but is broken, remove and recreate
@@ -90,14 +90,11 @@ func (d *DartLanguage) SetupEnvironmentWithRepo(
 	return envPath, nil
 }
 
-// InstallDependencies does nothing for Dart (only uses pre-installed runtime)
+// InstallDependencies installs Dart packages using pub
 func (d *DartLanguage) InstallDependencies(_ string, deps []string) error {
-	// Dart language uses pre-installed runtime only
 	if len(deps) > 0 {
-		fmt.Printf(
-			"[WARN] Dart language ignoring additional dependencies (only uses pre-installed Dart runtime): %v\n",
-			deps,
-		)
+		fmt.Printf("[WARN] Dart language ignoring additional dependencies "+
+			"(only uses pre-installed Dart runtime): %v\n", deps)
 	}
 	return nil
 }
@@ -114,7 +111,7 @@ func (d *DartLanguage) CheckEnvironmentHealth(envPath string) bool {
 }
 
 // CheckHealth overrides the base CheckHealth to use system Dart instead of environment-local Dart
-func (d *DartLanguage) CheckHealth(envPath, _ string) error {
+func (d *DartLanguage) CheckHealth(envPath string) error {
 	// Check that the environment directory exists
 	if _, err := os.Stat(envPath); err != nil {
 		return fmt.Errorf("environment directory not found at %s: %w", envPath, err)

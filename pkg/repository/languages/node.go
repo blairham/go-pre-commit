@@ -1,7 +1,6 @@
 package languages
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/blairham/go-pre-commit/pkg/download/nodeenv"
 	"github.com/blairham/go-pre-commit/pkg/git"
 	"github.com/blairham/go-pre-commit/pkg/language"
 )
@@ -22,12 +20,11 @@ const (
 // NodeLanguage handles Node.js environment setup
 type NodeLanguage struct {
 	*language.Base
-	NodeenvManager       *nodeenv.Manager
 	cachedDefaultVersion string
 	versionCacheMutex    sync.RWMutex
 }
 
-// NewNodeLanguage creates a new Node.js language handler
+// NewNodeLanguage creates a new Node.js language
 func NewNodeLanguage() *NodeLanguage {
 	return &NodeLanguage{
 		Base: language.NewBase(
@@ -36,7 +33,6 @@ func NewNodeLanguage() *NodeLanguage {
 			"--version",
 			"https://nodejs.org/",
 		),
-		NodeenvManager: nil, // Will be initialized with cache directory when needed
 	}
 }
 
@@ -58,13 +54,8 @@ func (n *NodeLanguage) SetupEnvironmentWithRepoInfo(
 }
 
 // SetupEnvironmentWithRepo sets up a Node.js environment in the repository directory
-func (n *NodeLanguage) SetupEnvironmentWithRepo(
-	cacheDir, version, repoPath, _ string, // repoURL is unused
-	additionalDeps []string,
+func (n *NodeLanguage) SetupEnvironmentWithRepo(cacheDir, _, repoPath, _ string, additionalDeps []string,
 ) (string, error) {
-	// Initialize nodeenv manager
-	n.initNodeenvManager(cacheDir)
-
 	// Validate inputs and resolve paths
 	resolvedRepoPath, err := n.validateAndResolvePaths(repoPath, cacheDir)
 	if err != nil {
@@ -72,7 +63,6 @@ func (n *NodeLanguage) SetupEnvironmentWithRepo(
 	}
 
 	// Determine environment version based on system availability
-	actualVersion := n.determineActualVersion(version)
 	envVersion := language.VersionDefault // Always use 'default' for cache compatibility
 
 	// Create environment path
@@ -88,7 +78,7 @@ func (n *NodeLanguage) SetupEnvironmentWithRepo(
 	}
 
 	// Setup the environment
-	if err := n.setupNewEnvironment(envPath, actualVersion); err != nil {
+	if err := n.setupNewEnvironment(envPath); err != nil {
 		return "", err
 	}
 
@@ -222,7 +212,7 @@ func (n *NodeLanguage) runNpmInstall(envPath string, additionalDeps []string) er
 
 // isNpmAvailable checks if npm is available either in the environment or system
 func (n *NodeLanguage) isNpmAvailable(envPath string) bool {
-	// First, try to find npm in the Node.js environment (installed via nodeenv)
+	// First, try to find npm in the Node.js environment
 	npmPath := n.getNpmPath(envPath)
 	if npmPath != "" && n.fileExists(npmPath) {
 		return true
@@ -367,47 +357,12 @@ func (n *NodeLanguage) SetupEnvironmentWithRepositoryInit(
 	return n.SetupEnvironmentWithRepo(cacheDir, version, repoPath, "", additionalDeps)
 }
 
-// initNodeenvManager initializes the NodeenvManager if it's not already set
-func (n *NodeLanguage) initNodeenvManager(cacheDir string) {
-	if n.NodeenvManager == nil && cacheDir != "" {
-		nodeCacheDir := filepath.Join(cacheDir, "node")
-		n.NodeenvManager = nodeenv.NewManager(nodeCacheDir)
-	}
-}
-
-// installNodeVersionIfNeeded installs a Node.js version if it's not already installed
-func (n *NodeLanguage) installNodeVersionIfNeeded(version string) error {
-	if n.NodeenvManager == nil {
-		return fmt.Errorf("nodeenv manager not initialized")
-	}
-
-	if !n.NodeenvManager.IsVersionInstalled(version) {
-		if err := n.NodeenvManager.InstallVersion(context.TODO(), version); err != nil {
-			return fmt.Errorf("failed to install Node.js %s: %w", version, err)
-		}
-	}
-
-	return nil
-}
-
 // IsRuntimeAvailable checks if Node.js is available in the system
 //
 //nolint:revive // function name is part of interface contract
 func (n *NodeLanguage) IsRuntimeAvailable() bool {
-	// Check system Node.js first
-	if n.isSystemNodeAvailable() {
-		return true
-	}
-
-	// If nodeenv manager has any installed versions, consider Node.js available
-	if n.NodeenvManager != nil {
-		versions, err := n.NodeenvManager.GetInstalledVersions()
-		if err == nil && len(versions) > 0 {
-			return true
-		}
-	}
-
-	return false
+	// Check system Node.js
+	return n.isSystemNodeAvailable()
 }
 
 // validateAndResolvePaths validates and resolves the repository path
@@ -423,38 +378,6 @@ func (n *NodeLanguage) validateAndResolvePaths(repoPath, cacheDir string) (strin
 	return repoPath, nil
 }
 
-// determineActualVersion determines the actual version to use, always using "default" for environment naming
-func (n *NodeLanguage) determineActualVersion(version string) string {
-	// Normalize input version using cached default version logic
-	if version == "" {
-		version = n.GetDefaultVersion()
-	}
-
-	// If a specific version is requested that we don't support, fall back to default
-	if version != language.VersionDefault && version != language.VersionSystem {
-		// Validate that it's a reasonable version format
-		// For now, only support system/default versions, normalize others to default
-		_ = !strings.HasPrefix(version, "v") && version != "latest" // Non-standard version format detected
-		version = n.GetDefaultVersion()
-	}
-
-	// Check if Node.js is available on the system
-	systemAvailable := n.isSystemNodeAvailable()
-
-	if systemAvailable && version == language.VersionSystem {
-		// Use system Node.js
-		return language.VersionSystem
-	}
-
-	if systemAvailable && version == language.VersionDefault {
-		// System Node.js is available, use default
-		return language.VersionDefault
-	}
-
-	// Node.js not available on system or specific version requested
-	return language.VersionDefault
-}
-
 // isSystemNodeAvailable checks if Node.js is available on the system (not via nodeenv)
 func (n *NodeLanguage) isSystemNodeAvailable() bool {
 	_, err := exec.LookPath("node")
@@ -466,7 +389,7 @@ func (n *NodeLanguage) isEnvironmentHealthy(envPath string) bool {
 	// Check if environment already exists
 	if _, err := os.Stat(envPath); err == nil {
 		// Environment exists, verify it's functional
-		if err := n.CheckHealth(envPath, ""); err == nil {
+		if err := n.CheckHealth(envPath); err == nil {
 			return true
 		}
 		// Environment exists but is broken, remove and recreate
@@ -478,70 +401,12 @@ func (n *NodeLanguage) isEnvironmentHealthy(envPath string) bool {
 }
 
 // setupNewEnvironment creates a new Node.js environment
-func (n *NodeLanguage) setupNewEnvironment(envPath, version string) error {
-	// For nodeenv-based installations, try to install the specific version
-	// But only if we have a cache directory (nodeenv manager is initialized)
-	if n.NodeenvManager != nil && version != language.VersionSystem && version != language.VersionDefault {
-		// Try nodeenv first for specific versions
-		if nodeenvErr := n.setupNodeenvEnvironment(envPath, version); nodeenvErr != nil {
-			fmt.Printf("⚠️  Warning: nodeenv setup failed for version %s: %v, falling back to system environment\n",
-				version, nodeenvErr)
-			// Make sure the fallback actually works
-			if systemErr := n.setupSystemEnvironment(envPath); systemErr != nil {
-				return fmt.Errorf(
-					"both nodeenv and system environment setup failed: nodeenv error: %w, system error: %w",
-					nodeenvErr,
-					systemErr,
-				)
-			}
-			return nil
-		}
-		return nil
-	}
-
-	// For default/system versions or when nodeenv is not available, use system environment
+func (n *NodeLanguage) setupNewEnvironment(envPath string) error {
 	return n.setupSystemEnvironment(envPath)
 }
 
-// setupNodeenvEnvironment sets up an environment using nodeenv manager
-func (n *NodeLanguage) setupNodeenvEnvironment(envPath, version string) error {
-	// Version should already be resolved to actual version
-	resolvedVersion := version
-	if version == language.VersionDefault {
-		// This shouldn't happen with new logic, but handle gracefully
-		resolvedVersion = n.getDefaultNodeVersion()
-	}
-
-	// Install the Node.js version if needed
-	if err := n.installNodeVersionIfNeeded(resolvedVersion); err != nil {
-		return fmt.Errorf("failed to install Node.js version %s: %w", resolvedVersion, err)
-	}
-
-	// Create the environment using nodeenv
-	if err := n.NodeenvManager.CreateEnvironment(envPath, resolvedVersion); err != nil {
-		return fmt.Errorf("failed to create Node.js environment with nodeenv: %w", err)
-	}
-
-	fmt.Printf("Info: Created Node.js environment using nodeenv version %s at %s\n", resolvedVersion, envPath)
-	return nil
-}
-
-// getDefaultNodeVersion returns a default Node.js version, handling the nodeenv manager gracefully
-func (n *NodeLanguage) getDefaultNodeVersion() string {
-	if n.NodeenvManager == nil {
-		return "20.11.0"
-	}
-
-	latestLTS, err := n.NodeenvManager.GetLatestLTSVersion()
-	if err != nil {
-		return "20.11.0"
-	}
-
-	return latestLTS.Version
-}
-
 // CheckHealth verifies that the Node.js environment is working correctly
-func (n *NodeLanguage) CheckHealth(envPath, _ string) error {
+func (n *NodeLanguage) CheckHealth(envPath string) error {
 	// First, ensure symlinks exist for system environments
 	binDir := filepath.Join(envPath, "bin")
 	envNodePath := filepath.Join(binDir, "node")

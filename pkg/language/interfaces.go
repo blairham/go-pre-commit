@@ -40,7 +40,7 @@ type HealthChecker interface {
 	CheckEnvironmentHealth(envPath string) bool
 
 	// CheckHealth verifies the environment is healthy
-	CheckHealth(envPath, version string) error
+	CheckHealth(envPath string) error
 }
 
 // DependencyManager defines the interface for dependency management

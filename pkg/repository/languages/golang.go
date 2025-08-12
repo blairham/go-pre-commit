@@ -65,18 +65,18 @@ func (g *GoLanguage) SetupEnvironmentWithRepo(
 
 // setupEnvironmentWithRepoInternal contains the actual environment setup logic
 func (g *GoLanguage) setupEnvironmentWithRepoInternal(
-	cacheDir, version, repoPath, _ string,
+	cacheDir, _, _, _ string,
 	additionalDeps []string,
 ) (string, error) {
 	// Determine Go version
-	goVersion := g.determineGoVersion(version)
+	goVersion := g.determineGoVersion()
 
 	// Create environment path
 	envDirName := language.GetRepositoryEnvironmentName("go", goVersion)
 	envPath := filepath.Join(cacheDir, envDirName)
 
 	// Check if environment already exists and is functional
-	if g.IsEnvironmentInstalled(envPath, repoPath) {
+	if g.IsEnvironmentInstalled(envPath) {
 		return envPath, nil
 	}
 
@@ -113,9 +113,40 @@ func (g *GoLanguage) setupEnvironmentWithRepoInternal(
 }
 
 // determineGoVersion determines which Go version to use
-func (g *GoLanguage) determineGoVersion(_ string) string {
+func (g *GoLanguage) determineGoVersion() string {
 	// For simplified implementation, always use system Go
 	return language.VersionDefault
+}
+
+// SetupEnvironment sets up a Go environment
+func (g *GoLanguage) SetupEnvironment(cacheDir, version string, additionalDeps []string) (string, error) {
+	// For Go, we use a simple environment setup similar to SetupEnvironmentWithRepo
+	return g.setupEnvironmentWithRepoInternal(cacheDir, version, "", "", additionalDeps)
+}
+
+// CheckEnvironmentHealth checks if the Go environment is healthy
+func (g *GoLanguage) CheckEnvironmentHealth(envPath string) bool {
+	// First check if the environment directory exists
+	if _, err := os.Stat(envPath); err != nil {
+		return false
+	}
+
+	// Check if Go runtime is available on the system (required for Go environments)
+	if !g.IsRuntimeAvailable() {
+		return false
+	}
+
+	// Try the health check
+	if err := g.CheckHealth(envPath); err != nil {
+		return false
+	}
+
+	return true
+}
+
+// GetEnvironmentBinPath returns the bin directory path for the Go environment
+func (g *GoLanguage) GetEnvironmentBinPath(envPath string) string {
+	return filepath.Join(envPath, "bin")
 }
 
 // InstallDependencies does nothing for Go (only uses pre-installed runtime)
@@ -131,7 +162,7 @@ func (g *GoLanguage) InstallDependencies(_ string, deps []string) error {
 }
 
 // isRepositoryInstalled checks if the repository is properly set up in the environment
-func (g *GoLanguage) isRepositoryInstalled(envPath, _ string) bool {
+func (g *GoLanguage) isRepositoryInstalled(envPath string) bool {
 	// For simplified implementation, just check if environment directory exists
 	_, err := os.Stat(envPath)
 	return err == nil
@@ -157,8 +188,8 @@ func (g *GoLanguage) SetupEnvironmentWithRepositoryInit(
 }
 
 // IsEnvironmentInstalled checks if the Go environment is properly installed and functional
-func (g *GoLanguage) IsEnvironmentInstalled(envPath, repoPath string) bool {
-	return g.isRepositoryInstalled(envPath, repoPath)
+func (g *GoLanguage) IsEnvironmentInstalled(envPath string) bool {
+	return g.isRepositoryInstalled(envPath)
 }
 
 // CacheAwareSetupEnvironmentWithRepoInfo provides cache-aware environment setup for Go
@@ -205,7 +236,7 @@ func (g *GoLanguage) setupSystemGoSymlinks(envPath string) error {
 }
 
 // CheckHealth checks the health of a Go environment
-func (g *GoLanguage) CheckHealth(envPath, _ string) error {
+func (g *GoLanguage) CheckHealth(envPath string) error {
 	binPath := filepath.Join(envPath, "bin")
 	goExecPath := filepath.Join(binPath, "go")
 

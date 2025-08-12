@@ -14,14 +14,16 @@ import (
 // RubyLanguageTest implements LanguageTestRunner for Ruby
 type RubyLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 	testVersions []string // Store the configured test versions
 }
 
 // NewRubyLanguageTest creates a new Ruby language test
 func NewRubyLanguageTest(testDir string) *RubyLanguageTest {
 	return &RubyLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangRuby, testDir),
-		testVersions:     []string{"default"}, // Default to only testing default version
+		BaseLanguageTest:      NewBaseLanguageTest(LangRuby, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(testDir),
+		testVersions:          []string{"default"}, // Default to only testing default version
 	}
 }
 
@@ -172,4 +174,81 @@ func (rt *RubyLanguageTest) testVersionDetection(t *testing.T, envPath, _ string
 	}
 
 	t.Logf("        Ruby version detection completed")
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Ruby testing
+func (rt *RubyLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-ruby
+        name: Test Ruby Hook
+        entry: echo "Testing Ruby"
+        language: ruby
+        files: \.rb$
+`
+}
+
+// GetTestFiles returns test files needed for Ruby testing
+func (rt *RubyLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"main.rb": `#!/usr/bin/env ruby
+puts "Hello from Ruby!"
+
+def greet(name)
+  puts "Hello, #{name}!"
+end
+
+greet("World")
+`,
+		"test.rb": `#!/usr/bin/env ruby
+require_relative 'main'
+
+puts "Test completed"
+`,
+		"Gemfile": `source 'https://rubygems.org'
+
+gem 'rake'
+gem 'rspec'
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Ruby environments
+func (rt *RubyLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"lib",    // Ruby library directory
+		"bin",    // Ruby executables
+		"spec",   // RSpec tests
+		"test",   // Test files
+		"vendor", // Vendored gems
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Ruby environments
+func (rt *RubyLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"Gemfile",       // Ruby gem dependencies
+		"Gemfile.lock",  // Ruby gem lock file
+		".ruby-version", // Ruby version specification
+		"Rakefile",      // Ruby rake tasks
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (rt *RubyLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Ruby bidirectional cache compatibility")
+	t.Logf("   📋 Ruby environments manage gems and dependencies - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := rt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, rt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("ruby bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Ruby bidirectional cache compatibility test completed")
+	return nil
 }

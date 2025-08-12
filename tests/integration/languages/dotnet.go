@@ -10,15 +10,17 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/repository/languages"
 )
 
-// DotnetLanguageTest implements LanguageTestRunner for .NET
+// DotnetLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for .NET
 type DotnetLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewDotnetLanguageTest creates a new .NET language test
 func NewDotnetLanguageTest(testDir string) *DotnetLanguageTest {
 	return &DotnetLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangDotnet, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangDotnet, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangDotnet),
 	}
 }
 
@@ -106,4 +108,72 @@ func (dt *DotnetLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for .NET testing
+func (dt *DotnetLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-dotnet
+        name: Test .NET Hook
+        entry: echo "Testing .NET"
+        language: dotnet
+        files: \.cs$
+`
+}
+
+// GetTestFiles returns test files needed for .NET testing
+func (dt *DotnetLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"Program.cs": `using System;
+
+namespace TestApp
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Console.WriteLine("Hello from .NET!");
+        }
+    }
+}
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in .NET environments
+func (dt *DotnetLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"bin",      // .NET build output
+		"obj",      // .NET object files
+		"packages", // NuGet packages
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in .NET environments
+func (dt *DotnetLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"TestApp.csproj",  // C# project file
+		"TestApp.sln",     // Visual Studio solution file
+		"packages.config", // NuGet packages configuration
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (dt *DotnetLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing .NET bidirectional cache compatibility")
+	t.Logf("   📋 .NET environments manage NuGet packages and builds - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := dt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, dt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf(".NET bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ .NET bidirectional cache compatibility test completed")
+	return nil
 }

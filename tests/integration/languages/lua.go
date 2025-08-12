@@ -13,12 +13,14 @@ import (
 // LuaLanguageTest implements LanguageTestRunner for Lua
 type LuaLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewLuaLanguageTest creates a new Lua language test
 func NewLuaLanguageTest(testDir string) *LuaLanguageTest {
 	return &LuaLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangLua, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangLua, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(testDir),
 	}
 }
 
@@ -73,4 +75,72 @@ func (lt *LuaLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Lua testing
+func (lt *LuaLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-lua
+        name: Test Lua Hook
+        entry: echo "Testing Lua"
+        language: lua
+        files: \.lua$
+`
+}
+
+// GetTestFiles returns test files needed for Lua testing
+func (lt *LuaLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"main.lua": `print("Hello from Lua!")
+
+function greet(name)
+    print("Hello, " .. name .. "!")
+end
+
+greet("World")
+`,
+		"test.lua": `-- Test file for Lua
+require("main")
+
+print("Test completed")
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Lua environments
+func (lt *LuaLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"lua_modules", // Lua modules directory
+		"lib",         // Lua libraries
+		"src",         // Lua source
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Lua environments
+func (lt *LuaLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"rockspec",     // Lua rock specification
+		".luarocks",    // LuaRocks configuration
+		"luarocks.cfg", // LuaRocks config file
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (lt *LuaLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Lua bidirectional cache compatibility")
+	t.Logf("   📋 Lua environments manage modules and rocks - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := lt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, lt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("lua bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Lua bidirectional cache compatibility test completed")
+	return nil
 }

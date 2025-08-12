@@ -15,14 +15,16 @@ import (
 // RustLanguageTest implements LanguageTestRunner for Rust
 type RustLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 	testVersions []string // Store the configured test versions
 }
 
 // NewRustLanguageTest creates a new Rust language test
 func NewRustLanguageTest(testDir string) *RustLanguageTest {
 	return &RustLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangRust, testDir),
-		testVersions:     []string{"default"}, // Default to only testing default version
+		BaseLanguageTest:      NewBaseLanguageTest(LangRust, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(testDir),
+		testVersions:          []string{"default"}, // Default to only testing default version
 	}
 }
 
@@ -208,5 +210,92 @@ func (rt *RustLanguageTest) testVersionDetection(t *testing.T, envPath, _ string
 	}
 
 	t.Logf("        Cargo version: %s", string(output))
+	return nil
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Rust testing
+func (rt *RustLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-rust
+        name: Test Rust Hook
+        entry: echo "Testing Rust"
+        language: rust
+        files: \.rs$
+`
+}
+
+// GetTestFiles returns test files needed for Rust testing
+func (rt *RustLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"main.rs": `fn main() {
+    println!("Hello from Rust!");
+    greet("World");
+}
+
+fn greet(name: &str) {
+    println!("Hello, {}!", name);
+}
+`,
+		"lib.rs": `//! Test library for Rust
+pub fn hello() -> String {
+    "Hello from lib!".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hello() {
+        assert_eq!(hello(), "Hello from lib!");
+    }
+}
+`,
+		"Cargo.toml": `[package]
+name = "test-project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Rust environments
+func (rt *RustLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"src",     // Rust source directory
+		"target",  // Rust build output
+		"tests",   // Rust integration tests
+		"benches", // Rust benchmarks
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Rust environments
+func (rt *RustLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"Cargo.toml",          // Rust package manifest
+		"Cargo.lock",          // Rust dependency lock file
+		"rust-toolchain.toml", // Rust toolchain specification
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (rt *RustLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Rust bidirectional cache compatibility")
+	t.Logf("   📋 Rust environments manage cargo packages and builds - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := rt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, rt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("rust bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Rust bidirectional cache compatibility test completed")
 	return nil
 }

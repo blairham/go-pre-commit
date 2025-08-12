@@ -80,7 +80,7 @@ func (j *JuliaLanguage) SetupEnvironmentWithRepo(
 	envPath := filepath.Join(repoPath, envDirName)
 
 	// Check if environment already exists and is functional
-	if err := j.CheckHealth(envPath, version); err == nil {
+	if err := j.CheckHealth(envPath); err == nil {
 		return envPath, nil
 	}
 
@@ -242,7 +242,7 @@ uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 }
 
 // CheckHealth checks if the Julia environment is healthy
-func (j *JuliaLanguage) CheckHealth(envPath, _ string) error {
+func (j *JuliaLanguage) CheckHealth(envPath string) error {
 	// First check if the environment directory exists
 	if _, err := os.Stat(envPath); err != nil {
 		return fmt.Errorf("julia environment directory does not exist")

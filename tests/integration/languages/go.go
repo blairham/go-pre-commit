@@ -14,14 +14,16 @@ import (
 // GoLanguageTest implements LanguageTestRunner for Go
 type GoLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 	testVersions []string // Store the configured test versions
 }
 
 // NewGoLanguageTest creates a new Go language test
 func NewGoLanguageTest(testDir string) *GoLanguageTest {
 	return &GoLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangGolang, testDir),
-		testVersions:     []string{"default"}, // Default to only testing default version
+		BaseLanguageTest:      NewBaseLanguageTest(LangGolang, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(testDir),
+		testVersions:          []string{"default"}, // Default to only testing default version
 	}
 }
 
@@ -111,4 +113,71 @@ func (gt *GoLanguageTest) testVersionDetection(t *testing.T, _, _ string) {
 
 	// For Go, we check the system Go version
 	t.Logf("        Go uses system-wide installation, skipping version-specific environment detection")
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Go testing
+func (gt *GoLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-go
+        name: Test Go Hook
+        entry: echo "Testing Go"
+        language: golang
+        files: \.go$
+`
+}
+
+// GetTestFiles returns test files needed for Go testing
+func (gt *GoLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"main.go": `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello from Go!")
+}
+`,
+		"go.mod": `module test
+
+go 1.21
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Go environments
+func (gt *GoLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"bin",    // Go build output
+		"pkg",    // Go package cache
+		"vendor", // Go vendor directory
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Go environments
+func (gt *GoLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"go.mod",  // Go module file
+		"go.sum",  // Go checksum file
+		"go.work", // Go workspace file
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (gt *GoLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Go bidirectional cache compatibility")
+	t.Logf("   📋 Go environments manage modules and build cache - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := gt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, gt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("go bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Go bidirectional cache compatibility test completed")
+	return nil
 }

@@ -81,7 +81,7 @@ func (r *RubyLanguage) InstallDependencies(envPath string, deps []string) error 
 // CheckEnvironmentHealth checks if the Ruby environment is healthy
 func (r *RubyLanguage) CheckEnvironmentHealth(envPath string) bool {
 	// Check base health first
-	if err := r.CheckHealth(envPath, ""); err != nil {
+	if err := r.CheckHealth(envPath); err != nil {
 		return false
 	}
 
@@ -113,7 +113,7 @@ func (r *RubyLanguage) SetupEnvironmentWithRepo(
 	}
 
 	// Check if environment already exists and has the repository installed
-	if r.isRepositoryInstalled(envPath, repoPath) {
+	if r.isRepositoryInstalled(envPath) {
 		return envPath, nil
 	}
 
@@ -459,7 +459,7 @@ func (r *RubyLanguage) createRubyStateFiles(envPath string, additionalDeps []str
 // CheckHealth checks if the Ruby environment is healthy
 // Ruby uses system Ruby with isolated gem directories, so we don't check for
 // a ruby executable in the environment directory like other languages
-func (r *RubyLanguage) CheckHealth(envPath, _ string) error {
+func (r *RubyLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("ruby environment directory does not exist: %s", envPath)
@@ -480,7 +480,7 @@ func (r *RubyLanguage) CheckHealth(envPath, _ string) error {
 }
 
 // isRepositoryInstalled checks if a repository is already installed in the Ruby environment
-func (r *RubyLanguage) isRepositoryInstalled(envPath, _ /* repoPath */ string) bool {
+func (r *RubyLanguage) isRepositoryInstalled(envPath string) bool {
 	// First check if state file exists (matching Python pre-commit's logic)
 	stateFile := filepath.Join(envPath, ".ruby_install_state")
 	if _, err := os.Stat(stateFile); err == nil {

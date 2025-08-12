@@ -149,7 +149,7 @@ func (b *Builder) buildHaskellCommand(entry string, args []string) *exec.Cmd {
 }
 
 // buildFailCommand builds a fail command (always fails)
-func (b *Builder) buildFailCommand(_ string, _ []string) *exec.Cmd {
+func (b *Builder) buildFailCommand() *exec.Cmd {
 	// Create a command that will always fail
 	return exec.Command("sh", "-c", "exit 1")
 }

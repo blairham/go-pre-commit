@@ -106,7 +106,7 @@ func (p *PygrepLanguage) InstallDependencies(_ string, deps []string) error {
 }
 
 // CheckHealth verifies Python is available for pygrep
-func (p *PygrepLanguage) CheckHealth(envPath, _ string) error {
+func (p *PygrepLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("pygrep environment directory does not exist: %s", envPath)

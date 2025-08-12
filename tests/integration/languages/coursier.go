@@ -10,15 +10,17 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/repository/languages"
 )
 
-// CoursierLanguageTest implements LanguageTestRunner for Coursier (Scala/JVM)
+// CoursierLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for Coursier (Scala/JVM)
 type CoursierLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewCoursierLanguageTest creates a new Coursier language test
 func NewCoursierLanguageTest(testDir string) *CoursierLanguageTest {
 	return &CoursierLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangCoursier, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangCoursier, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangCoursier),
 	}
 }
 
@@ -105,4 +107,64 @@ func (ct *CoursierLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Coursier testing
+func (ct *CoursierLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-coursier
+        name: Test Coursier Hook
+        entry: echo "Testing Coursier"
+        language: coursier
+        files: \.scala$
+        additional_dependencies: ['org.scalameta:scalafmt-cli_2.13:3.7.12']
+`
+}
+
+// GetTestFiles returns test files needed for Coursier testing
+func (ct *CoursierLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"test.scala": `object TestApp extends App {
+  println("Hello from Coursier!")
+}
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Coursier environments
+func (ct *CoursierLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"bin",   // Coursier executables
+		"lib",   // JAR libraries
+		"cache", // Coursier cache
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Coursier environments
+func (ct *CoursierLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"build.sbt",     // SBT build file
+		"project",       // SBT project directory
+		"coursier.json", // Coursier configuration
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (ct *CoursierLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Coursier bidirectional cache compatibility")
+	t.Logf("   📋 Coursier environments manage JVM dependencies - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := ct.BaseBidirectionalTest.RunBidirectionalCacheTest(t, ct, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("coursier bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Coursier bidirectional cache compatibility test completed")
+	return nil
 }

@@ -161,33 +161,16 @@ func (s *SwiftLanguage) InstallDependencies(envPath string, deps []string) error
 	return nil
 }
 
-// CheckHealth checks the health of a Swift environment
-func (s *SwiftLanguage) CheckHealth(envPath, _ string) error {
-	// For Swift, we don't check for a binary in envPath/bin/swift like other languages
-	// Instead, we check if the Swift Package Manager can work in this environment
-
-	// First check if system Swift is available
-	if !s.IsRuntimeAvailable() {
-		return fmt.Errorf("swift runtime not available on system")
-	}
-
+// CheckHealth verifies that Swift is working correctly
+func (s *SwiftLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("swift environment directory does not exist: %s", envPath)
 	}
 
-	// Check if Package.swift exists (don't require Package.resolved during setup)
-	packagePath := filepath.Join(envPath, "Package.swift")
-	if _, err := os.Stat(packagePath); os.IsNotExist(err) {
-		return fmt.Errorf("package.swift not found in environment: %s", envPath)
-	}
-
-	// Try to validate the Package.swift by running swift package dump-package
-	// This is less expensive than show-dependencies and doesn't require Package.resolved
-	cmd := exec.Command("swift", "package", "dump-package")
-	cmd.Dir = envPath
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("swift environment health check failed (invalid Package.swift): %w", err)
+	// For Swift, we use the system runtime, so check if it's available
+	if !s.IsRuntimeAvailable() {
+		return fmt.Errorf("swift runtime not found in system PATH")
 	}
 
 	return nil

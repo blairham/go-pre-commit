@@ -11,15 +11,17 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/repository/languages"
 )
 
-// CondaLanguageTest implements LanguageTestRunner for Conda
+// CondaLanguageTest implements LanguageTestRunner and BidirectionalTestRunner for Conda
 type CondaLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewCondaLanguageTest creates a new Conda language test
 func NewCondaLanguageTest(testDir string) *CondaLanguageTest {
 	return &CondaLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangConda, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangConda, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(LangConda),
 	}
 }
 
@@ -172,4 +174,69 @@ func (c *CondaLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Conda testing
+func (c *CondaLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-conda
+        name: Test Conda Hook
+        entry: echo "Testing Conda"
+        language: conda
+        files: \.py$
+`
+}
+
+// GetTestFiles returns test files needed for Conda testing
+func (c *CondaLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"test.py": `#!/usr/bin/env python3
+"""Test Python file for conda hook testing."""
+
+def hello():
+    print("Hello from Conda!")
+
+if __name__ == "__main__":
+    hello()
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Conda environments
+func (c *CondaLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"bin",     // Conda executables
+		"lib",     // Conda libraries
+		"include", // Header files
+		"share",   // Shared data
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Conda environments
+func (c *CondaLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"conda-meta",       // Conda metadata directory
+		"environment.yml",  // Environment specification
+		"requirements.txt", // Python dependencies
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (c *CondaLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Conda bidirectional cache compatibility")
+	t.Logf("   📋 Conda environments create complex dependency structures - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := c.BaseBidirectionalTest.RunBidirectionalCacheTest(t, c, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("conda bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Conda bidirectional cache compatibility test completed")
+	return nil
 }

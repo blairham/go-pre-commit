@@ -13,12 +13,14 @@ import (
 // PerlLanguageTest implements LanguageTestRunner for Perl
 type PerlLanguageTest struct {
 	*BaseLanguageTest
+	*BaseBidirectionalTest
 }
 
 // NewPerlLanguageTest creates a new Perl language test
 func NewPerlLanguageTest(testDir string) *PerlLanguageTest {
 	return &PerlLanguageTest{
-		BaseLanguageTest: NewBaseLanguageTest(LangPerl, testDir),
+		BaseLanguageTest:      NewBaseLanguageTest(LangPerl, testDir),
+		BaseBidirectionalTest: NewBaseBidirectionalTest(testDir),
 	}
 }
 
@@ -80,4 +82,82 @@ func (pt *PerlLanguageTest) GetAdditionalValidations() []ValidationStep {
 			},
 		},
 	}
+}
+
+// GetPreCommitConfig returns the .pre-commit-config.yaml content for Perl testing
+func (pt *PerlLanguageTest) GetPreCommitConfig() string {
+	return `repos:
+  - repo: local
+    hooks:
+      - id: test-perl
+        name: Test Perl Hook
+        entry: echo "Testing Perl"
+        language: perl
+        files: \.pl$
+`
+}
+
+// GetTestFiles returns test files needed for Perl testing
+func (pt *PerlLanguageTest) GetTestFiles() map[string]string {
+	return map[string]string{
+		"main.pl": `#!/usr/bin/perl
+use strict;
+use warnings;
+
+print "Hello from Perl!\n";
+
+sub greet {
+    my $name = shift;
+    print "Hello, $name!\n";
+}
+
+greet("World");
+`,
+		"test.pl": `#!/usr/bin/perl
+use strict;
+use warnings;
+
+require "main.pl";
+
+print "Test completed\n";
+`,
+	}
+}
+
+// GetExpectedDirectories returns the directories expected in Perl environments
+func (pt *PerlLanguageTest) GetExpectedDirectories() []string {
+	return []string{
+		"lib",   // Perl library directory
+		"blib",  // Perl build library
+		"local", // Local Perl modules
+		"perl5", // Perl5 modules
+	}
+}
+
+// GetExpectedStateFiles returns state files expected in Perl environments
+func (pt *PerlLanguageTest) GetExpectedStateFiles() []string {
+	return []string{
+		"Makefile.PL", // Perl Makefile
+		"Build.PL",    // Module::Build script
+		"META.yml",    // CPAN metadata
+		"cpanfile",    // Perl dependencies
+	}
+}
+
+// TestBidirectionalCacheCompatibility tests cache compatibility between Go and Python implementations
+func (pt *PerlLanguageTest) TestBidirectionalCacheCompatibility(
+	t *testing.T,
+	pythonBinary, goBinary, tempDir string,
+) error {
+	t.Helper()
+	t.Logf("🔄 Testing Perl bidirectional cache compatibility")
+	t.Logf("   📋 Perl environments manage modules and libraries - testing cache compatibility")
+
+	// Use the base bidirectional test framework
+	if err := pt.BaseBidirectionalTest.RunBidirectionalCacheTest(t, pt, pythonBinary, goBinary, tempDir); err != nil {
+		return fmt.Errorf("perl bidirectional cache test failed: %w", err)
+	}
+
+	t.Logf("✅ Perl bidirectional cache compatibility test completed")
+	return nil
 }

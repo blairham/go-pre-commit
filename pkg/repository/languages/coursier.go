@@ -92,7 +92,7 @@ func (c *CoursierLanguage) InstallDependencies(envPath string, deps []string) er
 // CheckEnvironmentHealth checks if the Coursier environment is healthy
 func (c *CoursierLanguage) CheckEnvironmentHealth(envPath string) bool {
 	// Check base health first
-	if err := c.CheckHealth(envPath, language.VersionDefault); err != nil {
+	if err := c.CheckHealth(envPath); err != nil {
 		return false
 	}
 
@@ -275,12 +275,7 @@ func (c *CoursierLanguage) isCoursierAvailable() bool {
 }
 
 // CheckHealth performs health check for coursier environments
-func (c *CoursierLanguage) CheckHealth(envPath, version string) error {
-	// Python pre-commit only supports 'default' version
-	if version != "" && version != language.VersionDefault {
-		return fmt.Errorf("coursier only supports version 'default', got: %s", version)
-	}
-
+func (c *CoursierLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("environment directory does not exist: %s", envPath)
