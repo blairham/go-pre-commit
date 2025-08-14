@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/blairham/go-pre-commit/pkg/download/pkgmgr"
 	"github.com/blairham/go-pre-commit/pkg/language"
@@ -85,49 +84,6 @@ func (s *SwiftLanguage) SetupEnvironmentWithRepo(
 // InstallDependencies installs Swift packages
 func (s *SwiftLanguage) InstallDependencies(envPath string, deps []string) error {
 	if len(deps) == 0 {
-		return nil
-	}
-
-	// Skip actual package resolution during tests for speed, except for specific error test cases
-	testMode := os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue
-	currentPath := os.Getenv("PATH")
-	isPathModified := strings.Contains(currentPath, "empty") ||
-		strings.Contains(envPath, "fail") ||
-		strings.Contains(envPath, "error")
-
-	if testMode && !isPathModified {
-		// Create mock Swift package structure for tests
-		manifest := &pkgmgr.Manifest{
-			Name:         "PreCommitEnv",
-			Version:      "1.0.0",
-			Dependencies: deps,
-			ManifestType: pkgmgr.Swift,
-			AdditionalFiles: []pkgmgr.File{
-				{
-					Path:    "Sources/PreCommitEnv/main.swift",
-					Content: "// Pre-commit environment for Swift\n",
-					Mode:    0o644,
-				},
-			},
-		}
-
-		// Create manifest and additional files
-		if err := s.PackageManager.CreateManifest(envPath, manifest); err != nil {
-			return fmt.Errorf("failed to create Swift package manifest: %w", err)
-		}
-
-		// Create mock Package.resolved to simulate successful resolution
-		resolvedPath := filepath.Join(envPath, "Package.resolved")
-		resolvedContent := `{
-  "version": 1,
-  "object": {
-    "pins": []
-  }
-}`
-		if err := os.WriteFile(resolvedPath, []byte(resolvedContent), 0o600); err != nil {
-			return fmt.Errorf("failed to create mock Package.resolved: %w", err)
-		}
-
 		return nil
 	}
 

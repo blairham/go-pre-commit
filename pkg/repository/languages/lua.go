@@ -66,55 +66,9 @@ func (l *LuaLanguage) CheckHealth(envPath string) error {
 
 // InstallDependencies installs Lua rocks using luarocks
 //
-//nolint:gocognit,gocyclo,cyclop,nestif // Complex dependency installation logic for test vs production modes
+//nolint:gocognit,gocyclo,cyclop,nestif // Complex dependency installation logic
 func (l *LuaLanguage) InstallDependencies(envPath string, deps []string) error {
 	if len(deps) == 0 {
-		return nil
-	}
-
-	// Skip actual luarocks installation during tests for speed, except for specific error test cases
-	testMode := os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue
-	currentPath := os.Getenv("PATH")
-	isPathModified := strings.Contains(currentPath, "empty") ||
-		strings.Contains(envPath, "error") ||
-		strings.Contains(envPath, "fail")
-
-	if testMode && !isPathModified {
-		// Create mock lua_modules structure for tests
-		rocksPath := filepath.Join(envPath, "lua_modules")
-		if err := os.MkdirAll(rocksPath, 0o750); err != nil {
-			return fmt.Errorf("failed to create mock lua_modules directory: %w", err)
-		}
-
-		// Create mock lib and share directories
-		libPath := filepath.Join(rocksPath, "lib", "lua", "5.4")
-		sharePath := filepath.Join(rocksPath, "share", "lua", "5.4")
-		if err := os.MkdirAll(libPath, 0o750); err != nil {
-			return fmt.Errorf("failed to create mock lib directory: %w", err)
-		}
-		if err := os.MkdirAll(sharePath, 0o750); err != nil {
-			return fmt.Errorf("failed to create mock share directory: %w", err)
-		}
-
-		// Create mock rock files for each dependency
-		for _, dep := range deps {
-			// Parse dependency specification (name==version or just name)
-			parts := strings.Split(dep, "==")
-			var rock string
-			if len(parts) >= 1 {
-				rock = parts[0]
-			} else {
-				rock = dep
-			}
-
-			// Create mock Lua module file
-			moduleFile := filepath.Join(sharePath, rock+".lua")
-			mockModule := fmt.Sprintf("-- Mock Lua module for %s\nlocal %s = {}\nreturn %s", rock, rock, rock)
-			if err := os.WriteFile(moduleFile, []byte(mockModule), 0o600); err != nil {
-				return fmt.Errorf("failed to create mock module for %s: %w", rock, err)
-			}
-		}
-
 		return nil
 	}
 

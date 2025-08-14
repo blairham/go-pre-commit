@@ -294,15 +294,12 @@ func (bbt *BaseBidirectionalTest) commitFiles(repoDir string) error {
 }
 
 // testImplementation tests a specific implementation (Go or Python)
-func (bbt *BaseBidirectionalTest) testImplementation(
-	t *testing.T,
-	binary, repoDir, cacheDir, implName string,
+func (bbt *BaseBidirectionalTest) testImplementation(t *testing.T, binary, repoDir, _, implName string,
 ) error {
 	t.Helper()
 
 	cmd := exec.Command(binary, "install", "--install-hooks", "--overwrite")
 	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", cacheDir))
 
 	// Capture both stdout and stderr for debugging
 	output, err := cmd.CombinedOutput()

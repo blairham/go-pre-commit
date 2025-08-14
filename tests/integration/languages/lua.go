@@ -84,7 +84,7 @@ func (lt *LuaLanguageTest) GetPreCommitConfig() string {
     hooks:
       - id: test-lua
         name: Test Lua Hook
-        entry: echo "Testing Lua"
+        entry: test_script.lua
         language: lua
         files: \.lua$
 `
@@ -100,6 +100,9 @@ function greet(name)
 end
 
 greet("World")
+`,
+		"test_script.lua": `#!/usr/bin/env lua
+print("Testing Lua")
 `,
 		"test.lua": `-- Test file for Lua
 require("main")

@@ -579,7 +579,7 @@ func (te *TestExecutor) generateCoursierConfig() string {
         entry: scalafmt
         language: coursier
         files: \.scala$
-        additional_dependencies: ['scalafmt:3.7.12']
+        additional_dependencies: ['scalafmt']
 `
 }
 

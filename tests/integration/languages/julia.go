@@ -155,7 +155,7 @@ func (j *JuliaLanguageTest) GetPreCommitConfig() string {
     hooks:
       - id: test-julia
         name: Test Julia Hook
-        entry: echo "Testing Julia"
+        entry: test_script.jl
         language: julia
         files: \.jl$
 `
@@ -171,6 +171,9 @@ function greet(name)
 end
 
 greet("World")
+`,
+		"test_script.jl": `#!/usr/bin/env julia
+println("Testing Julia")
 `,
 		"Project.toml": `name = "TestProject"
 uuid = "12345678-1234-1234-1234-123456789abc"

@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/blairham/go-pre-commit/pkg/language"
 )
@@ -57,30 +56,6 @@ func (r *RustLanguage) SetupEnvironmentWithRepoInfo(
 
 // InstallDependencies installs Rust dependencies (crates) in the environment
 func (r *RustLanguage) InstallDependencies(envPath string, deps []string) error {
-	// Skip actual dependency installation during tests for speed, except for specific error test cases
-	testMode := os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue
-	if testMode && !strings.Contains(envPath, "fail") &&
-		!strings.Contains(envPath, "error") &&
-		!strings.Contains(envPath, "cargo-not-available") {
-		// Create mock environment structure for tests
-		binDir := filepath.Join(envPath, "bin")
-		if err := os.MkdirAll(binDir, 0o750); err != nil {
-			return fmt.Errorf("failed to create mock bin directory: %w", err)
-		}
-
-		// Create mock Cargo.toml to simulate successful installation
-		cargoToml := filepath.Join(envPath, "Cargo.toml")
-		mockContent := "[dependencies]\n"
-		for _, dep := range deps {
-			mockContent += fmt.Sprintf("%s = \"*\"\n", dep)
-		}
-		if err := os.WriteFile(cargoToml, []byte(mockContent), 0o600); err != nil {
-			return fmt.Errorf("failed to create mock Cargo.toml: %w", err)
-		}
-
-		return nil
-	}
-
 	cargoBin := filepath.Join(envPath, "bin", "cargo")
 
 	// If cargo is not in the environment, try to use system cargo

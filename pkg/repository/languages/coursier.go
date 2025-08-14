@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/blairham/go-pre-commit/pkg/language"
 )
@@ -34,34 +33,6 @@ func NewCoursierLanguage() *CoursierLanguage {
 // InstallDependencies installs Scala/JVM dependencies via Coursier
 func (c *CoursierLanguage) InstallDependencies(envPath string, deps []string) error {
 	if len(deps) == 0 {
-		return nil
-	}
-
-	// Skip actual Coursier package installation during tests for speed
-	testMode := os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue
-	currentPath := os.Getenv("PATH")
-	isPathModified := strings.Contains(currentPath, "empty") ||
-		strings.Contains(envPath, "error") ||
-		strings.Contains(envPath, "fail") ||
-		strings.Contains(envPath, "invalid") ||
-		strings.Contains(currentPath, "MockedFailedInstallation")
-
-	if testMode && !isPathModified {
-		// Create mock apps directory with fake installed apps for tests
-		appsDir := filepath.Join(envPath, "apps")
-		if err := os.MkdirAll(appsDir, 0o750); err != nil {
-			return fmt.Errorf("failed to create apps directory: %w", err)
-		}
-
-		// Create mock installed apps
-		for _, dep := range deps {
-			appFile := filepath.Join(appsDir, dep)
-			content := fmt.Sprintf("#!/bin/bash\n# Mock Coursier app for %s\necho \"Mock %s app\"", dep, dep)
-			if err := os.WriteFile(appFile, []byte(content), 0o600); err != nil {
-				return fmt.Errorf("failed to create mock app %s: %w", dep, err)
-			}
-		}
-
 		return nil
 	}
 
@@ -94,21 +65,6 @@ func (c *CoursierLanguage) CheckEnvironmentHealth(envPath string) bool {
 	// Check base health first
 	if err := c.CheckHealth(envPath); err != nil {
 		return false
-	}
-
-	// Skip actual Coursier commands during tests for speed
-	testMode := os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue
-	currentPath := os.Getenv("PATH")
-	isPathModified := strings.Contains(currentPath, "empty") ||
-		strings.Contains(envPath, "error") ||
-		strings.Contains(envPath, "fail") ||
-		strings.Contains(envPath, "FailedListCommand")
-
-	if testMode && !isPathModified {
-		// In test mode, just check if apps directory exists
-		appsDir := filepath.Join(envPath, "apps")
-		_, err := os.Stat(appsDir)
-		return err == nil
 	}
 
 	// Check if apps directory exists (if dependencies were installed)
@@ -175,52 +131,26 @@ func (c *CoursierLanguage) SetupEnvironmentWithRepo(
 	// Install additional dependencies if specified using system coursier
 	// This matches Python pre-commit's _install function behavior
 	if len(additionalDeps) > 0 {
-		// Skip actual Coursier commands during tests for speed
-		testMode := os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue
-		currentPath := os.Getenv("PATH")
-		isPathModified := strings.Contains(currentPath, "empty") ||
-			strings.Contains(envPath, "error") ||
-			strings.Contains(envPath, "fail") ||
-			strings.Contains(envPath, "FailedFetch") ||
-			strings.Contains(envPath, "FailedInstall")
+		// Real Coursier installation with proper environment setup
+		// Set environment variables to match Python pre-commit behavior
+		env := append(os.Environ(),
+			fmt.Sprintf("COURSIER_CACHE=%s", coursierCacheDir),
+			fmt.Sprintf("PATH=%s%s%s", envPath, string(os.PathListSeparator), os.Getenv("PATH")),
+		)
 
-		if testMode && !isPathModified {
-			// Create mock apps directory and files for tests
-			appsDir := filepath.Join(envPath, "apps")
-			if err := os.MkdirAll(appsDir, 0o750); err != nil {
-				return "", fmt.Errorf("failed to create apps directory: %w", err)
+		for _, dep := range additionalDeps {
+			// First fetch the dependency
+			fetchCmd := exec.Command(coursierExe, "fetch", dep)
+			fetchCmd.Env = env
+			if err := fetchCmd.Run(); err != nil {
+				return "", fmt.Errorf("failed to fetch coursier dependency %s: %w", dep, err)
 			}
 
-			// Create mock installed apps
-			for _, dep := range additionalDeps {
-				appFile := filepath.Join(appsDir, dep)
-				content := fmt.Sprintf("#!/bin/bash\n# Mock Coursier app for %s\necho \"Mock %s app\"", dep, dep)
-				if err := os.WriteFile(appFile, []byte(content), 0o600); err != nil {
-					return "", fmt.Errorf("failed to create mock app %s: %w", dep, err)
-				}
-			}
-		} else {
-			// Real Coursier installation with proper environment setup
-			// Set environment variables to match Python pre-commit behavior
-			env := append(os.Environ(),
-				fmt.Sprintf("COURSIER_CACHE=%s", coursierCacheDir),
-				fmt.Sprintf("PATH=%s%s%s", envPath, string(os.PathListSeparator), os.Getenv("PATH")),
-			)
-
-			for _, dep := range additionalDeps {
-				// First fetch the dependency
-				fetchCmd := exec.Command(coursierExe, "fetch", dep)
-				fetchCmd.Env = env
-				if err := fetchCmd.Run(); err != nil {
-					return "", fmt.Errorf("failed to fetch coursier dependency %s: %w", dep, err)
-				}
-
-				// Then install it to the environment directory
-				installCmd := exec.Command(coursierExe, "install", "--dir", envPath, dep)
-				installCmd.Env = env
-				if err := installCmd.Run(); err != nil {
-					return "", fmt.Errorf("failed to install coursier dependency %s: %w", dep, err)
-				}
+			// Then install it to the environment directory
+			installCmd := exec.Command(coursierExe, "install", "--dir", envPath, dep)
+			installCmd.Env = env
+			if err := installCmd.Run(); err != nil {
+				return "", fmt.Errorf("failed to install coursier dependency %s: %w", dep, err)
 			}
 		}
 	}
@@ -279,26 +209,6 @@ func (c *CoursierLanguage) CheckHealth(envPath string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("environment directory does not exist: %s", envPath)
-	}
-
-	// Skip actual validation during tests for speed
-	testMode := os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue
-	currentPath := os.Getenv("PATH")
-	isPathModified := strings.Contains(currentPath, "empty") ||
-		strings.Contains(envPath, "error") ||
-		strings.Contains(envPath, "fail") ||
-		strings.Contains(envPath, "HelpCommandFailure")
-
-	if testMode && !isPathModified {
-		// In test mode, still verify runtime is available if it should be
-		if _, err := exec.LookPath("cs"); err != nil {
-			if _, err := exec.LookPath(coursierExecutable); err != nil {
-				return fmt.Errorf("pre-commit requires system-installed \"cs\" or " +
-					"\"coursier\" executables in the application search path")
-			}
-		}
-		// Runtime is available, skip detailed validation in test mode
-		return nil
 	}
 
 	// Check if system coursier is available (required by Python pre-commit)

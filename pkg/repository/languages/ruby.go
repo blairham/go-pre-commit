@@ -234,23 +234,6 @@ func (r *RubyLanguage) installGemsDirectly(envPath string, deps []string) error 
 	}
 
 	// Skip actual gem installation during tests for speed
-	if os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue {
-		// Create mock gems directory structure for tests
-		gemsDir := filepath.Join(envPath, "gems")
-		gemsBinDir := filepath.Join(gemsDir, "bin")
-		if err := os.MkdirAll(gemsBinDir, 0o750); err != nil {
-			return fmt.Errorf("failed to create mock gems directories: %w", err)
-		}
-		// Create mock gem files to simulate successful installation
-		for _, dep := range deps {
-			mockGemFile := filepath.Join(gemsDir, dep+".gem")
-			if err := os.WriteFile(mockGemFile, []byte("mock gem"), 0o600); err != nil {
-				return fmt.Errorf("failed to create mock gem file: %w", err)
-			}
-		}
-		return nil
-	}
-
 	gemsDir := filepath.Join(envPath, "gems")
 	gemsBinDir := filepath.Join(gemsDir, "bin")
 
@@ -286,21 +269,6 @@ func (r *RubyLanguage) installGemsDirectly(envPath string, deps []string) error 
 // installGemsUsingBundle installs gems using bundle install for repositories with Gemfiles
 // This uses bundle but installs to our isolated gems directory
 func (r *RubyLanguage) installGemsUsingBundle(envPath, repoPath string) error {
-	// Skip actual bundle install during tests for speed
-	if os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue {
-		// Create mock gems directory structure for tests
-		gemsDir := filepath.Join(envPath, "gems")
-		if err := os.MkdirAll(gemsDir, 0o750); err != nil {
-			return fmt.Errorf("failed to create mock gems directory: %w", err)
-		}
-		// Create mock Gemfile.lock to simulate successful bundle install
-		lockFile := filepath.Join(repoPath, "Gemfile.lock")
-		if err := os.WriteFile(lockFile, []byte("DEPENDENCIES\n  test-gem\n"), 0o600); err != nil {
-			return fmt.Errorf("failed to create mock Gemfile.lock: %w", err)
-		}
-		return nil
-	}
-
 	gemsDir := filepath.Join(envPath, "gems")
 	gemfilePath := filepath.Join(repoPath, "Gemfile")
 
@@ -327,30 +295,6 @@ func (r *RubyLanguage) installGemsUsingBundle(envPath, repoPath string) error {
 // buildAndInstallGem builds and installs a gem from a .gemspec file in the repository
 // This matches Python pre-commit's behavior when a gem is present in the repository
 func (r *RubyLanguage) buildAndInstallGem(envPath, repoPath string) error {
-	// Skip actual gem build/install during tests for speed
-	if os.Getenv("GO_PRE_COMMIT_TEST_MODE") == testModeEnvValue {
-		// Create mock gems directory structure for tests
-		gemsDir := filepath.Join(envPath, "gems")
-		gemsBinDir := filepath.Join(gemsDir, "bin")
-		if err := os.MkdirAll(gemsBinDir, 0o750); err != nil {
-			return fmt.Errorf("failed to create mock gems directories: %w", err)
-		}
-
-		// Check if .gemspec files exist (simulate the real check)
-		gemspecPath := filepath.Join(repoPath, "*.gemspec")
-		gemspecs, err := filepath.Glob(gemspecPath)
-		if err != nil || len(gemspecs) == 0 {
-			return fmt.Errorf("no .gemspec files found in repository")
-		}
-
-		// Create mock .gem file to simulate successful build
-		mockGemFile := filepath.Join(repoPath, "test.gem")
-		if err := os.WriteFile(mockGemFile, []byte("mock gem"), 0o600); err != nil {
-			return fmt.Errorf("failed to create mock gem file: %w", err)
-		}
-		return nil
-	}
-
 	gemsDir := filepath.Join(envPath, "gems")
 	gemsBinDir := filepath.Join(gemsDir, "bin")
 

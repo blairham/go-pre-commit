@@ -39,14 +39,14 @@ func (ct *CoursierLanguageTest) SetupRepositoryFiles(repoPath string) error {
     entry: scalafmt
     language: coursier
     files: \.scala$
-    additional_dependencies: ['org.scalameta:scalafmt-cli_2.13:3.7.12']
+    additional_dependencies: ['scalafmt']
 -   id: scalafix
     name: Scalafix
     description: Lint and refactor Scala code using scalafix
     entry: scalafix
     language: coursier
     files: \.scala$
-    additional_dependencies: ['ch.epfl.scala:scalafix-cli_2.13:0.11.0']
+    additional_dependencies: ['scalafix']
 `
 	if err := os.WriteFile(hooksFile, []byte(hooksContent), 0o600); err != nil {
 		return fmt.Errorf("failed to create hooks file: %w", err)
@@ -119,7 +119,7 @@ func (ct *CoursierLanguageTest) GetPreCommitConfig() string {
         entry: echo "Testing Coursier"
         language: coursier
         files: \.scala$
-        additional_dependencies: ['org.scalameta:scalafmt-cli_2.13:3.7.12']
+        additional_dependencies: ['scalafmt']
 `
 }
 
