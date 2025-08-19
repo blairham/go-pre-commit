@@ -127,17 +127,17 @@ func (c *CondaLanguage) SetupEnvironmentWithRepo(
 		return "", fmt.Errorf("failed to create environment parent directory: %w", err)
 	}
 
-	// Create conda environment using optimized approach matching Python pre-commit
-	if err := c.createOptimizedCondaEnvironment(envPath, envFile, additionalDeps); err != nil {
+	// Create conda environment matching Python pre-commit
+	if err := c.createCondaEnvironment(envPath, envFile, additionalDeps); err != nil {
 		return "", fmt.Errorf("failed to create conda environment: %w", err)
 	}
 
 	return envPath, nil
 }
 
-// createOptimizedCondaEnvironment creates a conda environment exactly like Python pre-commit
+// createCondaEnvironment creates a conda environment exactly like Python pre-commit
 // Uses the exact same command structure as Python pre-commit with no optimization flags
-func (c *CondaLanguage) createOptimizedCondaEnvironment(envPath, envFile string, additionalDeps []string) error {
+func (c *CondaLanguage) createCondaEnvironment(envPath, envFile string, additionalDeps []string) error {
 	repoDir := filepath.Dir(envFile)
 
 	// Get conda executable (conda by default, matches Python pre-commit)

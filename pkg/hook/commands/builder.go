@@ -75,7 +75,7 @@ func (b *Builder) buildLanguageCommand(
 	case "dotnet":
 		return b.buildDotnetCommand(entry, args), nil
 	case "julia":
-		return b.buildJuliaCommand(entry, args), nil
+		return b.buildJuliaCommand(entry, args, env), nil
 	case "pygrep":
 		return b.buildPygrepCommand(entry, args), nil
 	default:

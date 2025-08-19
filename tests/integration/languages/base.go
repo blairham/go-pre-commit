@@ -110,25 +110,24 @@ func (bbt *BaseBidirectionalTest) RunBidirectionalCacheTest(
 	}
 
 	repoDir := filepath.Join(tempDir, "test-repo")
-	goCacheDir := filepath.Join(tempDir, "go-cache")
-	pythonCacheDir := filepath.Join(tempDir, "python-cache")
+	// Use shared cache directory for compatibility testing
+	sharedCacheDir := filepath.Join(tempDir, "shared-cache")
 
 	// Setup repository
 	if err := bbt.setupTestRepository(repoDir, runner); err != nil {
 		return fmt.Errorf("failed to setup test repository: %w", err)
 	}
 
-	// Run bidirectional tests
-	return bbt.runBidirectionalTests(t, runner, goBinary, pythonBinary, repoDir, goCacheDir, pythonCacheDir)
+	// Run bidirectional tests with shared cache
+	return bbt.runBidirectionalTests(t, runner, goBinary, pythonBinary, repoDir, sharedCacheDir, sharedCacheDir)
 }
 
 // setupTestDirectories creates the necessary cache and repository directories
 func (bbt *BaseBidirectionalTest) setupTestDirectories(tempDir string) error {
-	goCacheDir := filepath.Join(tempDir, "go-cache")
-	pythonCacheDir := filepath.Join(tempDir, "python-cache")
+	sharedCacheDir := filepath.Join(tempDir, "shared-cache")
 	repoDir := filepath.Join(tempDir, "test-repo")
 
-	for _, dir := range []string{goCacheDir, pythonCacheDir, repoDir} {
+	for _, dir := range []string{sharedCacheDir, repoDir} {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
@@ -214,6 +213,14 @@ func (bbt *BaseBidirectionalTest) runBidirectionalTests(
 	// Verify Go created the expected environment structure
 	if err := bbt.verifyEnvironmentStructure(t, repoDir, runner, "Go"); err != nil {
 		return fmt.Errorf("go environment structure verification failed: %w", err)
+	}
+
+	// Clean shared cache between directions to ensure fresh start for Python
+	if goCacheDir == pythonCacheDir {
+		t.Logf("   🧹 Cleaning shared cache between Go→Python test directions")
+		if err := bbt.cleanSharedCache(t, goBinary, repoDir, goCacheDir); err != nil {
+			t.Logf("   ⚠️  Cache cleanup warning (non-fatal): %v", err)
+		}
 	}
 
 	// Test 2: Python creates cache → verify structure
@@ -308,6 +315,21 @@ func (bbt *BaseBidirectionalTest) testImplementation(t *testing.T, binary, repoD
 		return fmt.Errorf("%s install failed: %w\nOutput: %s", implName, err, string(output))
 	}
 	t.Logf("   ✅ %s install completed successfully", implName)
+	return nil
+}
+
+// cleanSharedCache cleans the shared cache directory between test directions
+func (bbt *BaseBidirectionalTest) cleanSharedCache(t *testing.T, binary, repoDir, cacheDir string) error {
+	t.Helper()
+
+	cmd := exec.Command(binary, "clean")
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PRE_COMMIT_HOME=%s", cacheDir))
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cache clean failed: %w\nOutput: %s", err, string(output))
+	}
 	return nil
 }
 

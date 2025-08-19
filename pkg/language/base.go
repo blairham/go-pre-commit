@@ -2,6 +2,7 @@
 package language
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -202,6 +203,63 @@ func (bl *Base) ensureDirectory(path string) error {
 	if err := os.MkdirAll(path, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, err)
 	}
+	return nil
+}
+
+// InstallState represents the install state for Python pre-commit compatibility
+type InstallState struct {
+	AdditionalDependencies []string `json:"additional_dependencies"`
+}
+
+// CreateInstallStateFiles creates the install state files that Python pre-commit expects
+// This ensures compatibility across all language implementations
+func (bl *Base) CreateInstallStateFiles(envPath string, additionalDeps []string) error {
+	// Create .install_state_v1 with additional dependencies (Python pre-commit compatibility)
+	installState := InstallState{
+		AdditionalDependencies: additionalDeps,
+	}
+
+	if additionalDeps == nil {
+		installState.AdditionalDependencies = []string{}
+	}
+
+	stateData, err := json.Marshal(installState)
+	if err != nil {
+		return fmt.Errorf("failed to marshal install state: %w", err)
+	}
+
+	// Add space after colon to match Python pre-commit format exactly
+	stateDataStr := string(stateData)
+	stateDataStr = strings.ReplaceAll(stateDataStr, ":", ": ")
+
+	installStateV1Path := filepath.Join(envPath, ".install_state_v1")
+	if err := os.WriteFile(installStateV1Path, []byte(stateDataStr), 0o600); err != nil {
+		return fmt.Errorf("failed to create .install_state_v1: %w", err)
+	}
+
+	// Create empty .install_state_v2 (Python pre-commit compatibility)
+	installStateV2Path := filepath.Join(envPath, ".install_state_v2")
+	if err := os.WriteFile(installStateV2Path, []byte{}, 0o600); err != nil {
+		return fmt.Errorf("failed to create .install_state_v2: %w", err)
+	}
+
+	return nil
+}
+
+// CheckInstallStateFiles verifies that install state files exist and are valid
+func (bl *Base) CheckInstallStateFiles(envPath string) error {
+	installStateV1Path := filepath.Join(envPath, ".install_state_v1")
+	installStateV2Path := filepath.Join(envPath, ".install_state_v2")
+
+	// Check if install state files exist (Python pre-commit compatibility)
+	if _, err := os.Stat(installStateV1Path); err != nil {
+		return fmt.Errorf("install state v1 missing: %w", err)
+	}
+
+	if _, err := os.Stat(installStateV2Path); err != nil {
+		return fmt.Errorf("install state v2 missing: %w", err)
+	}
+
 	return nil
 }
 

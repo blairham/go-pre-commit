@@ -186,11 +186,10 @@ version = "0.1.0"
 
 // GetExpectedDirectories returns the directories expected in Julia environments
 func (j *JuliaLanguageTest) GetExpectedDirectories() []string {
+	// Julia environments in pre-commit don't create standard project directories
+	// They only create the minimal files needed for package management
 	return []string{
-		"src",      // Julia source directory
-		"test",     // Julia test directory
-		"deps",     // Julia dependencies
-		"packages", // Julia packages
+		// No directories are created by either Python or Go pre-commit implementations
 	}
 }
 

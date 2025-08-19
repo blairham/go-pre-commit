@@ -752,11 +752,12 @@ func getRevisionForRepo(repo string) string {
 	}
 }
 
-// benchmarkInstallHooks is a helper function to reduce code duplication
-func (te *TestExecutor) benchmarkInstallHooks(
+// benchmarkInstallHooksWithCache is a helper function to reduce code duplication
+func (te *TestExecutor) benchmarkInstallHooksWithCache(
 	t *testing.T,
 	test LanguageCompatibilityTest,
 	repoDir string,
+	cacheDir string,
 	binary string,
 	binaryName string,
 	getVersion func() string,
@@ -778,7 +779,6 @@ func (te *TestExecutor) benchmarkInstallHooks(
 	_ = os.RemoveAll(hooksDir) //nolint:errcheck // Test cleanup, errors can be ignored
 
 	// Clean cache to ensure we're measuring the actual environment setup work
-	cacheDir := filepath.Join(filepath.Dir(repoDir), "cache")
 	if err := te.runCommandWithCache(
 		repoDir,
 		cacheDir,
@@ -827,10 +827,14 @@ func (te *TestExecutor) benchmarkGoInstallHooks(
 ) {
 	t.Helper()
 
-	installTime, err := te.benchmarkInstallHooks(
+	// Use separate Go cache directory for performance testing
+	goCacheDir := filepath.Join(filepath.Dir(repoDir), "go-perf-cache")
+
+	installTime, err := te.benchmarkInstallHooksWithCache(
 		t,
 		test,
 		repoDir,
+		goCacheDir,
 		te.suite.goBinary,
 		"Go",
 		te.getGoVersion,
@@ -853,10 +857,14 @@ func (te *TestExecutor) benchmarkPythonInstallHooks(
 ) {
 	t.Helper()
 
-	installTime, err := te.benchmarkInstallHooks(
+	// Use separate Python cache directory for performance testing
+	pythonCacheDir := filepath.Join(filepath.Dir(repoDir), "python-perf-cache")
+
+	installTime, err := te.benchmarkInstallHooksWithCache(
 		t,
 		test,
 		repoDir,
+		pythonCacheDir,
 		te.suite.pythonBinary,
 		"Python",
 		te.getPythonVersion,

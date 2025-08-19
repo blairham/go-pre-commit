@@ -4,8 +4,6 @@ package environment
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/blairham/go-pre-commit/pkg/config"
@@ -64,7 +62,9 @@ func (m *Manager) SetupEnvironment(
 	// Setup environment (languages can handle runtime installation during setup)
 	var envPath string
 	if repoPath != "" {
-		envPath, err = langMgr.SetupEnvironmentWithRepo(m.cacheDir, version, repoPath, "", additionalDeps)
+		// For repository-specific setups, use the repository path as the cache directory
+		// so environments are created within the repository structure
+		envPath, err = langMgr.SetupEnvironmentWithRepo(repoPath, version, repoPath, "", additionalDeps)
 	} else {
 		envPath, err = langMgr.SetupEnvironment(m.cacheDir, version, additionalDeps)
 	}
@@ -193,81 +193,31 @@ func (m *Manager) CheckEnvironmentHealth(lang, envPath string) bool {
 	return langMgr.CheckEnvironmentHealth(envPath)
 }
 
-// SetupHookEnvironment sets up the environment for running a hook
-func (m *Manager) SetupHookEnvironment(
-	hook config.Hook,
-	_ config.Repo, // repo is unused in current implementation
-	repoPath string,
-) (map[string]string, error) {
-	// Setup environment using the modular manager
-	envPath, err := m.SetupEnvironment(hook.Language, hook.LanguageVersion, hook.AdditionalDeps, repoPath)
+// SetupHookEnvironment sets up the environment for a hook
+func (m *Manager) SetupHookEnvironment(hook config.Hook, repo config.Repo, repoPath string) (map[string]string, error) {
+	// Extract language info
+	language := hook.Language
+	version := hook.LanguageVersion
+	if version == "" {
+		version = "default"
+	}
+
+	// Set up the environment and get the environment path
+	envPath, err := m.SetupEnvironment(language, version, hook.AdditionalDeps, repoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Base environment variables
-	env := map[string]string{
-		"PRE_COMMIT_ENV_PATH": envPath,
-		"PRE_COMMIT_LANGUAGE": hook.Language,
-		"PRE_COMMIT_VERSION":  hook.LanguageVersion,
-	}
+	// Return environment variables for the hook
+	env := make(map[string]string)
 
-	// Add language-specific environment variables
-	switch hook.Language {
-	case "python", "python3":
-		// Set VIRTUAL_ENV for Python hooks so buildPythonCommand can find executables
-		env["VIRTUAL_ENV"] = envPath
-		// Also set PATH to include the environment's bin directory
-		binPath := filepath.Join(envPath, "bin")
-		if currentPath := os.Getenv("PATH"); currentPath != "" {
-			env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
-		} else {
-			env["PATH"] = binPath
-		}
-	case "conda":
-		// Set conda environment variables and PATH
-		env["CONDA_PREFIX"] = envPath
-		// Get the conda language manager to determine the correct bin path
-		if langMgr, exists := m.languageMap[hook.Language]; exists {
-			binPath := langMgr.GetEnvironmentBinPath(envPath)
-			if currentPath := os.Getenv("PATH"); currentPath != "" {
-				env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
-			} else {
-				env["PATH"] = binPath
-			}
-		}
-	case "node":
-		// Set NODE_VIRTUAL_ENV for Node.js hooks
-		env["NODE_VIRTUAL_ENV"] = envPath
-	case "golang", "go":
-		// Set GOCACHE and GOPATH to prevent cache errors
-		goCacheDir := filepath.Join(envPath, "gocache")
-		goPath := filepath.Join(envPath, "gopath")
-
-		// Create the directories if they don't exist
-		if err := os.MkdirAll(goCacheDir, 0o750); err == nil {
-			env["GOCACHE"] = goCacheDir
-		}
-		if err := os.MkdirAll(goPath, 0o750); err == nil {
-			env["GOPATH"] = goPath
-		}
-
-		// Add environment's bin directory to PATH for Go executables
-		binPath := filepath.Join(envPath, "bin")
-		if currentPath := os.Getenv("PATH"); currentPath != "" {
-			env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
-		} else {
-			env["PATH"] = binPath
-		}
-	case "swift":
-		// Set SWIFT_ENV for Swift hooks so buildSwiftCommand can find environment
-		env["SWIFT_ENV"] = envPath
+	// Add environment path information if needed
+	if envPath != "" {
+		env["PRE_COMMIT_ENV_PATH"] = envPath
 	}
 
 	return env, nil
-}
-
-// CheckEnvironmentHealthWithRepo checks if a language environment is healthy within a repository context
+} // CheckEnvironmentHealthWithRepo checks if a language environment is healthy within a repository context
 func (m *Manager) CheckEnvironmentHealthWithRepo(lang, version, repoPath string) error {
 	envPath, err := m.SetupEnvironment(lang, version, nil, repoPath)
 	if err != nil {

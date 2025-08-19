@@ -101,7 +101,6 @@ func (c *InstallCommand) Run(args []string) int {
 
 	installed := c.installHooks(repo, hookTypes, opts)
 	if installed == 0 {
-		fmt.Println("No hooks were installed")
 		return 1
 	}
 
@@ -112,7 +111,6 @@ func (c *InstallCommand) Run(args []string) int {
 			fmt.Printf("Error: failed to install hook environments: %v\n", err)
 			return 1
 		}
-		fmt.Println("Hook environments installed successfully")
 	}
 
 	return 0
@@ -318,6 +316,7 @@ func (c *InstallCommand) repoNeedsEnvironmentSetup(repo config.Repo) bool {
 		"conda":  true,
 		"python": true,
 		"node":   true,
+		"julia":  true, // Julia requires environment setup with Pkg management
 		// Add other languages that need environments as needed
 	}
 
@@ -342,7 +341,8 @@ func (c *InstallCommand) setupLocalRepoEnvironments(
 
 	// Process each hook that needs environment setup
 	for _, hook := range repo.Hooks {
-		if hook.Language == "conda" {
+		switch hook.Language {
+		case "conda":
 			fmt.Printf("[INFO] Installing environment for %s.\n", repo.Repo)
 			fmt.Printf("[INFO] Once installed this environment will be reused.\n")
 			fmt.Printf("[INFO] This may take a few minutes...\n")
@@ -350,6 +350,15 @@ func (c *InstallCommand) setupLocalRepoEnvironments(
 			// Set up conda environment for this hook
 			if err := c.setupCondaEnvironment(hook, cwd, repoManager); err != nil {
 				return fmt.Errorf("failed to setup conda environment for hook %s: %w", hook.ID, err)
+			}
+		case "julia":
+			fmt.Printf("[INFO] Installing environment for %s.\n", repo.Repo)
+			fmt.Printf("[INFO] Once installed this environment will be reused.\n")
+			fmt.Printf("[INFO] This may take a few minutes...\n")
+
+			// Set up julia environment for this hook
+			if err := c.setupJuliaEnvironment(hook, repoManager); err != nil {
+				return fmt.Errorf("failed to setup julia environment for hook %s: %w", hook.ID, err)
 			}
 		}
 		// Add other language environment setups as needed
@@ -375,6 +384,31 @@ func (c *InstallCommand) setupCondaEnvironment(
 	_, err := repoManager.SetupHookEnvironment(hook, repoInfo, repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to setup conda environment: %w", err)
+	}
+
+	return nil
+}
+
+// setupJuliaEnvironment creates a julia environment for a specific hook
+func (c *InstallCommand) setupJuliaEnvironment(
+	hook config.Hook,
+	repoManager *repository.Manager,
+) error {
+	// Create mock repository info for local repo
+	repoInfo := config.Repo{
+		Repo:  "local",
+		Rev:   "HEAD",
+		Hooks: []config.Hook{hook},
+	}
+
+	// Get the proper repository cache path (this will create repo[hash] structure)
+	repoCachePath := repoManager.GetRepoPath(repoInfo)
+
+	// Setup environment using the repository manager's environment manager
+	// Pass the repository cache path, not the current working directory
+	_, err := repoManager.SetupHookEnvironment(hook, repoInfo, repoCachePath)
+	if err != nil {
+		return fmt.Errorf("failed to setup julia environment: %w", err)
 	}
 
 	return nil

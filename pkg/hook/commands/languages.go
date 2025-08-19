@@ -322,7 +322,41 @@ func (b *Builder) buildDotnetCommand(entry string, args []string) *exec.Cmd {
 }
 
 // buildJuliaCommand builds a Julia command
-func (b *Builder) buildJuliaCommand(entry string, args []string) *exec.Cmd {
+func (b *Builder) buildJuliaCommand(entry string, args []string, env map[string]string) *exec.Cmd {
+	// Check if we have a Julia environment set up
+	if juliaEnv, exists := env["PRE_COMMIT_ENV_PATH"]; exists && juliaEnv != "" {
+		// Use the Julia environment with proper project path
+		var cmd *exec.Cmd
+
+		switch {
+		case strings.HasSuffix(entry, ".jl"):
+			// Julia source file - run with julia in the environment
+			cmdArgs := []string{"--project=" + juliaEnv, "--startup-file=no", entry}
+			cmdArgs = append(cmdArgs, args...)
+			cmd = exec.Command("julia", cmdArgs...)
+		case entry == "julia":
+			// Running julia directly - pass files as arguments
+			cmdArgs := []string{"--project=" + juliaEnv, "--startup-file=no"}
+			cmdArgs = append(cmdArgs, args...)
+			cmd = exec.Command("julia", cmdArgs...)
+		default:
+			// Direct executable - check if it exists in the environment
+			cmd = exec.Command(entry, args...)
+		}
+
+		// Set Julia environment variables for optimization
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = append(cmd.Env,
+			"JULIA_PKG_PRECOMPILE_AUTO=0",
+			"JULIA_HISTORY_FILE=off",
+			"JULIA_BANNER=no")
+
+		return cmd
+	}
+
+	// Fallback: no environment setup
 	if strings.HasSuffix(entry, ".jl") {
 		// Julia source file - run with julia
 		cmdArgs := []string{entry}
