@@ -121,6 +121,11 @@ func (c *CoursierLanguage) SetupEnvironmentWithRepo(
 		return "", fmt.Errorf("failed to create coursier environment directory: %w", err)
 	}
 
+	// Create install state files for Python pre-commit compatibility
+	if err := c.CreateInstallStateFiles(envPath, additionalDeps); err != nil {
+		return "", fmt.Errorf("failed to create install state files: %w", err)
+	}
+
 	// Set up coursier cache directory to match Python pre-commit behavior
 	// Python pre-commit sets COURSIER_CACHE to envdir/.cs-cache
 	coursierCacheDir := filepath.Join(envPath, ".cs-cache")

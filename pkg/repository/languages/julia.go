@@ -146,10 +146,11 @@ func (j *JuliaLanguage) createJuliaCommand(envPath, script string) *exec.Cmd {
 	cmd.Dir = envPath
 
 	// Set environment variables for faster Julia execution
-	env := os.Environ()
-	env = append(env, "JULIA_PKG_PRECOMPILE_AUTO=0") // Skip automatic precompilation
-	env = append(env, "JULIA_HISTORY_FILE=off")      // Disable history file
-	env = append(env, "JULIA_BANNER=no")             // Disable startup banner
+	env := append(os.Environ(),
+		"JULIA_PKG_PRECOMPILE_AUTO=0", // Skip automatic precompilation
+		"JULIA_HISTORY_FILE=off",      // Disable history file
+		"JULIA_BANNER=no",             // Disable startup banner
+	)
 	cmd.Env = env
 
 	return cmd
@@ -157,14 +158,9 @@ func (j *JuliaLanguage) createJuliaCommand(envPath, script string) *exec.Cmd {
 
 // createEnvironmentWithDeps creates a Julia environment with specified dependencies
 func (j *JuliaLanguage) createEnvironmentWithDeps(envPath string, additionalDeps []string) error {
-	// Create environment directory
-	if err := os.MkdirAll(envPath, 0o755); err != nil {
-		return fmt.Errorf("failed to create Julia environment directory: %w", err)
-	}
-
-	// Create install state files for Python pre-commit compatibility
-	if err := j.CreateInstallStateFiles(envPath, additionalDeps); err != nil {
-		return fmt.Errorf("failed to create install state files: %w", err)
+	// Create environment directory and install state files (DRY)
+	if err := j.SetupEnvironmentDirectory(envPath, additionalDeps); err != nil {
+		return err
 	}
 
 	// ULTRA-FAST MODE: Create minimal environment structure without running Julia
@@ -292,13 +288,13 @@ func (j *JuliaLanguage) CheckHealth(envPath string) error {
 	projectStat, err := os.Stat(projectPath)
 	if err != nil || projectStat.Size() == 0 {
 		// Project.toml missing or empty
-		return nil
+		return fmt.Errorf("project.toml missing or empty: %w", err)
 	}
 
 	manifestStat, err := os.Stat(manifestPath)
 	if err != nil || manifestStat.Size() == 0 {
 		// Manifest.toml missing or empty
-		return nil
+		return fmt.Errorf("manifest.toml missing or empty: %w", err)
 	}
 
 	// ULTRA-FAST: For fresh environments we just created, skip Julia verification entirely

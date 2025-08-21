@@ -132,6 +132,11 @@ func (c *CondaLanguage) SetupEnvironmentWithRepo(
 		return "", fmt.Errorf("failed to create conda environment: %w", err)
 	}
 
+	// Create install state files for Python pre-commit compatibility (DRY)
+	if err := c.SetupEnvironmentDirectory(envPath, additionalDeps); err != nil {
+		return "", err
+	}
+
 	return envPath, nil
 }
 

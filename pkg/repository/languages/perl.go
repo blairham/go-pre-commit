@@ -103,9 +103,9 @@ func (p *PerlLanguage) SetupEnvironmentWithRepo(
 		}
 	}
 
-	// Create environment directory
-	if err := p.CreateEnvironmentDirectory(envPath); err != nil {
-		return "", fmt.Errorf("failed to create Perl environment directory: %w", err)
+	// Create environment directory and install state files (DRY)
+	if err := p.SetupEnvironmentDirectory(envPath, additionalDeps); err != nil {
+		return "", err
 	}
 
 	// Install additional dependencies if specified

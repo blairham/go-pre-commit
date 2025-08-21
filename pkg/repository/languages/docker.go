@@ -51,15 +51,15 @@ func (d *DockerLanguage) SetupEnvironmentWithRepo(
 		}
 		// Use cache directory when repoPath is empty
 		envPath := filepath.Join(cacheDir, "docker-"+envDirName)
-		if err := os.MkdirAll(envPath, 0o750); err != nil {
-			return "", fmt.Errorf("failed to create environment directory: %w", err)
+		if err := d.SetupEnvironmentDirectory(envPath, nil); err != nil {
+			return "", err
 		}
 		return envPath, nil
 	}
 
 	envPath := filepath.Join(repoPath, envDirName)
-	if err := os.MkdirAll(envPath, 0o750); err != nil {
-		return "", fmt.Errorf("failed to create environment directory: %w", err)
+	if err := d.SetupEnvironmentDirectory(envPath, nil); err != nil {
+		return "", err
 	}
 	return envPath, nil
 }

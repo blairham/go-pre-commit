@@ -178,9 +178,9 @@ func (l *LuaLanguage) SetupEnvironmentWithRepo(
 		}
 	}
 
-	// Create environment directory
-	if err := os.MkdirAll(envPath, 0o750); err != nil {
-		return "", fmt.Errorf("failed to create Lua environment directory: %w", err)
+	// Create environment directory and install state files (DRY)
+	if err := l.SetupEnvironmentDirectory(envPath, additionalDeps); err != nil {
+		return "", err
 	}
 
 	// Install additional dependencies if specified

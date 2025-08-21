@@ -178,9 +178,9 @@ func (r *RubyLanguage) showInstallationProgress(repoURL string) {
 
 // createEnvironmentStructure creates the basic environment directory structure
 func (r *RubyLanguage) createEnvironmentStructure(envPath string) error {
-	// Create environment directory structure (matching Python pre-commit)
-	if err := r.CreateEnvironmentDirectory(envPath); err != nil {
-		return fmt.Errorf("failed to create Ruby environment directory: %w", err)
+	// Create environment directory and install state files (DRY)
+	if err := r.SetupEnvironmentDirectory(envPath, nil); err != nil {
+		return err
 	}
 
 	// Create gems subdirectory (this is where GEM_HOME will point)

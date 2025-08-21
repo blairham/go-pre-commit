@@ -77,8 +77,8 @@ func (n *NodeLanguage) SetupEnvironmentWithRepo(cacheDir, _, repoPath, _ string,
 		return envPath, nil
 	}
 
-	// Setup the environment
-	if err := n.setupNewEnvironment(envPath); err != nil {
+	// Setup the environment directory and state files (DRY)
+	if err := n.SetupEnvironmentDirectory(envPath, additionalDeps); err != nil {
 		return "", err
 	}
 
@@ -400,11 +400,6 @@ func (n *NodeLanguage) isEnvironmentHealthy(envPath string) bool {
 	return false
 }
 
-// setupNewEnvironment creates a new Node.js environment
-func (n *NodeLanguage) setupNewEnvironment(envPath string) error {
-	return n.setupSystemEnvironment(envPath)
-}
-
 // CheckHealth verifies that the Node.js environment is working correctly
 func (n *NodeLanguage) CheckHealth(envPath string) error {
 	// First, ensure symlinks exist for system environments
@@ -432,39 +427,6 @@ func (n *NodeLanguage) CheckHealth(envPath string) error {
 			return fmt.Errorf("`node --version` returned %d", cmd.ProcessState.ExitCode())
 		}
 		return fmt.Errorf("node runtime not available: %w", err)
-	}
-
-	return nil
-}
-
-// setupSystemEnvironment sets up an environment using system Node.js
-func (n *NodeLanguage) setupSystemEnvironment(envPath string) error {
-	// Debug: Setting up Node.js environment (message suppressed for cleaner output)
-
-	if !n.IsRuntimeAvailable() {
-		return fmt.Errorf("node.js runtime not found. Please install Node.js to use Node.js hooks.\n"+
-			"Installation instructions: %s", n.InstallURL)
-	}
-
-	// Create environment directory
-	if err := n.CreateEnvironmentDirectory(envPath); err != nil {
-		return fmt.Errorf("failed to create Node.js environment directory: %w", err)
-	}
-
-	// Set up the Node.js environment structure (creates bin/, lib/ directories)
-	if err := n.setupNodeEnvironment(envPath); err != nil {
-		return fmt.Errorf("failed to setup Node.js environment: %w", err)
-	}
-
-	// For system environment, we need to create symlinks/wrappers to system node/npm
-	// This is essential for the environment to be functional
-	if err := n.createSystemNodeSymlinks(envPath); err != nil {
-		return fmt.Errorf("failed to create system Node.js symlinks: %w", err)
-	}
-
-	// Verify that the symlinks were created successfully
-	if err := n.verifyEnvironmentSymlinks(envPath); err != nil {
-		return fmt.Errorf("environment symlink verification failed: %w", err)
 	}
 
 	return nil
@@ -592,37 +554,6 @@ func (n *NodeLanguage) createSystemNodeSymlinks(envPath string) error {
 	}
 
 	// Debug: Node.js symlinks created (message suppressed for cleaner output)
-
-	return nil
-}
-
-// verifyEnvironmentSymlinks verifies that the required symlinks exist and are functional
-func (n *NodeLanguage) verifyEnvironmentSymlinks(envPath string) error {
-	binDir := filepath.Join(envPath, "bin")
-
-	// Check that node symlink exists and is functional
-	envNodePath := filepath.Join(binDir, "node")
-	if !n.fileExists(envNodePath) {
-		return fmt.Errorf("node symlink not found at %s", envNodePath)
-	}
-
-	// Test that node executable actually works
-	cmd := exec.Command(envNodePath, "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("node symlink at %s is not functional: %w", envNodePath, err)
-	}
-
-	// Check that npm symlink exists and is functional
-	envNpmPath := filepath.Join(binDir, "npm")
-	if !n.fileExists(envNpmPath) {
-		return fmt.Errorf("npm symlink not found at %s", envNpmPath)
-	}
-
-	// Test that npm executable actually works
-	cmd = exec.Command(envNpmPath, "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("npm symlink at %s is not functional: %w", envNpmPath, err)
-	}
 
 	return nil
 }

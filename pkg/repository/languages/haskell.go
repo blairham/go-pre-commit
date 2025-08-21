@@ -254,9 +254,9 @@ func (h *HaskellLanguage) showInstallationInfo(repoURL string) {
 
 // createHaskellEnvironment creates a full Haskell environment structure (like Python virtual env)
 func (h *HaskellLanguage) createHaskellEnvironment(envPath string) error {
-	// Create main environment directory
-	if err := os.MkdirAll(envPath, 0o750); err != nil {
-		return fmt.Errorf("failed to create environment directory: %w", err)
+	// Create main environment directory and install state files (DRY)
+	if err := h.SetupEnvironmentDirectory(envPath, nil); err != nil {
+		return err
 	}
 
 	// Create bin directory (like Python virtual env)

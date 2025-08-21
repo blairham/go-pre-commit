@@ -4,6 +4,8 @@ package environment
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/blairham/go-pre-commit/pkg/config"
@@ -194,30 +196,113 @@ func (m *Manager) CheckEnvironmentHealth(lang, envPath string) bool {
 }
 
 // SetupHookEnvironment sets up the environment for a hook
-func (m *Manager) SetupHookEnvironment(hook config.Hook, repo config.Repo, repoPath string) (map[string]string, error) {
+func (m *Manager) SetupHookEnvironment(hook config.Hook, _ config.Repo, repoPath string) (map[string]string, error) {
 	// Extract language info
-	language := hook.Language
+	hookLanguage := hook.Language
 	version := hook.LanguageVersion
 	if version == "" {
 		version = "default"
 	}
 
 	// Set up the environment and get the environment path
-	envPath, err := m.SetupEnvironment(language, version, hook.AdditionalDeps, repoPath)
+	envPath, err := m.SetupEnvironment(hookLanguage, version, hook.AdditionalDeps, repoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Return environment variables for the hook
+	// Get the language manager to set up language-specific environment variables
+	langMgr, err := m.getOrCreateLanguageManager(hookLanguage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get language manager for %s: %w", hookLanguage, err)
+	}
+
+	// Start with basic environment variables
 	env := make(map[string]string)
 
-	// Add environment path information if needed
+	// Add environment path information
 	if envPath != "" {
 		env["PRE_COMMIT_ENV_PATH"] = envPath
+		m.addLanguageSpecificEnvVars(env, hookLanguage, envPath, langMgr)
 	}
 
 	return env, nil
-} // CheckEnvironmentHealthWithRepo checks if a language environment is healthy within a repository context
+}
+
+// addLanguageSpecificEnvVars adds language-specific environment variables
+func (m *Manager) addLanguageSpecificEnvVars(
+	env map[string]string,
+	hookLanguage, envPath string,
+	langMgr language.Manager,
+) {
+	switch hookLanguage {
+	case "python", "python3":
+		m.addPythonEnvVars(env, envPath, langMgr)
+	case "node":
+		m.addNodeEnvVars(env, envPath, langMgr)
+	case "ruby":
+		m.addRubyEnvVars(env, envPath)
+	case "golang":
+		m.addGoEnvVars(env, envPath)
+	case "rust":
+		m.addRustEnvVars(env, envPath)
+	case "coursier":
+		m.addCoursierEnvVars(env, envPath)
+	}
+}
+
+// addPythonEnvVars adds Python-specific environment variables
+func (m *Manager) addPythonEnvVars(env map[string]string, envPath string, langMgr language.Manager) {
+	env["VIRTUAL_ENV"] = envPath
+	m.updatePathEnv(env, langMgr.GetEnvironmentBinPath(envPath))
+}
+
+// addNodeEnvVars adds Node.js-specific environment variables
+func (m *Manager) addNodeEnvVars(env map[string]string, envPath string, langMgr language.Manager) {
+	env["NODE_VIRTUAL_ENV"] = envPath
+	env["NPM_CONFIG_PREFIX"] = envPath
+	env["npm_config_prefix"] = envPath
+	m.updatePathEnv(env, langMgr.GetEnvironmentBinPath(envPath))
+}
+
+// addRubyEnvVars adds Ruby-specific environment variables
+func (m *Manager) addRubyEnvVars(env map[string]string, envPath string) {
+	gemsDir := filepath.Join(envPath, "gems")
+	env["GEM_HOME"] = gemsDir
+	env["GEM_PATH"] = "" // Clear for isolation
+	env["BUNDLE_IGNORE_CONFIG"] = "1"
+	gemsBinDir := filepath.Join(gemsDir, "bin")
+	m.updatePathEnv(env, gemsBinDir)
+}
+
+// addGoEnvVars adds Go-specific environment variables
+func (m *Manager) addGoEnvVars(env map[string]string, envPath string) {
+	env["GOCACHE"] = filepath.Join(envPath, "gocache")
+	env["GOPATH"] = filepath.Join(envPath, "gopath")
+}
+
+// addRustEnvVars adds Rust-specific environment variables
+func (m *Manager) addRustEnvVars(env map[string]string, envPath string) {
+	env["CARGO_HOME"] = filepath.Join(envPath, "cargo")
+}
+
+// addCoursierEnvVars adds Coursier-specific environment variables
+func (m *Manager) addCoursierEnvVars(env map[string]string, envPath string) {
+	env["COURSIER_CACHE"] = filepath.Join(envPath, ".cs-cache")
+	m.updatePathEnv(env, envPath)
+}
+
+// updatePathEnv updates the PATH environment variable
+func (m *Manager) updatePathEnv(env map[string]string, binPath string) {
+	if binPath != "" {
+		if currentPath, exists := env["PATH"]; exists {
+			env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
+		} else {
+			env["PATH"] = binPath + string(os.PathListSeparator) + os.Getenv("PATH")
+		}
+	}
+}
+
+// CheckEnvironmentHealthWithRepo checks if a language environment is healthy within a repository context
 func (m *Manager) CheckEnvironmentHealthWithRepo(lang, version, repoPath string) error {
 	envPath, err := m.SetupEnvironment(lang, version, nil, repoPath)
 	if err != nil {

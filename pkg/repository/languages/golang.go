@@ -93,9 +93,9 @@ func (g *GoLanguage) setupEnvironmentWithRepoInternal(
 			"Installation instructions: %s", g.InstallURL)
 	}
 
-	// Create environment directory
-	if err := g.CreateEnvironmentDirectory(envPath); err != nil {
-		return "", fmt.Errorf("failed to create Go environment directory: %w", err)
+	// Create environment directory and install state files (DRY)
+	if err := g.SetupEnvironmentDirectory(envPath, additionalDeps); err != nil {
+		return "", err
 	}
 
 	// Create symlinks to system Go binaries for environment consistency

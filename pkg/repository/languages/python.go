@@ -190,8 +190,9 @@ func (p *PythonLanguage) CreateLanguageEnvironmentWithVersion(envPath, _ string)
 		return err
 	}
 
-	if err := os.MkdirAll(envPath, 0o750); err != nil {
-		return fmt.Errorf("failed to create environment directory: %w", err)
+	// Create environment directory and install state files (DRY)
+	if err := p.SetupEnvironmentDirectory(envPath, nil); err != nil {
+		return err
 	}
 
 	cmd := exec.Command(pythonExe, "-m", "venv", envPath)

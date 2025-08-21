@@ -16,6 +16,27 @@ import (
 	"github.com/blairham/go-pre-commit/pkg/download/pkgmgr"
 )
 
+// Base provides common functionality for language implementations
+type Base struct {
+	DownloadManager *download.Manager
+	PackageManager  *pkgmgr.Manager
+	Name            string
+	ExecutableName  string
+	VersionFlag     string
+	InstallURL      string
+}
+
+// SetupEnvironmentDirectory creates the environment directory and install state files (DRY for all languages)
+func (bl *Base) SetupEnvironmentDirectory(envPath string, additionalDeps []string) error {
+	if err := os.MkdirAll(envPath, 0o750); err != nil {
+		return fmt.Errorf("failed to create environment directory: %w", err)
+	}
+	if err := bl.CreateInstallStateFiles(envPath, additionalDeps); err != nil {
+		return fmt.Errorf("failed to create install state files: %w", err)
+	}
+	return nil
+}
+
 // Global tracking for all language environments to ensure consistent behavior
 // across all language instances and prevent duplicate installations
 var (
@@ -119,16 +140,6 @@ type EnvironmentInstaller interface {
 	IsEnvironmentInstalled(envPath, repoPath string) bool
 	GetEnvironmentVersion(version string) (string, error)
 	GetEnvironmentPath(repoPath, version string) string
-}
-
-// Base provides common functionality for language implementations
-type Base struct {
-	DownloadManager *download.Manager
-	PackageManager  *pkgmgr.Manager
-	Name            string
-	ExecutableName  string
-	VersionFlag     string
-	InstallURL      string
 }
 
 // NewBase creates a new base language instance
@@ -469,8 +480,8 @@ func (bl *Base) GenericSetupEnvironmentWithRepo(
 	}
 
 	envPath := filepath.Join(repoPath, envDirName)
-	if err := os.MkdirAll(envPath, 0o750); err != nil {
-		return "", fmt.Errorf("failed to create environment directory: %w", err)
+	if err := bl.SetupEnvironmentDirectory(envPath, nil); err != nil {
+		return "", err
 	}
 	return envPath, nil
 }

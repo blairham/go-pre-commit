@@ -111,9 +111,9 @@ func (r *RustLanguage) SetupEnvironmentWithRepo(
 		}
 	}
 
-	// Create environment directory
-	if err := r.CreateEnvironmentDirectory(envPath); err != nil {
-		return "", fmt.Errorf("failed to create Rust environment directory: %w", err)
+	// Create environment directory and install state files (DRY)
+	if err := r.SetupEnvironmentDirectory(envPath, additionalDeps); err != nil {
+		return "", err
 	}
 
 	// Install dependencies if needed
