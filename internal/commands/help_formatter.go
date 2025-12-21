@@ -26,39 +26,73 @@ type Example struct {
 func (h *HelpFormatter) FormatHelp(parser *flags.Parser) string {
 	var result strings.Builder
 
-	// Command description
-	if h.Description != "" {
-		result.WriteString(fmt.Sprintf("%s\n\n", h.Description))
-	}
+	// Usage line in argparse format (lowercase)
+	result.WriteString(fmt.Sprintf("usage: pre-commit %s %s\n\n", h.Command, parser.Usage))
 
-	// Examples section
-	if len(h.Examples) > 0 {
-		result.WriteString("Examples:\n")
-		for _, example := range h.Examples {
-			if example.Description != "" {
-				result.WriteString(
-					fmt.Sprintf("  %s  # %s\n", example.Command, example.Description),
-				)
-			} else {
-				result.WriteString(fmt.Sprintf("  %s\n", example.Command))
-			}
-		}
-		result.WriteString("\n")
-	}
-
-	// Notes section
+	// Add positional arguments section if present (before options)
 	if len(h.Notes) > 0 {
-		result.WriteString("Notes:\n")
 		for _, note := range h.Notes {
-			result.WriteString(fmt.Sprintf("  • %s\n", note))
+			result.WriteString(note)
+			result.WriteString("\n")
 		}
 		result.WriteString("\n")
 	}
 
-	// Auto-generated options help
+	// Options section header (lowercase to match argparse)
+	result.WriteString("options:\n")
+
+	// Get the auto-generated options
 	var helpBuf strings.Builder
 	parser.WriteHelp(&helpBuf)
-	result.WriteString(helpBuf.String())
+	helpText := helpBuf.String()
+
+	// Extract and reformat options to match Python's argparse style
+	lines := strings.Split(helpText, "\n")
+	inOptions := false
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+
+		// Detect when we enter the options section
+		if strings.Contains(line, "Application Options:") {
+			inOptions = true
+			continue
+		}
+
+		// Skip help-related lines
+		if strings.Contains(line, "Help Options:") {
+			break
+		}
+
+	// Process option lines with normalized indentation
+	if inOptions && strings.TrimSpace(line) != "" {
+		// Replace [auto|always|never] with {auto,always,never} to match Python
+		line = strings.ReplaceAll(line, "[auto|always|never]", "{auto,always,never}")
+
+		// Replace placeholders with proper quotes
+		line = strings.ReplaceAll(line, "BTICK_", "`")
+		line = strings.ReplaceAll(line, "_BTICK", "`")
+		line = strings.ReplaceAll(line, "DQUOTE_", "\"")
+		line = strings.ReplaceAll(line, "_DQUOTE", "\"")
+
+		// Normalize to 2-space base indent while preserving internal spacing
+		trimmed := strings.TrimLeft(line, " ")
+		// Count the original indent to calculate relative spacing
+		originalIndent := len(line) - len(trimmed)
+
+		// If this line had more than base indent, preserve extra spacing for continuation
+		if originalIndent > 2 {
+			// This is likely a continuation line, keep the extra indent
+			result.WriteString("  ")
+			result.WriteString(strings.Repeat(" ", originalIndent-2))
+			result.WriteString(trimmed)
+		} else {
+			// Normal option line, use 2-space indent
+			result.WriteString("  ")
+			result.WriteString(trimmed)
+		}
+			result.WriteString("\n")
+		}
+	}
 
 	return result.String()
 }

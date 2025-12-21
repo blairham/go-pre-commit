@@ -12,7 +12,6 @@ import (
 
 	"github.com/jessevdk/go-flags"
 	"github.com/mitchellh/cli"
-	"gopkg.in/yaml.v3"
 
 	"github.com/blairham/go-pre-commit/pkg/config"
 	"github.com/blairham/go-pre-commit/pkg/git"
@@ -24,52 +23,26 @@ type AutoupdateCommand struct{}
 
 // AutoupdateOptions holds command-line options for the autoupdate command
 type AutoupdateOptions struct {
-	Color        string   `long:"color"         description:"Whether to use color in output"                                default:"auto"                    choice:"auto"`
-	Config       string   `long:"config"        description:"Path to alternate config file"                                 default:".pre-commit-config.yaml"               short:"c"`
-	Repo         []string `long:"repo"          description:"Only update this repository (may be specified multiple times)"`
-	Jobs         int      `long:"jobs"          description:"Number of threads to use"                                      default:"1"                                     short:"j"`
-	DryRun       bool     `long:"dry-run"       description:"Show what would be updated without making changes"                                                             short:"n"`
-	BleedingEdge bool     `long:"bleeding-edge" description:"Update to bleeding edge of HEAD vs latest tag"`
-	Freeze       bool     `long:"freeze"        description:"Store frozen hashes in rev instead of tag names"`
-	Help         bool     `long:"help"          description:"Show this help message"                                                                                        short:"h"`
+	Help         bool     `long:"help"          description:"show this help message and exit"                                                                               short:"h"`
+	Color        string   `long:"color"         description:"Whether to use color in output. Defaults to BTICK_auto_BTICK."   default:"auto"                    choice:"auto" choice:"always" choice:"never"`
+	Config       string   `long:"config"        description:"Path to alternate config file"                                 default:".pre-commit-config.yaml"               short:"c" value-name:"CONFIG"`
+	BleedingEdge bool     `long:"bleeding-edge" description:"Update to the bleeding edge of BTICK_HEAD_BTICK instead of the latest tagged version (the default behavior)."`
+	Freeze       bool     `long:"freeze"        description:"Store DQUOTE_frozen_DQUOTE hashes in BTICK_rev_BTICK instead of tag names"`
+	Repo         []string `long:"repo"          description:"Only update this repository -- may be specified multiple times."                                              value-name:"REPO"`
+	Jobs         int      `long:"jobs"          description:"Number of threads to use. (default 1)."                        default:"1"                                     short:"j" value-name:"JOBS"`
 }
 
 // Help returns the help text for the autoupdate command
 func (c *AutoupdateCommand) Help() string {
 	var opts AutoupdateOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = "[OPTIONS]"
+	parser.Usage = "[-h] [--color {auto,always,never}] [-c CONFIG] [--bleeding-edge] [--freeze] [--repo REPO] [-j JOBS]"
 
 	formatter := &HelpFormatter{
 		Command:     "autoupdate",
-		Description: "Auto-update hook repositories to the latest version.",
-		Examples: []Example{
-			{Command: "pre-commit autoupdate", Description: "Update all repositories"},
-			{Command: "pre-commit autoupdate --dry-run", Description: "Show what would be updated"},
-			{
-				Command:     "pre-commit autoupdate --bleeding-edge",
-				Description: "Use HEAD instead of latest tag",
-			},
-			{
-				Command:     "pre-commit autoupdate --freeze",
-				Description: "Use commit hashes instead of tags",
-			},
-			{
-				Command:     "pre-commit autoupdate --repo https://github.com/psf/black",
-				Description: "Update specific repo",
-			},
-			{Command: "pre-commit autoupdate --jobs 4", Description: "Use 4 parallel threads"},
-		},
-		Notes: []string{
-			"This command will check for newer versions of the hooks in your",
-			".pre-commit-config.yaml and update them to the latest available version.",
-			"",
-			"Options:",
-			"  --bleeding-edge: Update to HEAD instead of latest tagged version",
-			"  --freeze: Store frozen hashes in rev instead of tag names",
-			"  --repo: Only update specific repository (can specify multiple times)",
-			"  --jobs: Number of parallel threads for updates",
-		},
+		Description: "",
+		Examples:    []Example{},
+		Notes:       []string{},
 	}
 
 	return formatter.FormatHelp(parser)
@@ -156,10 +129,16 @@ func (c *AutoupdateCommand) shouldUpdateRepo(repo *config.Repo, filterRepos []st
 	return true
 }
 
+// RevisionInfo holds revision and optional freeze tag
+type RevisionInfo struct {
+	Revision string
+	FreezeTag string // Original tag name for frozen revisions
+}
+
 func (c *AutoupdateCommand) getLatestRevisionForRepo(
 	repo *config.Repo,
 	opts *AutoupdateOptions,
-) (string, error) {
+) (*RevisionInfo, error) {
 	var latestRev string
 	var err error
 
@@ -170,47 +149,42 @@ func (c *AutoupdateCommand) getLatestRevisionForRepo(
 	}
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+
+	info := &RevisionInfo{Revision: latestRev}
 
 	// Convert to frozen hash if requested
 	if opts.Freeze && !opts.BleedingEdge {
 		if frozenRev, err := c.getCommitHash(repo.Repo, latestRev); err == nil {
-			latestRev = frozenRev
+			info.FreezeTag = latestRev // Store the tag name
+			info.Revision = frozenRev   // Use the commit hash
 		}
 	}
 
-	return latestRev, nil
+	return info, nil
 }
 
 func (c *AutoupdateCommand) updateRepositoryRevision(
 	repo *config.Repo,
-	latestRev string,
+	revInfo *RevisionInfo,
 	opts *AutoupdateOptions,
 ) bool {
-	if repo.Rev != latestRev {
-		if opts.DryRun {
-			fmt.Printf("Would update %s: %s -> %s\n", repo.Repo, repo.Rev, latestRev)
+	if repo.Rev != revInfo.Revision {
+		if revInfo.FreezeTag != "" {
+			fmt.Printf("[%s] updating %s -> %s (frozen)\n", repo.Repo, repo.Rev, revInfo.FreezeTag)
 		} else {
-			fmt.Printf("Updating %s: %s -> %s\n", repo.Repo, repo.Rev, latestRev)
-			repo.Rev = latestRev
+			fmt.Printf("[%s] updating %s -> %s\n", repo.Repo, repo.Rev, revInfo.Revision)
 		}
+		repo.Rev = revInfo.Revision
 		return true
 	}
-
-	fmt.Printf("Already up to date: %s (%s)\n", repo.Repo, repo.Rev)
 	return false
 }
 
 func (c *AutoupdateCommand) printFinalStatus(updated int, opts *AutoupdateOptions) {
-	switch {
-	case updated == 0:
-		fmt.Println("\nAll repositories are already up to date!")
-	case opts.DryRun:
-		fmt.Printf("\nDry run: %d repositories would be updated\n", updated)
-	default:
-		fmt.Printf("\nSuccessfully updated %d repositories\n", updated)
-	}
+	// Python version doesn't print a final status message
+	// Just silently complete
 }
 
 // Run executes the autoupdate command
@@ -247,15 +221,14 @@ func (c *AutoupdateCommand) Run(args []string) int {
 	}()
 
 	// Process repository updates
-	updated, hasChanges := c.processRepositoryUpdates(cfg, opts)
+	updated, hasChanges, freezeTags := c.processRepositoryUpdates(cfg, opts)
 
 	// Write updated configuration back to file
-	if hasChanges && !opts.DryRun {
-		if err := c.writeConfig(cfg, opts.Config); err != nil {
+	if hasChanges {
+		if err := c.writeConfig(cfg, opts.Config, freezeTags); err != nil {
 			fmt.Printf("Error: failed to write updated configuration: %v\n", err)
 			return 1
 		}
-		fmt.Printf("\nUpdated configuration written to %s\n", opts.Config)
 	}
 
 	c.printFinalStatus(updated, opts)
@@ -288,22 +261,8 @@ func (c *AutoupdateCommand) getLatestRevision(repoURL string) (string, error) {
 		}
 	}
 
-	// If no version tags found, try to get the default branch
-	cmd = exec.Command("git", "ls-remote", "--symref", repoURL, "HEAD")
-	output, err = cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch HEAD ref: %w", err)
-	}
-
-	lines = strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		if after, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
-			branch := after
-			return branch, nil
-		}
-	}
-
-	return "main", nil // fallback to main
+	// If no version tags found, get the HEAD commit hash
+	return c.getHeadRevision(repoURL)
 }
 
 // getHeadRevision gets the HEAD commit hash for a repository
@@ -318,7 +277,7 @@ func (c *AutoupdateCommand) getHeadRevision(repoURL string) (string, error) {
 	if len(lines) > 0 && lines[0] != "" {
 		parts := strings.Fields(lines[0])
 		if len(parts) > 0 {
-			return parts[0][:7], nil // Return short hash
+			return parts[0], nil // Return full hash
 		}
 	}
 
@@ -337,32 +296,85 @@ func (c *AutoupdateCommand) getCommitHash(repoURL, ref string) (string, error) {
 	if len(lines) > 0 && lines[0] != "" {
 		parts := strings.Fields(lines[0])
 		if len(parts) > 0 {
-			return parts[0][:7], nil // Return short hash
+			return parts[0], nil // Return full hash
 		}
 	}
 
 	return "", fmt.Errorf("no commit hash found for ref %s", ref)
 }
 
-// writeConfig writes the configuration back to file
-func (c *AutoupdateCommand) writeConfig(cfg *config.Config, filename string) error {
-	data, err := yaml.Marshal(cfg)
+// writeConfig writes the configuration back to file while preserving formatting
+func (c *AutoupdateCommand) writeConfig(cfg *config.Config, filename string, freezeTags map[int]string) error {
+	// Read the original file content
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	return os.WriteFile(filename, data, 0o600)
+	content := string(data)
+	lines := strings.Split(content, "\n")
+
+	// Track which repo we're currently processing
+	repoIndex := 0
+	inReposSection := false
+
+	// Update rev fields while preserving all formatting
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+
+		// Detect when we enter the repos section
+		if trimmed == "repos:" {
+			inReposSection = true
+			continue
+		}
+
+		// If we're in the repos section and find a repo URL
+		if inReposSection && strings.Contains(trimmed, "repo:") && repoIndex < len(cfg.Repos) {
+			// Look for the rev field in subsequent lines
+			for j := i + 1; j < len(lines) && j < i+10; j++ {
+				revLine := lines[j]
+				revTrimmed := strings.TrimSpace(revLine)
+
+				if strings.HasPrefix(revTrimmed, "rev:") {
+					// Extract indentation and update the rev value
+					indent := revLine[:len(revLine)-len(strings.TrimLeft(revLine, " \t"))]
+					// Add freeze comment if present
+					if freezeTag, ok := freezeTags[repoIndex]; ok {
+						lines[j] = fmt.Sprintf("%srev: %s  # frozen: %s", indent, cfg.Repos[repoIndex].Rev, freezeTag)
+					} else {
+						lines[j] = fmt.Sprintf("%srev: %s", indent, cfg.Repos[repoIndex].Rev)
+					}
+					repoIndex++
+					break
+				}
+
+				// Stop if we hit another repo or the hooks section
+				if strings.Contains(revTrimmed, "repo:") || strings.HasPrefix(revTrimmed, "hooks:") {
+					break
+				}
+			}
+		}
+
+		// Exit repos section when we hit a top-level key
+		if inReposSection && len(line) > 0 && line[0] != ' ' && line[0] != '\t' && line[0] != '-' && trimmed != "repos:" {
+			inReposSection = false
+		}
+	}
+
+	// Write the updated content back
+	updatedContent := strings.Join(lines, "\n")
+	return os.WriteFile(filename, []byte(updatedContent), 0o600)
 }
 
 // processRepositoryUpdates processes updates for all repositories in the config
 func (c *AutoupdateCommand) processRepositoryUpdates(
 	cfg *config.Config,
 	opts *AutoupdateOptions,
-) (int, bool) {
+) (int, bool, map[int]string) {
 	updated := 0
 	hasChanges := false
-
-	fmt.Println("Updating repositories...")
+	freezeTags := make(map[int]string)
 
 	for i := range cfg.Repos {
 		repo := &cfg.Repos[i]
@@ -373,22 +385,25 @@ func (c *AutoupdateCommand) processRepositoryUpdates(
 		}
 
 		// Get latest revision for this repository
-		latestRev, err := c.getLatestRevisionForRepo(repo, opts)
+		revInfo, err := c.getLatestRevisionForRepo(repo, opts)
 		if err != nil {
 			fmt.Printf("⚠️  Warning: failed to get latest revision for %s: %v\n", repo.Repo, err)
 			continue
 		}
 
+		// Track freeze tag if present
+		if revInfo.FreezeTag != "" {
+			freezeTags[i] = revInfo.FreezeTag
+		}
+
 		// Update repository revision if needed
-		if c.updateRepositoryRevision(repo, latestRev, opts) {
+		if c.updateRepositoryRevision(repo, revInfo, opts) {
 			updated++
-			if !opts.DryRun {
-				hasChanges = true
-			}
+			hasChanges = true
 		}
 	}
 
-	return updated, hasChanges
+	return updated, hasChanges, freezeTags
 }
 
 // AutoupdateCommandFactory creates a new autoupdate command instance

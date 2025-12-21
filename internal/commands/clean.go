@@ -15,27 +15,21 @@ type CleanCommand struct{}
 
 // CleanOptions holds command-line options for the clean command
 type CleanOptions struct {
-	Verbose bool `short:"v" long:"verbose" description:"Verbose output showing what is being cleaned"`
-	Help    bool `short:"h" long:"help"    description:"Show this help message"`
+	Help  bool   `long:"help"  description:"show this help message and exit" short:"h"`
+	Color string `long:"color" description:"Whether to use color in output. Defaults to BTICK_auto_BTICK." choice:"auto" choice:"always" choice:"never"`
 }
 
 // Help returns the help text for the clean command
 func (c *CleanCommand) Help() string {
 	var opts CleanOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = OptionsUsage
+	parser.Usage = "[-h] [--color {auto,always,never}]"
 
 	formatter := &HelpFormatter{
 		Command:     "clean",
-		Description: "Clean cached repositories and hook environments.",
-		Examples: []Example{
-			{Command: "pre-commit clean", Description: "Clean all cached data"},
-			{Command: "pre-commit clean --verbose", Description: "Show detailed output"},
-		},
-		Notes: []string{
-			"Cleans all cached data including repositories and environments.",
-			"This removes the entire cache directory and forces repositories to be re-cloned.",
-		},
+		Description: "",
+		Examples:    []Example{},
+		Notes:       []string{},
 	}
 
 	return formatter.FormatHelp(parser)
@@ -50,7 +44,7 @@ func (c *CleanCommand) Synopsis() string {
 func (c *CleanCommand) Run(args []string) int {
 	var opts CleanOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = OptionsUsage
+	parser.Usage = "[-h] [--color {auto,always,never}]"
 
 	_, err := parser.ParseArgs(args)
 	if err != nil {
@@ -62,41 +56,30 @@ func (c *CleanCommand) Run(args []string) int {
 		return 1
 	}
 
+	if opts.Help {
+		fmt.Print(c.Help())
+		return 0
+	}
+
 	// Get cache directory (matches Python pre-commit behavior)
 	cacheDir := getCacheDirectory()
 	legacyDir := filepath.Join(os.Getenv("HOME"), ".pre-commit") // Legacy directory
 
-	cleanedDirs := []string{}
-
-	// Clean main cache directory
+	// Clean main cache directory (always print message like Python does)
 	if _, err := os.Stat(cacheDir); err == nil {
-		if opts.Verbose {
-			fmt.Printf("Cleaning cache directory: %s\n", cacheDir)
-		}
 		if err := os.RemoveAll(cacheDir); err != nil {
 			fmt.Printf("Error: failed to clean cache directory: %v\n", err)
 			return 1
 		}
-		cleanedDirs = append(cleanedDirs, cacheDir)
-		fmt.Printf("Cleaned %s.\n", cacheDir)
 	}
+	fmt.Printf("Cleaned %s.\n", cacheDir)
 
 	// Clean legacy directory if it exists
 	if _, err := os.Stat(legacyDir); err == nil {
-		if opts.Verbose {
-			fmt.Printf("Cleaning legacy directory: %s\n", legacyDir)
-		}
 		if err := os.RemoveAll(legacyDir); err != nil {
 			fmt.Printf("⚠️  Warning: failed to clean legacy directory: %v\n", err)
 		} else {
-			cleanedDirs = append(cleanedDirs, legacyDir)
 			fmt.Printf("Cleaned %s.\n", legacyDir)
-		}
-	}
-
-	if len(cleanedDirs) == 0 {
-		if opts.Verbose {
-			fmt.Printf("No cache directories found to clean.\n")
 		}
 	}
 

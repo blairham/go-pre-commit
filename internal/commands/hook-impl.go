@@ -22,39 +22,28 @@ type HookImplCommand struct{}
 
 // HookImplOptions holds command-line options for the hook-impl command
 type HookImplOptions struct {
-	Config              string `long:"config"                 description:"Path to config file"                      default:".pre-commit-config.yaml"`
-	HookType            string `long:"hook-type"              description:"Type of hook being run"                                                     required:"true"`
-	HookDir             string `long:"hook-dir"               description:"Directory where hooks are stored"`
-	Color               string `long:"color"                  description:"Whether to use color in output"           default:"auto"                                    choice:"auto"`
-	SkipOnMissingConfig bool   `long:"skip-on-missing-config" description:"Skip execution if config file is missing"`
-	Verbose             bool   `long:"verbose"                description:"Verbose output"                                                                                           short:"v"`
-	Help                bool   `long:"help"                   description:"Show this help message"                                                                                   short:"h"`
+	Help                bool   `long:"help"                   description:"show this help message and exit"                  short:"h"`
+	Color               string `long:"color"                  description:"Whether to use color in output. Defaults to BTICK_auto_BTICK." choice:"auto" choice:"always" choice:"never"`
+	Config              string `long:"config"                 description:"Path to alternate config file"                    short:"c" value-name:"CONFIG"`
+	HookType            string `long:"hook-type"              description:""                                                  value-name:"HOOK_TYPE"`
+	HookDir             string `long:"hook-dir"               description:""                                                  value-name:"HOOK_DIR"`
+	SkipOnMissingConfig bool   `long:"skip-on-missing-config" description:""`
+	Verbose             bool   // Internal flag, not exposed in help
 }
 
 // Help returns the help text for the hook-impl command
 func (c *HookImplCommand) Help() string {
 	var opts HookImplOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = "[OPTIONS] [HOOK_ARGS...]"
+	parser.Usage = "[-h] [--color {auto,always,never}] [-c CONFIG] [--hook-type HOOK_TYPE] [--hook-dir HOOK_DIR] [--skip-on-missing-config] ..."
 
 	formatter := &HelpFormatter{
 		Command:     "hook-impl",
-		Description: "Internal command used by installed git hooks.",
-		Examples: []Example{
-			{
-				Command:     "pre-commit hook-impl --hook-type pre-commit",
-				Description: "Run pre-commit hooks (internal use)",
-			},
-		},
+		Description: "",
+		Examples:    []Example{},
 		Notes: []string{
 			"positional arguments:",
-			"  HOOK_ARGS             arguments passed to the hook",
-			"",
-			"This command is not intended to be called directly by users. It is invoked",
-			"automatically by the git hooks that are installed by 'pre-commit install'.",
-			"",
-			"The hook implementation loads the configuration, determines which hooks should",
-			"run for the current hook type, and executes them against the appropriate files.",
+			"  rest",
 		},
 	}
 
@@ -73,7 +62,7 @@ func (c *HookImplCommand) Run(args []string) int {
 		return parseCode
 	}
 
-	if validationCode := c.validateOptions(opts); validationCode != -1 {
+	if validationCode := c.validateOptions(opts, remaining); validationCode != -1 {
 		return validationCode
 	}
 
@@ -113,14 +102,55 @@ func (c *HookImplCommand) parseArguments(args []string) (*HookImplOptions, []str
 		return nil, nil, 1
 	}
 
+	// Set default config file if not specified
+	if opts.Config == "" {
+		opts.Config = ".pre-commit-config.yaml"
+	}
+
 	return &opts, remaining, -1
 }
 
-// validateOptions validates the parsed options
-func (c *HookImplCommand) validateOptions(opts *HookImplOptions) int {
+// validateOptions validates the parsed options and arguments
+func (c *HookImplCommand) validateOptions(opts *HookImplOptions, remaining []string) int {
 	if opts.HookType == "" {
 		fmt.Println("Error: --hook-type is required")
 		return 1
+	}
+
+	// Validate argument count based on hook type
+	argCount := len(remaining)
+	switch opts.HookType {
+	case "commit-msg":
+		if argCount != 1 {
+			fmt.Printf("hook-impl for commit-msg expected 1 argument but got %d: %v\n", argCount, remaining)
+			return 1
+		}
+	case "prepare-commit-msg":
+		if argCount < 1 || argCount > 3 {
+			fmt.Printf("hook-impl for prepare-commit-msg expected 1, 2, or 3 arguments but got %d: %v\n", argCount, remaining)
+			return 1
+		}
+	case "post-checkout":
+		if argCount != 3 {
+			fmt.Printf("hook-impl for post-checkout expected 3 arguments but got %d: %v\n", argCount, remaining)
+			return 1
+		}
+	case "post-merge":
+		if argCount != 1 {
+			fmt.Printf("hook-impl for post-merge expected 1 argument but got %d: %v\n", argCount, remaining)
+			return 1
+		}
+	case "post-rewrite":
+		if argCount != 1 {
+			fmt.Printf("hook-impl for post-rewrite expected 1 argument but got %d: %v\n", argCount, remaining)
+			return 1
+		}
+	case "pre-push":
+		if argCount != 2 {
+			fmt.Printf("hook-impl for pre-push expected 2 arguments but got %d: %v\n", argCount, remaining)
+			return 1
+		}
+	// Other hook types like pre-commit, pre-merge-commit, post-commit don't require specific argument counts
 	}
 
 	return -1
@@ -141,9 +171,7 @@ func (c *HookImplCommand) logVerboseInfo(opts *HookImplOptions, remaining []stri
 func (c *HookImplCommand) validateConfigFile(opts *HookImplOptions) int {
 	if _, statErr := os.Stat(opts.Config); os.IsNotExist(statErr) {
 		if opts.SkipOnMissingConfig {
-			if opts.Verbose {
-				fmt.Printf("Config file not found, skipping: %s\n", opts.Config)
-			}
+			fmt.Printf("`%s` config file not found. Skipping `pre-commit`.\n", opts.Config)
 			return 0
 		}
 		fmt.Printf("Error: config file not found: %s\n", opts.Config)

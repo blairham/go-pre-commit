@@ -20,31 +20,21 @@ type GcCommand struct{}
 
 // GcOptions holds command-line options for the gc command
 type GcOptions struct {
-	Verbose bool `short:"v" long:"verbose" description:"Verbose output showing what is being cleaned"`
-	Help    bool `short:"h" long:"help"    description:"Show this help message"`
+	Help  bool   `long:"help"  description:"show this help message and exit" short:"h"`
+	Color string `long:"color" description:"Whether to use color in output. Defaults to BTICK_auto_BTICK." choice:"auto" choice:"always" choice:"never"`
 }
 
 // Help returns the help text for the gc command
 func (c *GcCommand) Help() string {
 	var opts GcOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = OptionsUsage
+	parser.Usage = "[-h] [--color {auto,always,never}]"
 
 	formatter := &HelpFormatter{
 		Command:     "gc",
-		Description: "Clean unused cached repositories and environments.",
-		Examples: []Example{
-			{
-				Command:     "pre-commit gc",
-				Description: "Remove repositories not referenced by any configs",
-			},
-			{Command: "pre-commit gc --verbose", Description: "Show detailed output"},
-		},
-		Notes: []string{
-			"This command removes cached repositories that are no longer referenced",
-			"by any .pre-commit-config.yaml files. It uses the database to determine",
-			"which repositories are still in use and only removes truly unused ones.",
-		},
+		Description: "",
+		Examples:    []Example{},
+		Notes:       []string{},
 	}
 
 	return formatter.FormatHelp(parser)
@@ -59,7 +49,7 @@ func (c *GcCommand) Synopsis() string {
 func (c *GcCommand) Run(args []string) int {
 	var opts GcOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = OptionsUsage
+	parser.Usage = "[-h] [--color {auto,always,never}]"
 
 	_, err := parser.ParseArgs(args)
 	if err != nil {
@@ -71,33 +61,28 @@ func (c *GcCommand) Run(args []string) int {
 		return 1
 	}
 
+	if opts.Help {
+		fmt.Print(c.Help())
+		return 0
+	}
+
 	// Get cache directory (using same logic as clean command)
 	cacheDir := getCacheDirectory()
 	dbPath := filepath.Join(cacheDir, "db.db")
 
-	if opts.Verbose {
-		fmt.Printf("Garbage collecting cache directory: %s\n", cacheDir)
-	}
-
 	// Check if cache directory exists
 	if _, statErr := os.Stat(cacheDir); os.IsNotExist(statErr) {
-		if opts.Verbose {
-			fmt.Printf("Cache directory does not exist: %s\n", cacheDir)
-		}
 		fmt.Printf("0 repo(s) removed.\n")
 		return 0
 	}
 
 	// Check if database exists
 	if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
-		if opts.Verbose {
-			fmt.Printf("Database does not exist: %s\n", dbPath)
-		}
 		fmt.Printf("0 repo(s) removed.\n")
 		return 0
 	}
 
-	removedCount, err := c.gcRepos(cacheDir, dbPath, opts.Verbose)
+	removedCount, err := c.gcRepos(cacheDir, dbPath)
 	if err != nil {
 		fmt.Printf("Error during garbage collection: %v\n", err)
 		return 1
@@ -109,7 +94,7 @@ func (c *GcCommand) Run(args []string) int {
 
 // Helper functions to reduce cognitive complexity in gcRepos
 
-func (c *GcCommand) initializeDatabase(dbPath string, _ bool) (*sql.DB, error) {
+func (c *GcCommand) initializeDatabase(dbPath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -159,23 +144,12 @@ func (c *GcCommand) buildRepoMaps(repos []repoRecord) (map[string]string, map[st
 	return allRepos, unusedRepos
 }
 
-func (c *GcCommand) markReposAsUsed(
-	liveConfigs []string,
-	unusedRepos map[string]string,
-	verbose bool,
-) []string {
+func (c *GcCommand) markReposAsUsed(liveConfigs []string, unusedRepos map[string]string) []string {
 	var deadConfigs []string
 
 	for _, configPath := range liveConfigs {
-		if verbose {
-			fmt.Printf("Checking config: %s\n", configPath)
-		}
-
 		cfg, loadErr := config.LoadConfig(configPath)
 		if loadErr != nil {
-			if verbose {
-				fmt.Printf("Failed to load config %s: %v\n", configPath, loadErr)
-			}
 			deadConfigs = append(deadConfigs, configPath)
 			continue
 		}
@@ -188,16 +162,12 @@ func (c *GcCommand) markReposAsUsed(
 
 			key := repo.Repo + ":" + repo.Rev
 			delete(unusedRepos, key)
-
-			if verbose {
-				fmt.Printf("Repo in use: %s@%s\n", repo.Repo, repo.Rev)
-			}
 		}
 	}
 	return deadConfigs
 }
 
-func (c *GcCommand) cleanupDeadConfigs(db *sql.DB, deadConfigs []string, verbose bool) error {
+func (c *GcCommand) cleanupDeadConfigs(db *sql.DB, deadConfigs []string) error {
 	if len(deadConfigs) == 0 {
 		return nil
 	}
@@ -207,37 +177,23 @@ func (c *GcCommand) cleanupDeadConfigs(db *sql.DB, deadConfigs []string, verbose
 		return fmt.Errorf("failed to delete dead configs: %w", err)
 	}
 
-	if verbose {
-		fmt.Printf("Deleted %d dead config references\n", len(deadConfigs))
-	}
-
 	return nil
 }
 
-func (c *GcCommand) removeUnusedRepos(db *sql.DB, unusedRepos map[string]string, verbose bool) int {
+func (c *GcCommand) removeUnusedRepos(db *sql.DB, unusedRepos map[string]string) int {
 	removedCount := 0
 
 	for repoKey, repoPath := range unusedRepos {
-		if verbose {
-			fmt.Printf("Removing unused repo: %s at %s\n", repoKey, repoPath)
-		}
-
 		// Remove from filesystem
 		if removeErr := os.RemoveAll(repoPath); removeErr != nil {
-			if verbose {
-				fmt.Printf("⚠️  Warning: failed to remove repo directory %s: %v\n", repoPath, removeErr)
-			}
+			// Silently continue on error
 		}
 
 		// Remove from database
 		parts := strings.SplitN(repoKey, ":", 2)
 		if len(parts) == 2 {
 			deleteErr := c.deleteRepo(db, parts[0], parts[1])
-			if deleteErr != nil {
-				if verbose {
-					fmt.Printf("⚠️  Warning: failed to remove repo from database: %v\n", deleteErr)
-				}
-			} else {
+			if deleteErr == nil {
 				removedCount++
 			}
 		}
@@ -247,14 +203,14 @@ func (c *GcCommand) removeUnusedRepos(db *sql.DB, unusedRepos map[string]string,
 }
 
 // gcRepos implements the core garbage collection logic
-func (c *GcCommand) gcRepos(_ /* cacheDir */, dbPath string, verbose bool) (int, error) {
+func (c *GcCommand) gcRepos(_ /* cacheDir */, dbPath string) (int, error) {
 	// Open database
-	db, err := c.initializeDatabase(dbPath, verbose)
+	db, err := c.initializeDatabase(dbPath)
 	if err != nil {
 		return 0, err
 	}
 	defer func() {
-		if closeErr := db.Close(); closeErr != nil && verbose {
+		if closeErr := db.Close(); closeErr != nil {
 			fmt.Printf("⚠️  Warning: failed to close database: %v\n", closeErr)
 		}
 	}()
@@ -272,17 +228,17 @@ func (c *GcCommand) gcRepos(_ /* cacheDir */, dbPath string, verbose bool) (int,
 	_, unusedRepos := c.buildRepoMaps(repos)
 
 	// Check live configs to see which repos are still in use
-	additionalDeadConfigs := c.markReposAsUsed(liveConfigs, unusedRepos, verbose)
+	additionalDeadConfigs := c.markReposAsUsed(liveConfigs, unusedRepos)
 	deadConfigs = append(deadConfigs, additionalDeadConfigs...)
 
 	// Remove dead configs from database
-	err = c.cleanupDeadConfigs(db, deadConfigs, verbose)
+	err = c.cleanupDeadConfigs(db, deadConfigs)
 	if err != nil {
 		return 0, err
 	}
 
 	// Remove unused repos
-	removedCount := c.removeUnusedRepos(db, unusedRepos, verbose)
+	removedCount := c.removeUnusedRepos(db, unusedRepos)
 
 	return removedCount, nil
 }
