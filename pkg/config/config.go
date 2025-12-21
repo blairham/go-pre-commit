@@ -15,6 +15,7 @@ import (
 // Config represents the .pre-commit-config.yaml structure
 type Config struct {
 	DefaultLanguageVersion  map[string]string `yaml:"default_language_version,omitempty"`
+	DefaultInstallHookTypes []string          `yaml:"default_install_hook_types,omitempty"`
 	CIConfig                map[string]any    `yaml:"ci,omitempty"`
 	Files                   string            `yaml:"files,omitempty"`
 	ExcludeRegex            string            `yaml:"exclude,omitempty"`
