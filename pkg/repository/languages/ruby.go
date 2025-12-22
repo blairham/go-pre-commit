@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
+	"github.com/blairham/go-pre-commit/pkg/download"
 	"github.com/blairham/go-pre-commit/pkg/download/pkgmgr"
 	"github.com/blairham/go-pre-commit/pkg/language"
 )
@@ -21,6 +23,191 @@ func NewRubyLanguage() *RubyLanguage {
 	return &RubyLanguage{
 		Base: language.NewBase("ruby", "ruby", "--version", "https://www.ruby-lang.org/"),
 	}
+}
+
+// rbenvGitHubURL is the GitHub repository URL for rbenv
+const rbenvGitHubURL = "https://github.com/rbenv/rbenv/archive/refs/heads/master.tar.gz"
+
+// rubyBuildGitHubURL is the GitHub repository URL for ruby-build (rbenv plugin)
+const rubyBuildGitHubURL = "https://github.com/rbenv/ruby-build/archive/refs/heads/master.tar.gz"
+
+// installRbenv downloads and installs rbenv to the specified environment directory
+// This matches Python pre-commit's _install_rbenv() behavior
+func (r *RubyLanguage) installRbenv(envPath string) error {
+	// Skip on Windows (rbenv doesn't support Windows)
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("rbenv is not supported on Windows")
+	}
+
+	fmt.Printf("Installing rbenv to %s...\n", envPath)
+
+	// Download and extract rbenv
+	mgr := download.NewManager()
+	tempDir, err := os.MkdirTemp("", "rbenv-download-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Download rbenv
+	if err := mgr.DownloadAndExtract(rbenvGitHubURL, tempDir); err != nil {
+		return fmt.Errorf("failed to download rbenv: %w", err)
+	}
+
+	// Find the extracted directory (it will be named rbenv-master)
+	rbenvSrc := filepath.Join(tempDir, "rbenv-master")
+	if _, err := os.Stat(rbenvSrc); err != nil {
+		// Try to find any rbenv-* directory
+		entries, _ := os.ReadDir(tempDir)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				rbenvSrc = filepath.Join(tempDir, entry.Name())
+				break
+			}
+		}
+	}
+
+	// Move rbenv to the environment directory
+	// The environment directory IS the rbenv root (matching Python pre-commit)
+	if err := r.copyDirectory(rbenvSrc, envPath); err != nil {
+		return fmt.Errorf("failed to install rbenv: %w", err)
+	}
+
+	fmt.Printf("rbenv installed successfully\n")
+	return nil
+}
+
+// installRubyBuild downloads and installs ruby-build (rbenv plugin for installing Ruby versions)
+func (r *RubyLanguage) installRubyBuild(envPath string) error {
+	// Skip on Windows
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+
+	fmt.Printf("Installing ruby-build plugin...\n")
+
+	// Download and extract ruby-build
+	mgr := download.NewManager()
+	tempDir, err := os.MkdirTemp("", "ruby-build-download-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	if err := mgr.DownloadAndExtract(rubyBuildGitHubURL, tempDir); err != nil {
+		return fmt.Errorf("failed to download ruby-build: %w", err)
+	}
+
+	// Find the extracted directory
+	rubyBuildSrc := filepath.Join(tempDir, "ruby-build-master")
+	if _, err := os.Stat(rubyBuildSrc); err != nil {
+		entries, _ := os.ReadDir(tempDir)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				rubyBuildSrc = filepath.Join(tempDir, entry.Name())
+				break
+			}
+		}
+	}
+
+	// Install ruby-build as an rbenv plugin
+	pluginsDir := filepath.Join(envPath, "plugins")
+	if err := os.MkdirAll(pluginsDir, 0o750); err != nil {
+		return fmt.Errorf("failed to create plugins directory: %w", err)
+	}
+
+	rubyBuildDest := filepath.Join(pluginsDir, "ruby-build")
+	if err := r.copyDirectory(rubyBuildSrc, rubyBuildDest); err != nil {
+		return fmt.Errorf("failed to install ruby-build: %w", err)
+	}
+
+	fmt.Printf("ruby-build installed successfully\n")
+	return nil
+}
+
+// installRubyVersion installs a specific Ruby version using rbenv
+func (r *RubyLanguage) installRubyVersion(envPath, version string) error {
+	// Skip on Windows or if version is system/default
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	if version == language.VersionSystem || version == language.VersionDefault || version == "" {
+		return nil
+	}
+
+	fmt.Printf("Installing Ruby %s...\n", version)
+
+	// Set up environment for rbenv
+	env := r.getRbenvEnv(envPath, version)
+
+	// Try to use rbenv download first (faster), fall back to rbenv install
+	rbenvBin := filepath.Join(envPath, "bin", "rbenv")
+
+	cmd := exec.Command(rbenvBin, "download", version)
+	cmd.Env = env
+	if err := cmd.Run(); err != nil {
+		// Fallback to rbenv install (builds from source)
+		cmd = exec.Command(rbenvBin, "install", version)
+		cmd.Env = env
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to install Ruby %s: %w", version, err)
+		}
+	}
+
+	// Rehash to update shims
+	cmd = exec.Command(rbenvBin, "rehash")
+	cmd.Env = env
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to rehash rbenv: %w", err)
+	}
+
+	fmt.Printf("Ruby %s installed successfully\n", version)
+	return nil
+}
+
+// getRbenvEnv returns environment variables for rbenv operations
+func (r *RubyLanguage) getRbenvEnv(envPath, version string) []string {
+	env := os.Environ()
+	env = append(env,
+		"RBENV_ROOT="+envPath,
+		"PATH="+filepath.Join(envPath, "shims")+string(os.PathListSeparator)+
+			filepath.Join(envPath, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+	if version != "" && version != language.VersionSystem && version != language.VersionDefault {
+		env = append(env, "RBENV_VERSION="+version)
+	}
+	return env
+}
+
+// copyDirectory recursively copies a directory
+func (r *RubyLanguage) copyDirectory(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate relative path
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+
+		// Copy file
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(dstPath, data, info.Mode())
+	})
 }
 
 // GetDefaultVersion returns the default Ruby version
@@ -104,10 +291,18 @@ func (r *RubyLanguage) CheckEnvironmentHealth(envPath string) bool {
 // SetupEnvironmentWithRepo sets up a Ruby environment in the repository directory
 // Following Python pre-commit's approach: creates rbenv-style directory with isolated gems
 func (r *RubyLanguage) SetupEnvironmentWithRepo(
-	cacheDir, _ /* version */, repoPath, repoURL string, // Added repoURL
+	cacheDir, version, repoPath, repoURL string,
 	additionalDeps []string,
 ) (string, error) {
-	envPath, err := r.determineEnvironmentPath(cacheDir, repoPath)
+	// Determine if we should use system Ruby or bootstrap
+	useSystem := version == language.VersionSystem
+	if version == "" && r.IsRuntimeAvailable() {
+		// Default to system if available
+		useSystem = true
+		version = language.VersionSystem
+	}
+
+	envPath, err := r.determineEnvironmentPath(cacheDir, repoPath, version)
 	if err != nil {
 		return "", err
 	}
@@ -130,6 +325,37 @@ func (r *RubyLanguage) SetupEnvironmentWithRepo(
 		return "", err
 	}
 
+	// If not using system Ruby, bootstrap rbenv and install the specified version
+	if !useSystem && runtime.GOOS != "windows" {
+		// Install rbenv
+		if err := r.installRbenv(envPath); err != nil {
+			return "", fmt.Errorf("failed to install rbenv: %w", err)
+		}
+
+		// Install ruby-build if a specific version is requested
+		if version != language.VersionDefault && version != "" {
+			if err := r.installRubyBuild(envPath); err != nil {
+				return "", fmt.Errorf("failed to install ruby-build: %w", err)
+			}
+			if err := r.installRubyVersion(envPath, version); err != nil {
+				return "", fmt.Errorf("failed to install Ruby version: %w", err)
+			}
+		}
+
+		// Initialize rbenv
+		cmd := exec.Command(filepath.Join(envPath, "bin", "rbenv"), "init", "-")
+		cmd.Env = r.getRbenvEnv(envPath, version)
+		if err := cmd.Run(); err != nil {
+			// Non-fatal - rbenv init may not be required
+			fmt.Printf("⚠️  Warning: rbenv init returned error: %v\n", err)
+		}
+
+		// Rehash to set up shims
+		cmd = exec.Command(filepath.Join(envPath, "bin", "rbenv"), "rehash")
+		cmd.Env = r.getRbenvEnv(envPath, version)
+		_ = cmd.Run() // Best effort
+	}
+
 	// Install dependencies from repository
 	if err := r.installRepositoryDependencies(envPath, repoPath, additionalDeps); err != nil {
 		return "", err
@@ -144,9 +370,11 @@ func (r *RubyLanguage) SetupEnvironmentWithRepo(
 }
 
 // determineEnvironmentPath determines the correct path for the Ruby environment
-func (r *RubyLanguage) determineEnvironmentPath(cacheDir, repoPath string) (string, error) {
-	version := language.VersionDefault // Use the constant
-	envDirName := language.GetRepositoryEnvironmentName("ruby", version)
+func (r *RubyLanguage) determineEnvironmentPath(cacheDir, repoPath, version string) (string, error) {
+	if version == "" {
+		version = language.VersionDefault
+	}
+	envDirName := language.GetRepositoryEnvironmentName("rbenv", version)
 
 	// Prevent creating environment directory in CWD if repoPath is empty
 	if repoPath == "" {
@@ -477,6 +705,50 @@ func (r *RubyLanguage) CheckHealth(envPath, _ string) error {
 	}
 
 	return nil
+}
+
+// GetEnvPatch returns environment variable patches for Ruby hook execution
+// This matches Python pre-commit's ruby.get_env_patch() behavior
+func (r *RubyLanguage) GetEnvPatch(envPath, version string) map[string]string {
+	env := make(map[string]string)
+
+	// Set GEM_HOME to isolated gems directory
+	gemsDir := filepath.Join(envPath, "gems")
+	env["GEM_HOME"] = gemsDir
+
+	// Unset GEM_PATH to prevent using system gems
+	env["GEM_PATH"] = ""
+
+	// Set BUNDLE_IGNORE_CONFIG to prevent bundler from reading config
+	env["BUNDLE_IGNORE_CONFIG"] = "1"
+
+	// Build PATH based on version
+	gemsBinDir := filepath.Join(gemsDir, "bin")
+	pathParts := []string{gemsBinDir}
+
+	// For non-system versions, add rbenv shims and bin
+	if version != language.VersionSystem && version != "" {
+		pathParts = append(pathParts, filepath.Join(envPath, "shims"))
+		pathParts = append(pathParts, filepath.Join(envPath, "bin"))
+
+		// Set RBENV_ROOT for rbenv
+		env["RBENV_ROOT"] = envPath
+
+		// If specific version, set RBENV_VERSION
+		if version != language.VersionDefault && version != "default" {
+			env["RBENV_VERSION"] = version
+		}
+	}
+
+	if currentPath := os.Getenv("PATH"); currentPath != "" {
+		pathParts = append(pathParts, currentPath)
+	}
+	env["PATH"] = filepath.Join(pathParts[0]) // First element
+	for i := 1; i < len(pathParts); i++ {
+		env["PATH"] = env["PATH"] + string(os.PathListSeparator) + pathParts[i]
+	}
+
+	return env
 }
 
 // isRepositoryInstalled checks if a repository is already installed in the Ruby environment

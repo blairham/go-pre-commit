@@ -43,6 +43,10 @@ func NewLanguageRegistry() *LanguageRegistry {
 	registry.languages["script"] = NewScriptLanguage()
 	registry.languages["system"] = NewSystemLanguage()
 
+	// Unsupported languages (provide helpful error messages)
+	registry.languages["unsupported"] = NewUnsupportedLanguage()
+	registry.languages["unsupported_script"] = NewUnsupportedScriptLanguage()
+
 	return registry
 }
 

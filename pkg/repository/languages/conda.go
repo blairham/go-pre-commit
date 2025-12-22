@@ -218,6 +218,26 @@ func (c *CondaLanguage) GetEnvironmentBinPath(envPath string) string {
 	return filepath.Join(envPath, "bin")
 }
 
+// GetEnvPatch returns environment variables for running in conda environment
+// Matches Python pre-commit's in_env() context manager
+func (c *CondaLanguage) GetEnvPatch(envPath, _ string) map[string]string {
+	env := make(map[string]string)
+
+	// Set CONDA_PREFIX to the environment path
+	// This is the primary way conda environments are activated
+	env["CONDA_PREFIX"] = envPath
+
+	// Prepend bin path to PATH
+	binPath := c.GetEnvironmentBinPath(envPath)
+	if currentPath := os.Getenv("PATH"); currentPath != "" {
+		env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
+	} else {
+		env["PATH"] = binPath
+	}
+
+	return env
+}
+
 // CheckEnvironmentHealth checks if conda environment is healthy
 func (c *CondaLanguage) CheckEnvironmentHealth(envPath string) bool {
 	// Check if conda-meta directory exists (conda environments have this)

@@ -205,63 +205,30 @@ func (m *Manager) SetupHookEnvironment(
 		return nil, err
 	}
 
-	// Base environment variables
+	// Base environment variables (always set for pre-commit tracking)
 	env := map[string]string{
 		"PRE_COMMIT_ENV_PATH": envPath,
 		"PRE_COMMIT_LANGUAGE": hook.Language,
 		"PRE_COMMIT_VERSION":  hook.LanguageVersion,
 	}
 
-	// Add language-specific environment variables
-	switch hook.Language {
-	case "python", "python3":
-		// Set VIRTUAL_ENV for Python hooks so buildPythonCommand can find executables
-		env["VIRTUAL_ENV"] = envPath
-		// Also set PATH to include the environment's bin directory
+	// Get language-specific environment patches using the GetEnvPatch interface
+	// This follows Python pre-commit's in_env() / get_env_patch() pattern
+	langMgr, langErr := m.getOrCreateLanguageManager(hook.Language)
+	if langErr == nil {
+		// Get language-specific environment patches
+		langEnv := langMgr.GetEnvPatch(envPath, hook.LanguageVersion)
+		for key, value := range langEnv {
+			env[key] = value
+		}
+	} else {
+		// Fallback: add basic bin PATH for languages without GetEnvPatch implementation
 		binPath := filepath.Join(envPath, "bin")
 		if currentPath := os.Getenv("PATH"); currentPath != "" {
 			env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
 		} else {
 			env["PATH"] = binPath
 		}
-	case "conda":
-		// Set conda environment variables and PATH
-		env["CONDA_PREFIX"] = envPath
-		// Get the conda language manager to determine the correct bin path
-		if langMgr, exists := m.languageMap[hook.Language]; exists {
-			binPath := langMgr.GetEnvironmentBinPath(envPath)
-			if currentPath := os.Getenv("PATH"); currentPath != "" {
-				env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
-			} else {
-				env["PATH"] = binPath
-			}
-		}
-	case "node":
-		// Set NODE_VIRTUAL_ENV for Node.js hooks
-		env["NODE_VIRTUAL_ENV"] = envPath
-	case "golang", "go":
-		// Set GOCACHE and GOPATH to prevent cache errors
-		goCacheDir := filepath.Join(envPath, "gocache")
-		goPath := filepath.Join(envPath, "gopath")
-
-		// Create the directories if they don't exist
-		if err := os.MkdirAll(goCacheDir, 0o750); err == nil {
-			env["GOCACHE"] = goCacheDir
-		}
-		if err := os.MkdirAll(goPath, 0o750); err == nil {
-			env["GOPATH"] = goPath
-		}
-
-		// Add environment's bin directory to PATH for Go executables
-		binPath := filepath.Join(envPath, "bin")
-		if currentPath := os.Getenv("PATH"); currentPath != "" {
-			env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
-		} else {
-			env["PATH"] = binPath
-		}
-	case "swift":
-		// Set SWIFT_ENV for Swift hooks so buildSwiftCommand can find environment
-		env["SWIFT_ENV"] = envPath
 	}
 
 	return env, nil

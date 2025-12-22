@@ -2,9 +2,12 @@ package languages
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/blairham/go-pre-commit/pkg/language"
@@ -25,6 +28,126 @@ func NewRustLanguage() *RustLanguage {
 			"https://rustup.rs/",
 		),
 	}
+}
+
+// getRustupURL returns the rustup-init download URL based on OS
+func getRustupURL() string {
+	if runtime.GOOS == "windows" {
+		return "https://win.rustup.rs/x86_64"
+	}
+	return "https://sh.rustup.rs"
+}
+
+// rustToolchain converts language_version to a rust toolchain version
+// Matches Python pre-commit's _rust_toolchain() behavior
+func rustToolchain(version string) string {
+	if version == language.VersionDefault || version == "" {
+		return "stable"
+	}
+	return version
+}
+
+// downloadRustupInit downloads rustup-init to the specified destination
+func (r *RustLanguage) downloadRustupInit(destPath string) error {
+	url := getRustupURL()
+	fmt.Printf("Downloading rustup from %s...\n", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download rustup: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download rustup: HTTP %d", resp.StatusCode)
+	}
+
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o750); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Create the file
+	file, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("failed to create rustup-init file: %w", err)
+	}
+	defer file.Close()
+
+	// Copy content
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		return fmt.Errorf("failed to write rustup-init: %w", err)
+	}
+
+	// Make executable
+	if err := os.Chmod(destPath, 0o750); err != nil {
+		return fmt.Errorf("failed to make rustup-init executable: %w", err)
+	}
+
+	return nil
+}
+
+// installRustWithToolchain installs Rust using rustup with the specified toolchain
+// This matches Python pre-commit's install_rust_with_toolchain() behavior
+func (r *RustLanguage) installRustWithToolchain(toolchain, envDir string) error {
+	// Create a temporary rustup home directory
+	rustupDir, err := os.MkdirTemp("", "rustup-home-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp rustup dir: %w", err)
+	}
+	defer os.RemoveAll(rustupDir)
+
+	// Set environment for rustup operations
+	env := append(os.Environ(),
+		"CARGO_HOME="+envDir,
+		"RUSTUP_HOME="+rustupDir,
+	)
+
+	// Check if rustup is already available
+	_, rustupErr := exec.LookPath("rustup")
+	if rustupErr != nil {
+		// Download and install rustup-init
+		rustupInit := filepath.Join(rustupDir, "rustup-init")
+		if runtime.GOOS == "windows" {
+			rustupInit += ".exe"
+		}
+
+		if err := r.downloadRustupInit(rustupInit); err != nil {
+			return err
+		}
+
+		// Run rustup-init to install rustup into CARGO_HOME/bin
+		cmd := exec.Command(rustupInit, "-y", "--quiet", "--no-modify-path", "--default-toolchain", "none")
+		cmd.Env = env
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to run rustup-init: %w", err)
+		}
+	}
+
+	// Install the requested toolchain
+	rustupBin := filepath.Join(envDir, "bin", "rustup")
+	if runtime.GOOS == "windows" {
+		rustupBin += ".exe"
+	}
+
+	// Use the rustup we just installed or the system one
+	rustupCmd := "rustup"
+	if _, err := os.Stat(rustupBin); err == nil {
+		rustupCmd = rustupBin
+	}
+
+	cmd := exec.Command(rustupCmd, "toolchain", "install", "--no-self-update", toolchain)
+	cmd.Env = env
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to install rust toolchain %s: %w", toolchain, err)
+	}
+
+	fmt.Printf("Rust toolchain %s installed successfully\n", toolchain)
+	return nil
 }
 
 // GetDefaultVersion returns the default Rust version
@@ -107,9 +230,12 @@ func (r *RustLanguage) SetupEnvironmentWithRepo(
 	cacheDir, version, repoPath, _ string, // repoURL is unused
 	additionalDeps []string,
 ) (string, error) {
-	// Only support 'default' or 'system' versions
-	if version != language.VersionDefault && version != language.VersionSystem {
-		version = language.VersionDefault
+	// Determine if we should use system Rust or bootstrap
+	useSystem := version == language.VersionSystem
+	if version == "" && r.IsRuntimeAvailable() {
+		// Default to system if available
+		useSystem = true
+		version = language.VersionSystem
 	}
 
 	// Handle empty repoPath by using cacheDir instead to avoid creating directories in CWD
@@ -139,6 +265,14 @@ func (r *RustLanguage) SetupEnvironmentWithRepo(
 	// Create environment directory
 	if err := r.CreateEnvironmentDirectory(envPath); err != nil {
 		return "", fmt.Errorf("failed to create Rust environment directory: %w", err)
+	}
+
+	// If not using system, bootstrap Rust with the specified toolchain
+	if !useSystem {
+		toolchain := rustToolchain(version)
+		if err := r.installRustWithToolchain(toolchain, envPath); err != nil {
+			return "", fmt.Errorf("failed to bootstrap Rust: %w", err)
+		}
 	}
 
 	// Install dependencies if needed
@@ -175,4 +309,32 @@ func (r *RustLanguage) CheckHealth(envPath, version string) error {
 	// This matches the behavior where Python pre-commit would only do basic
 	// directory existence checks for many languages.
 	return nil
+}
+
+// GetEnvPatch returns environment variable patches for Rust hook execution
+// This matches Python pre-commit's rust.get_env_patch() behavior
+func (r *RustLanguage) GetEnvPatch(envPath, version string) map[string]string {
+	env := make(map[string]string)
+
+	// Set CARGO_HOME - where cargo stores its cache and builds
+	env["CARGO_HOME"] = envPath
+
+	// For non-system versions, set RUSTUP_HOME to a temporary location
+	// In a full implementation, this would be where rustup is bootstrapped
+	if version != language.VersionSystem && version != "" {
+		// Temporarily set RUSTUP_HOME inside the environment
+		rustupHome := filepath.Join(envPath, ".rustup")
+		_ = os.MkdirAll(rustupHome, 0o750)
+		env["RUSTUP_HOME"] = rustupHome
+	}
+
+	// Build PATH - include cargo bin directory
+	binDir := filepath.Join(envPath, "bin")
+	if currentPath := os.Getenv("PATH"); currentPath != "" {
+		env["PATH"] = binDir + string(os.PathListSeparator) + currentPath
+	} else {
+		env["PATH"] = binDir
+	}
+
+	return env
 }

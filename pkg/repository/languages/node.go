@@ -410,6 +410,47 @@ func (n *NodeLanguage) IsRuntimeAvailable() bool {
 	return false
 }
 
+// GetEnvPatch returns environment variable patches for Node.js hook execution
+// This matches Python pre-commit's node.get_env_patch() behavior
+func (n *NodeLanguage) GetEnvPatch(envPath, _ string) map[string]string {
+	env := make(map[string]string)
+
+	// Platform-specific install prefix and lib directory
+	var installPrefix, libDir string
+	switch runtime.GOOS {
+	case windowsOS:
+		installPrefix = filepath.Join(envPath, "Scripts")
+		libDir = "Scripts"
+	default:
+		installPrefix = envPath
+		libDir = "lib"
+	}
+
+	// Set NODE_VIRTUAL_ENV - main marker for Node.js virtual environment
+	env["NODE_VIRTUAL_ENV"] = envPath
+
+	// Set NPM prefix for global installs
+	env["NPM_CONFIG_PREFIX"] = installPrefix
+	env["npm_config_prefix"] = installPrefix
+
+	// Set NODE_PATH for module resolution
+	env["NODE_PATH"] = filepath.Join(envPath, libDir, "node_modules")
+
+	// Unset user config to avoid conflicts (set to empty to remove)
+	env["NPM_CONFIG_USERCONFIG"] = ""
+	env["npm_config_userconfig"] = ""
+
+	// Build PATH
+	binDir := filepath.Join(envPath, "bin")
+	if currentPath := os.Getenv("PATH"); currentPath != "" {
+		env["PATH"] = binDir + string(os.PathListSeparator) + currentPath
+	} else {
+		env["PATH"] = binDir
+	}
+
+	return env
+}
+
 // validateAndResolvePaths validates and resolves the repository path
 func (n *NodeLanguage) validateAndResolvePaths(repoPath, cacheDir string) (string, error) {
 	// Handle empty repoPath by using cacheDir instead to avoid creating directories in CWD

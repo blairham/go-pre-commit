@@ -185,9 +185,16 @@ func (f *Formatter) printSkippedResult(
 	hookName string,
 	shouldUseColor bool,
 ) {
-	// For skipped hooks, Python shows "(no files to check)Skipped" with only "Skipped" colored
-	// We need to recalculate dots to account for the extra text
-	prefixText := "(no files to check)"
+	// Determine prefix text based on skip reason
+	var prefixText string
+	if result.SkippedByEnv {
+		// Skipped due to SKIP environment variable
+		prefixText = "(skipped)"
+	} else {
+		// Skipped because no files to check (default)
+		prefixText = "(no files to check)"
+	}
+
 	skippedText := "Skipped"
 	fullText := prefixText + skippedText
 	totalWidth := 79

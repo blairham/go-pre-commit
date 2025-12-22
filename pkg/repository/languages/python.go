@@ -147,17 +147,166 @@ func (p *PythonLanguage) InstallDependencies(envPath string, deps []string) erro
 	return p.installPipDependencies(envPath, deps)
 }
 
+// readPyvenvCfg reads and parses a pyvenv.cfg file into a map
+// This matches Python pre-commit's _read_pyvenv_cfg() behavior
+func (p *PythonLanguage) readPyvenvCfg(filename string) (map[string]string, error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]string)
+	for _, line := range strings.Split(string(content), "\n") {
+		// Skip blank lines and comments
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse key = value pairs
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		result[key] = value
+	}
+
+	return result, nil
+}
+
+// getVersionInfo gets the Python version info string from an executable
+// This matches Python pre-commit's _version_info() behavior
+func (p *PythonLanguage) getVersionInfo(exe string) string {
+	prog := `import sys;print(".".join(str(p) for p in sys.version_info))`
+	cmd := exec.Command(exe, "-S", "-c", prog)
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Sprintf("<<error retrieving version from %s>>", exe)
+	}
+	return strings.TrimSpace(string(output))
+}
+
 // CheckHealth performs a Python-specific health check
+// This matches Python pre-commit's python.health_check() behavior:
+// 1. Check if pyvenv.cfg exists
+// 2. Verify version_info in pyvenv.cfg matches actual virtualenv Python version
+// 3. Verify base-executable Python version matches (if present)
 func (p *PythonLanguage) CheckHealth(envPath, version string) error {
 	// Check if environment directory exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		return fmt.Errorf("environment directory does not exist: %s", envPath)
 	}
 
-	binPath := p.GetEnvironmentBinPath(envPath)
-	possibleNames := p.getPossiblePythonNames(version)
+	// Check for pyvenv.cfg (virtualenv marker file)
+	pyvenvCfg := filepath.Join(envPath, "pyvenv.cfg")
+	if _, err := os.Stat(pyvenvCfg); os.IsNotExist(err) {
+		// This might be a conda environment or old virtualenv
+		// For conda environments, skip pyvenv.cfg checks
+		if p.isCondaEnvironment(envPath) {
+			return p.checkCondaEnvironmentHealth(envPath)
+		}
+		return fmt.Errorf("pyvenv.cfg does not exist (old virtualenv?)")
+	}
 
-	return p.testPythonExecutables(binPath, possibleNames)
+	// Read and parse pyvenv.cfg
+	cfg, err := p.readPyvenvCfg(pyvenvCfg)
+	if err != nil {
+		return fmt.Errorf("failed to read pyvenv.cfg: %w", err)
+	}
+
+	// Check for version_info in config
+	expectedVersion, ok := cfg["version_info"]
+	if !ok {
+		return fmt.Errorf("created virtualenv's pyvenv.cfg is missing `version_info`")
+	}
+
+	// Get the Python executable in the virtualenv
+	binPath := p.GetEnvironmentBinPath(envPath)
+	pyExe := filepath.Join(binPath, "python")
+	if runtime.GOOS == constants.WindowsOS {
+		pyExe = filepath.Join(binPath, "python.exe")
+	}
+
+	// Get actual version from the virtualenv Python
+	actualVersion := p.getVersionInfo(pyExe)
+	if actualVersion != expectedVersion {
+		return fmt.Errorf(
+			"virtualenv python version did not match created version:\n"+
+				"- actual version: %s\n"+
+				"- expected version: %s",
+			actualVersion, expectedVersion,
+		)
+	}
+
+	// Check base-executable if present (newer virtualenv)
+	baseExe, hasBaseExe := cfg["base-executable"]
+	if !hasBaseExe {
+		// Made with older virtualenv, skip base-executable check
+		return nil
+	}
+
+	// Verify base executable version matches
+	baseExeVersion := p.getVersionInfo(baseExe)
+	if baseExeVersion != expectedVersion {
+		return fmt.Errorf(
+			"base executable python version does not match created version:\n"+
+				"- base-executable version: %s\n"+
+				"- expected version: %s",
+			baseExeVersion, expectedVersion,
+		)
+	}
+
+	return nil
+}
+
+// checkCondaEnvironmentHealth checks health for conda environments
+func (p *PythonLanguage) checkCondaEnvironmentHealth(envPath string) error {
+	// For conda environments, just verify the Python executable works
+	binPath := p.GetEnvironmentBinPath(envPath)
+	pyExe := filepath.Join(binPath, "python")
+	if runtime.GOOS == constants.WindowsOS {
+		pyExe = filepath.Join(binPath, "python.exe")
+	}
+
+	if _, err := os.Stat(pyExe); err != nil {
+		return fmt.Errorf("conda environment Python executable not found: %s", pyExe)
+	}
+
+	// Try to run Python to verify it works
+	cmd := exec.Command(pyExe, "--version")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("conda environment Python executable not working: %w", err)
+	}
+
+	return nil
+}
+
+// GetEnvPatch returns environment variable patches for Python hook execution
+// This matches Python pre-commit's python.get_env_patch() behavior
+func (p *PythonLanguage) GetEnvPatch(envPath, _ string) map[string]string {
+	env := make(map[string]string)
+
+	// Set VIRTUAL_ENV - this is the main marker for a Python virtual environment
+	env["VIRTUAL_ENV"] = envPath
+
+	// Unset PYTHONHOME - it can interfere with virtual environments
+	// In Python this uses UNSET sentinel, in Go we set to empty string
+	env["PYTHONHOME"] = ""
+
+	// Get the bin directory
+	binPath := p.GetEnvironmentBinPath(envPath)
+
+	// Add bin directory to PATH
+	if currentPath := os.Getenv("PATH"); currentPath != "" {
+		env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
+	} else {
+		env["PATH"] = binPath
+	}
+
+	return env
 }
 
 // getPossiblePythonNames returns a list of possible Python executable names to try

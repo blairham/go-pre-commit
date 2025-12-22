@@ -185,10 +185,71 @@ func (r *RLanguage) SetupEnvironmentWithRepo(
 	return envPath, nil
 }
 
+// readInstalledRVersion reads the R version that was used when the environment was installed
+// This matches Python pre-commit's _read_installed_version()
+func (r *RLanguage) readInstalledRVersion(envPath string) (string, error) {
+	// Try to get the installed version from renv settings
+	// This requires executing R code in the renv environment
+	code := `cat(renv::settings$r.version())`
+	output, err := r.executeRInEnv(code, envPath)
+	if err != nil {
+		// Fallback: try to read from a version file we may have created
+		versionFile := filepath.Join(envPath, ".r_version")
+		content, fileErr := os.ReadFile(versionFile)
+		if fileErr != nil {
+			return "", fmt.Errorf("could not read installed R version: %w", err)
+		}
+		return strings.TrimSpace(string(content)), nil
+	}
+	return strings.TrimSpace(output), nil
+}
+
+// readExecutableRVersion gets the current R version from the executable
+// This matches Python pre-commit's _read_executable_version()
+func (r *RLanguage) readExecutableRVersion(envPath string) (string, error) {
+	code := `cat(as.character(getRversion()))`
+	output, err := r.executeRInEnv(code, envPath)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
+// executeRInEnv executes R code in the renv environment
+func (r *RLanguage) executeRInEnv(code, envPath string) (string, error) {
+	// Run R with renv activated
+	renvActivate := filepath.Join(envPath, "renv", "activate.R")
+	fullCode := fmt.Sprintf("source('%s'); %s", renvActivate, code)
+
+	cmd := exec.Command("Rscript", "--vanilla", "-e", fullCode)
+	cmd.Dir = envPath
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
+}
+
+// writeCurrentRVersion writes the current R version to a file in the environment
+// This is called during environment setup
+func (r *RLanguage) writeCurrentRVersion(envPath string) error {
+	// Get current R version
+	cmd := exec.Command("Rscript", "-e", "cat(as.character(getRversion()))")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get R version: %w", err)
+	}
+
+	version := strings.TrimSpace(string(output))
+	versionFile := filepath.Join(envPath, ".r_version")
+	return os.WriteFile(versionFile, []byte(version), 0o644)
+}
+
 // CheckHealth performs health check for R environments matching Python pre-commit's health_check
+// This checks if the installed R version matches the current executable R version
 func (r *RLanguage) CheckHealth(envPath, version string) error {
 	// Python pre-commit only supports 'default' version
-	if version != language.VersionDefault {
+	if version != language.VersionDefault && version != "" {
 		return fmt.Errorf("r only supports version 'default', got: %s", version)
 	}
 
@@ -202,15 +263,38 @@ func (r *RLanguage) CheckHealth(envPath, version string) error {
 		return fmt.Errorf("pre-commit requires system-installed R (Rscript executable not found)")
 	}
 
-	// Python pre-commit does sophisticated R version checking between
-	// the R version used to install packages vs current R executable
-	// For basic compatibility, we'll just verify R works
-	cmd := exec.Command("Rscript", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("system R installation not working: %w", err)
+	// Try to read the R version that was installed
+	installedVersion, err := r.readInstalledRVersion(envPath)
+	if err != nil {
+		// If we can't read the installed version, just verify R works
+		cmd := exec.Command("Rscript", "--version")
+		if runErr := cmd.Run(); runErr != nil {
+			return fmt.Errorf("system R installation not working: %w", runErr)
+		}
+		// Environment is healthy if R works but we don't have version info
+		return nil
 	}
 
-	// Environment is healthy if directory exists and system R works
-	// Note: Full implementation would check R version consistency like Python pre-commit
+	// Get the current R version
+	currentVersion, err := r.readExecutableRVersion(envPath)
+	if err != nil {
+		// If we can't get current version, fallback to basic check
+		cmd := exec.Command("Rscript", "-e", "cat(as.character(getRversion()))")
+		output, runErr := cmd.Output()
+		if runErr != nil {
+			return fmt.Errorf("failed to get current R version: %w", runErr)
+		}
+		currentVersion = strings.TrimSpace(string(output))
+	}
+
+	// Compare versions - if they don't match, environment is unhealthy
+	if installedVersion != "" && currentVersion != "" && installedVersion != currentVersion {
+		return fmt.Errorf(
+			"Hooks were installed for R version %s but current R is version %s. "+
+				"Re-install the hooks.",
+			installedVersion, currentVersion,
+		)
+	}
+
 	return nil
 }
