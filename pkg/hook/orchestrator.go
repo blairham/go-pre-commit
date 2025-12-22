@@ -3,8 +3,10 @@ package hook
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -526,11 +528,53 @@ func (o *Orchestrator) getFilesForHook(hook config.Hook) []string {
 	return o.matcher.GetFilesForHook(hook, o.ctx.Files, o.ctx.AllFiles)
 }
 
+// getSkippedHookIDs returns a set of hook IDs that should be skipped based on the SKIP env var
+// This matches Python pre-commit's _get_skips() behavior
+func getSkippedHookIDs() map[string]bool {
+	skipEnv := os.Getenv("SKIP")
+	if skipEnv == "" {
+		return nil
+	}
+
+	skipped := make(map[string]bool)
+	for _, hookID := range strings.Split(skipEnv, ",") {
+		hookID = strings.TrimSpace(hookID)
+		if hookID != "" {
+			skipped[hookID] = true
+		}
+	}
+	return skipped
+}
+
+// isHookSkippedByEnv checks if a hook should be skipped based on SKIP env var
+func isHookSkippedByEnv(hookID string, skippedHooks map[string]bool) bool {
+	if skippedHooks == nil {
+		return false
+	}
+	return skippedHooks[hookID]
+}
+
 func (o *Orchestrator) shouldSkipHook(
 	hook config.Hook,
 	files []string,
 	_ time.Time,
 ) execution.SkipResult {
+	// Check SKIP environment variable first
+	skippedHooks := getSkippedHookIDs()
+	if isHookSkippedByEnv(hook.ID, skippedHooks) {
+		return execution.SkipResult{
+			Skip: true,
+			Result: execution.Result{
+				Hook:         hook,
+				Files:        files,
+				Success:      true,
+				Skipped:      true,
+				SkippedByEnv: true,
+				Duration:     0,
+			},
+		}
+	}
+
 	if len(files) == 0 && !hook.AlwaysRun {
 		return execution.SkipResult{
 			Skip: true,

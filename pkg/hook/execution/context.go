@@ -72,15 +72,16 @@ type Context struct {
 
 // Result represents the result of hook execution
 type Result struct {
-	Output   string
-	Error    string
-	Files    []string
-	Hook     config.Hook
-	Duration time.Duration
-	ExitCode int
-	Success  bool
-	Timeout  bool
-	Skipped  bool
+	Output       string
+	Error        string
+	Files        []string
+	Hook         config.Hook
+	Duration     time.Duration
+	ExitCode     int
+	Success      bool
+	Timeout      bool
+	Skipped      bool
+	SkippedByEnv bool // True if skipped due to SKIP environment variable
 }
 
 // RunItem represents a hook to be executed with its repository context

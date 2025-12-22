@@ -49,6 +49,15 @@ type DependencyManager interface {
 	InstallDependencies(envPath string, deps []string) error
 }
 
+// EnvironmentContext defines the interface for environment context management
+// This matches Python pre-commit's in_env() context manager pattern
+type EnvironmentContext interface {
+	// GetEnvPatch returns environment variable patches for hook execution
+	// Returns a map of environment variable names to their values
+	// Following Python pre-commit's get_env_patch() pattern
+	GetEnvPatch(envPath, version string) map[string]string
+}
+
 // Manager defines the complete interface for language-specific operations
 // It embeds all the smaller interfaces to maintain backward compatibility
 type Manager interface {
@@ -56,4 +65,5 @@ type Manager interface {
 	EnvironmentManager
 	HealthChecker
 	DependencyManager
+	EnvironmentContext
 }

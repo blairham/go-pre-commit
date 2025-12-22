@@ -30,6 +30,7 @@ func main() {
 		"clean":             commands.CleanCommandFactory,
 		"doctor":            commands.DoctorCommandFactory,
 		"gc":                commands.GcCommandFactory,
+		"hazmat":            commands.HazmatCommandFactory,
 		"install":           commands.InstallCommandFactory,
 		"install-hooks":     commands.InstallHooksCommandFactory,
 		"migrate-config":    commands.MigrateConfigCommandFactory,
@@ -80,7 +81,8 @@ positional arguments:
     clean               Clean cached repositories and environments
     doctor              Check and repair environment health (Go extension)
     gc                  Clean unused cached repos
-    init-templatedir    Install hook script in a directory intended for use with git init templateDir (Go extension)
+    hazmat              Composable tools for rare use in hook ` + "`entry`" + `
+    init-templatedir    Install hook script in a directory intended for use with git init templateDir
     install             Install the pre-commit script
     install-hooks       Install hook environments for all environments in the config file
     migrate-config      Migrate list configuration to new map configuration

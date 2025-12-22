@@ -29,8 +29,31 @@ func (hm *HookManager) IsLocalRepo(repo config.Repo) bool {
 
 // GetMetaHook returns a built-in meta hook definition
 func (hm *HookManager) GetMetaHook(hookID string) (config.Hook, bool) {
-	// Define built-in meta hooks
+	// Define built-in meta hooks - these are the official Python pre-commit meta hooks
 	metaHooks := map[string]config.Hook{
+		// Official Python pre-commit meta hooks
+		"identity": {
+			ID:       "identity",
+			Name:     "identity",
+			Entry:    "identity", // Built-in, handled by metahooks package
+			Language: "meta",
+			Files:    "", // Runs on all files by default
+		},
+		"check-hooks-apply": {
+			ID:       "check-hooks-apply",
+			Name:     "check hooks apply",
+			Entry:    "check-hooks-apply", // Built-in, handled by metahooks package
+			Language: "meta",
+			Files:    `^\.pre-commit-config\.yaml$`,
+		},
+		"check-useless-excludes": {
+			ID:       "check-useless-excludes",
+			Name:     "check useless excludes",
+			Entry:    "check-useless-excludes", // Built-in, handled by metahooks package
+			Language: "meta",
+			Files:    `^\.pre-commit-config\.yaml$`,
+		},
+		// Common hooks from pre-commit-hooks repo (these need the actual repo)
 		"check-added-large-files": {
 			ID:       "check-added-large-files",
 			Name:     "Check for added large files",

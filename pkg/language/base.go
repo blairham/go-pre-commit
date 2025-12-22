@@ -315,6 +315,23 @@ func (bl *Base) NeedsEnvironmentSetup() bool {
 	return true
 }
 
+// GetEnvPatch returns environment variable patches for hook execution
+// This is the base implementation - specific languages should override for proper PATH setup
+// Following Python pre-commit's get_env_patch() pattern
+func (bl *Base) GetEnvPatch(envPath, _ string) map[string]string {
+	env := make(map[string]string)
+
+	// Basic PATH addition for the environment bin directory
+	binPath := bl.GetEnvironmentBinPath(envPath)
+	if currentPath := os.Getenv("PATH"); currentPath != "" {
+		env["PATH"] = binPath + string(os.PathListSeparator) + currentPath
+	} else {
+		env["PATH"] = binPath
+	}
+
+	return env
+}
+
 // ParseRepoURL parses repository URL from directory name
 func ParseRepoURL(dirName string) string {
 	// Handle common repository URL patterns
