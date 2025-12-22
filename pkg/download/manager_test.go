@@ -1116,6 +1116,11 @@ func TestManager_DownloadAndExtract_TempFileCloseError(t *testing.T) {
 }
 
 func TestArchiver_ExtractZip_ReadOnlyDestination(t *testing.T) {
+	// Skip this test if running as root (Docker/CI environments)
+	if os.Geteuid() == 0 {
+		t.Skip("Skipping permission test when running as root")
+	}
+
 	tempDir := t.TempDir()
 
 	// Create a zip archive
@@ -1146,6 +1151,11 @@ func TestArchiver_ExtractZip_ReadOnlyDestination(t *testing.T) {
 }
 
 func TestArchiver_ExtractTar_ReadOnlyDestination(t *testing.T) {
+	// Skip this test if running as root (Docker/CI environments)
+	if os.Geteuid() == 0 {
+		t.Skip("Skipping permission test when running as root")
+	}
+
 	tempDir := t.TempDir()
 
 	// Create a tar archive
@@ -1201,6 +1211,11 @@ func TestArchiver_extractTarEntries_ReaderError(t *testing.T) {
 }
 
 func TestManager_InstallBinary_DestinationNotWritable(t *testing.T) {
+	// Skip this test if running as root (Docker/CI environments)
+	if os.Geteuid() == 0 {
+		t.Skip("Skipping permission test when running as root")
+	}
+
 	manager := NewManager()
 	tempDir := t.TempDir()
 
@@ -1259,6 +1274,11 @@ func TestManager_copyFile_SourceIsDirectory(t *testing.T) {
 }
 
 func TestArchiver_createDirectory_PermissionError(t *testing.T) {
+	// Skip this test if running as root (Docker/CI environments)
+	if os.Geteuid() == 0 {
+		t.Skip("Skipping permission test when running as root")
+	}
+
 	tempDir := t.TempDir()
 
 	// Create a read-only parent directory

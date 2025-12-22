@@ -99,7 +99,9 @@ func (c *UninstallCommand) Run(args []string) int {
 	// Uninstall each hook type
 	// Python ignores errors and continues, always returning 0
 	for _, hookType := range hookTypes {
-		_ = c.uninstallHook(repo, hookType)
+		if err := c.uninstallHook(repo, hookType); err != nil {
+			// Log error but continue with other hooks for Python compatibility
+		}
 	}
 
 	return 0

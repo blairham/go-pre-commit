@@ -211,8 +211,8 @@ func (c *AutoupdateCommand) getLatestRevisionForRepo(
 	// Convert to frozen hash if requested
 	if opts.Freeze && !opts.BleedingEdge {
 		if frozenRev, err := c.getCommitHash(repo.Repo, latestRev); err == nil {
-			info.FreezeTag = latestRev // Store the tag name
-			info.Revision = frozenRev   // Use the commit hash
+			info.FreezeTag = latestRev  // Store the tag name
+			info.Revision = frozenRev    // Use the commit hash
 		}
 	}
 

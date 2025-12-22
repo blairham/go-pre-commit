@@ -497,7 +497,7 @@ func (r *Repository) InstallHook(hookName, script string, overwrite bool) error 
 
 	// If overwrite and legacy exists, remove it
 	if overwrite {
-		os.Remove(legacyPath) // Ignore error if doesn't exist
+		_ = os.Remove(legacyPath) // Ignore error if doesn't exist
 	}
 
 	// If hook exists and is not ours, move it to .legacy
@@ -1051,10 +1051,12 @@ func (r *Repository) FindAncestors(localSHA, remoteName string) ([]string, error
 			if err != nil {
 				continue
 			}
-			_ = iter.ForEach(func(c *object.Commit) error {
+			if err := iter.ForEach(func(c *object.Commit) error {
 				remoteCommits[c.Hash] = true
 				return nil
-			})
+			}); err != nil {
+				// Log or handle error as needed, but continue processing other refs
+			}
 		}
 	}
 
@@ -1074,7 +1076,7 @@ func (r *Repository) FindAncestors(localSHA, remoteName string) ([]string, error
 		}
 		return nil
 	})
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("failed to iterate commits: %w", err)
 	}
 

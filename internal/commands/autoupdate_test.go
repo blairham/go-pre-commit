@@ -1053,6 +1053,11 @@ func TestAutoupdateCommand_writeConfig_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("read-only file", func(t *testing.T) {
+		// Skip this test if running as root (Docker/CI environments)
+		if os.Geteuid() == 0 {
+			t.Skip("Skipping permission test when running as root")
+		}
+
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "readonly.yaml")
 

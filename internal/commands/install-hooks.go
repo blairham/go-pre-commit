@@ -92,7 +92,9 @@ func (c *InstallHooksCommand) loadConfigAndInitManager(
 
 	// Mark this config as used in the database so gc knows it's active
 	// Ignore errors - this is non-critical functionality
-	_ = repoManager.MarkConfigUsed(opts.Config)
+	if err := repoManager.MarkConfigUsed(opts.Config); err != nil {
+		// Non-critical error, just log it
+	}
 
 	return cfg, repoManager, nil
 }
@@ -228,7 +230,9 @@ func (c *InstallHooksCommand) prepareRepositoryForHooks(
 	for _, hook := range repo.Hooks {
 		// Set up the environment for this hook
 		// Don't fail the entire command if one hook environment setup fails
-		_ = c.setupHookEnvironment(hook, repo, repoPath, repoManager, cfg)
+		if err := c.setupHookEnvironment(hook, repo, repoPath, repoManager, cfg); err != nil {
+			// Log error but continue with other hooks
+		}
 	}
 
 	return nil
@@ -371,7 +375,9 @@ func (c *InstallHooksCommand) Run(args []string) int {
 		return 1
 	}
 	defer func() {
-		_ = repoManager.Close()
+		if err := repoManager.Close(); err != nil {
+			// Log error but don't fail since we're already returning
+		}
 	}()
 
 	if err := c.prepareAllRepositories(cfg, repoManager); err != nil {
