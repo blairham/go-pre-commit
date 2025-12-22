@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/jessevdk/go-flags"
 	"github.com/mitchellh/cli"
@@ -50,13 +49,13 @@ type RunOptions struct {
 	RewriteCommand             string        `long:"rewrite-command"               description:"Command that invoked the rewrite"`
 	PreRebaseUpstream          string        `long:"pre-rebase-upstream"           description:"Upstream from which series was forked"`
 	PreRebaseBranch            string        `long:"pre-rebase-branch"             description:"Branch being rebased"`
-	Color                      string        `long:"color"                         description:"Whether to use color in output"                             default:"auto"                    choice:"auto"`
-	Files                      []string      `long:"files"                         description:"Specific filenames to run hooks on"`
-	Timeout                    time.Duration `long:"timeout"                       description:"Hook execution timeout (e.g. 30s, 5m)"                      default:"60s"`
-	Parallel                   int           `long:"jobs"                          description:"Number of hooks to run in parallel"               short:"j" default:"1"`
+	Color                      string   `long:"color"                         description:"Whether to use color in output"                             default:"auto"                    choice:"auto"`
+	Files                      []string `long:"files"                         description:"Specific filenames to run hooks on"`
+	Parallel                   int      `long:"jobs"                          description:"Number of hooks to run in parallel"               short:"j" default:"1"`
 	AllFiles                   bool          `long:"all-files"                     description:"Run on all files in the repository"               short:"a"`
 	Verbose                    bool          `long:"verbose"                       description:"Verbose output"                                   short:"v"`
 	ShowDiff                   bool          `long:"show-diff-on-failure"          description:"Show diff on failure"`
+	FailFast                   bool          `long:"fail-fast"                     description:"Stop after the first failing hook"`
 	Help                       bool          `long:"help"                          description:"Show this help message"                           short:"h"`
 }
 
@@ -64,11 +63,14 @@ type RunOptions struct {
 func (c *RunCommand) Help() string {
 	var opts RunOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = "[-h] [--all-files] [--files FILES] [--config CONFIG] [--verbose] [--show-diff-on-failure] [--hook-stage HOOK_STAGE] [--from-ref FROM_REF] [--to-ref TO_REF] [--jobs JOBS] [--timeout TIMEOUT] [--color {auto,always,never}] [hook_id [hook_id ...]]"
+	parser.Usage = "[hook] [OPTIONS]"
 
 	helpText := `usage: pre-commit run ` + parser.Usage + `
 
 Run hooks.
+
+positional arguments:
+  hook                  a single hook-id to run (optional)
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -78,6 +80,7 @@ optional arguments:
   -v, --verbose         verbose output
   --show-diff-on-failure
                         show diff on failure
+  --fail-fast           stop after the first failing hook
   --hook-stage HOOK_STAGE
                         the stage during which the hook is fired. One of
                         commit-msg, manual, post-checkout, post-commit, post-
@@ -96,7 +99,6 @@ optional arguments:
   --remote-branch REMOTE_BRANCH
                         remote branch name
   -j, --jobs JOBS       number of hooks to run in parallel
-  --timeout TIMEOUT     hook execution timeout (e.g. 30s, 5m)
   --color {auto,always,never}
                         whether to use color in output (default: auto)
 `
@@ -155,19 +157,9 @@ func (c *RunCommand) Run(args []string) int {
 	// Ensure all repositories are cloned and environments are set up
 	// If not ready, run install-hooks first
 	installHooksCmd := &InstallHooksCommand{}
-	if !installHooksCmd.CheckRepositoriesReady(cfg, repoManager, opts.Verbose) {
-		if opts.Verbose {
-			fmt.Println("Repositories not ready, running install-hooks first...")
-		}
-
-		// Create install-hooks options based on run options
-		installOpts := &InstallHooksOptions{
-			Config:  opts.Config,
-			Verbose: opts.Verbose,
-		}
-
-		if prepareErr := installHooksCmd.prepareAllRepositories(cfg, installOpts, repoManager); prepareErr != nil {
-			fmt.Printf("Error preparing repositories and environments: %v\n", prepareErr)
+	if !installHooksCmd.CheckRepositoriesReady(cfg, repoManager) {
+		if err := installHooksCmd.prepareAllRepositories(cfg, repoManager); err != nil {
+			fmt.Printf("Error preparing repositories and environments: %v\n", err)
 			return 1
 		}
 	}
@@ -663,18 +655,26 @@ func (c *RunCommand) createExecutionContext(
 	hookIDs []string,
 	repoManager *repository.Manager,
 ) *execution.Context {
+	// CLI --fail-fast takes precedence, otherwise use config file setting
+	failFast := opts.FailFast || cfg.FailFast
+
+	var repoRoot string
+	if repo != nil {
+		repoRoot = repo.Root
+	}
+
 	return &execution.Context{
 		Config:      cfg,
 		Files:       files,
 		AllFiles:    opts.AllFiles,
 		Verbose:     opts.Verbose,
 		ShowDiff:    opts.ShowDiff,
-		RepoRoot:    repo.Root,
+		FailFast:    failFast,
+		RepoRoot:    repoRoot,
 		HookStage:   opts.HookStage,
 		Environment: env,
 		HookIDs:     hookIDs,
 		Parallel:    opts.Parallel,
-		Timeout:     opts.Timeout,
 		Color:       opts.Color,
 		RepoManager: repoManager,
 	}

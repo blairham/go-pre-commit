@@ -308,7 +308,7 @@ func (o *Orchestrator) runHooksSequential(
 		results = append(results, result)
 
 		// Fail fast if enabled and hook failed
-		if o.ctx.Config.FailFast && !result.Success {
+		if o.ctx.FailFast && !result.Success {
 			return results, nil
 		}
 	}
@@ -384,7 +384,7 @@ func (o *Orchestrator) collectResults(
 
 // handleFailFast handles fail-fast logic and returns appropriate results
 func (o *Orchestrator) handleFailFast(results []execution.Result) ([]execution.Result, error) {
-	if !o.ctx.Config.FailFast {
+	if !o.ctx.FailFast {
 		return results, nil
 	}
 

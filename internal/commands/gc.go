@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 	"github.com/mitchellh/cli"
 
+	"github.com/blairham/go-pre-commit/pkg/cache"
 	"github.com/blairham/go-pre-commit/pkg/config"
 )
 
@@ -82,7 +84,15 @@ func (c *GcCommand) Run(args []string) int {
 		return 0
 	}
 
-	removedCount, err := c.gcRepos(cacheDir, dbPath)
+	// Use exclusive lock during GC to prevent race conditions with other pre-commit processes
+	// This matches Python's store.exclusive_lock() behavior
+	fileLock := cache.NewFileLock(cacheDir)
+	var removedCount int
+	err = fileLock.WithLock(context.Background(), func() error {
+		var gcErr error
+		removedCount, gcErr = c.gcRepos(cacheDir, dbPath)
+		return gcErr
+	})
 	if err != nil {
 		fmt.Printf("Error during garbage collection: %v\n", err)
 		return 1
@@ -144,7 +154,19 @@ func (c *GcCommand) buildRepoMaps(repos []repoRecord) (map[string]string, map[st
 	return allRepos, unusedRepos
 }
 
-func (c *GcCommand) markReposAsUsed(liveConfigs []string, unusedRepos map[string]string) []string {
+// dbRepoName creates a composite repo name that includes additional dependencies.
+// This matches Python's Store.db_repo_name() method which creates keys like:
+// - "repo" (no dependencies)
+// - "repo:dep1,dep2" (with dependencies)
+// This is used to track repos that were cloned with specific additional_dependencies.
+func dbRepoName(repo string, deps []string) string {
+	if len(deps) > 0 {
+		return fmt.Sprintf("%s:%s", repo, strings.Join(deps, ","))
+	}
+	return repo
+}
+
+func (c *GcCommand) markReposAsUsed(liveConfigs []string, allRepos map[string]string, unusedRepos map[string]string) []string {
 	var deadConfigs []string
 
 	for _, configPath := range liveConfigs {
@@ -160,8 +182,52 @@ func (c *GcCommand) markReposAsUsed(liveConfigs []string, unusedRepos map[string
 				continue // Skip local and meta repos
 			}
 
+			// Get the repo path from allRepos
 			key := repo.Repo + ":" + repo.Rev
+			repoPath, exists := allRepos[key]
+
+			// If repo is not in cache, skip it (can't validate manifest)
+			if !exists {
+				continue
+			}
+
+			// Validate the manifest file at the repo path
+			// Python returns early if manifest is invalid, leaving repo as unused
+			manifestPath := filepath.Join(repoPath, ".pre-commit-hooks.yaml")
+			hooks, manifestErr := config.LoadHooksConfig(manifestPath)
+			if manifestErr != nil {
+				// Invalid manifest - don't mark this repo as used
+				// It will be garbage collected
+				continue
+			}
+
+			// Manifest is valid, mark the base repo as used
 			delete(unusedRepos, key)
+
+			// Build a map of hook IDs to their definitions from manifest
+			hookByID := make(map[string]config.Hook)
+			for _, h := range hooks {
+				hookByID[h.ID] = h
+			}
+
+			// Also mark any repos with additional_dependencies as used
+			// Python creates separate cache entries for hooks with different deps
+			for _, hook := range repo.Hooks {
+				// Get additional_dependencies from config hook, or fall back to manifest default
+				var deps []string
+				if len(hook.AdditionalDeps) > 0 {
+					deps = hook.AdditionalDeps
+				} else if manifestHook, ok := hookByID[hook.ID]; ok {
+					deps = manifestHook.AdditionalDeps
+				}
+
+				if len(deps) > 0 {
+					// Create composite key with additional dependencies
+					repoName := dbRepoName(repo.Repo, deps)
+					depsKey := repoName + ":" + repo.Rev
+					delete(unusedRepos, depsKey)
+				}
+			}
 		}
 	}
 	return deadConfigs
@@ -224,11 +290,11 @@ func (c *GcCommand) gcRepos(_ /* cacheDir */, dbPath string) (int, error) {
 	// Categorize configs into live and dead
 	deadConfigs, liveConfigs := c.categorizeConfigs(configs)
 
-	// Create map of unused repos (we don't need allRepos)
-	_, unusedRepos := c.buildRepoMaps(repos)
+	// Create map of repos - need allRepos for manifest validation
+	allRepos, unusedRepos := c.buildRepoMaps(repos)
 
 	// Check live configs to see which repos are still in use
-	additionalDeadConfigs := c.markReposAsUsed(liveConfigs, unusedRepos)
+	additionalDeadConfigs := c.markReposAsUsed(liveConfigs, allRepos, unusedRepos)
 	deadConfigs = append(deadConfigs, additionalDeadConfigs...)
 
 	// Remove dead configs from database

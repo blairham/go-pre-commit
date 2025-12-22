@@ -1,10 +1,8 @@
 package commands
 
 import (
-	"errors"
 	"fmt"
 
-	"github.com/jessevdk/go-flags"
 	"github.com/mitchellh/cli"
 
 	"github.com/blairham/go-pre-commit/pkg/config"
@@ -13,68 +11,56 @@ import (
 // ValidateConfigCommand handles the validate-config command functionality
 type ValidateConfigCommand struct{}
 
-// ValidateConfigOptions holds command-line options for the validate-config command
-type ValidateConfigOptions struct {
-	Help bool `short:"h" long:"help" description:"Show this help message"`
-}
-
 // Help returns the help text for the validate-config command
 func (c *ValidateConfigCommand) Help() string {
-	var opts ValidateConfigOptions
-	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = OptionsUsage
+	return `Usage: pre-commit validate-config [filenames...]
 
-	formatter := &HelpFormatter{
-		Command:     "validate-config",
-		Description: "Validate the .pre-commit-config.yaml configuration file.",
-		Examples: []Example{
-			{Command: "pre-commit validate-config", Description: "Validate the configuration file"},
-		},
-		Notes: []string{
-			"Checks the syntax and structure of your .pre-commit-config.yaml file.",
-			"Returns exit code 0 if valid, non-zero if there are errors.",
-		},
-	}
+Validate .pre-commit-config.yaml files
 
-	return formatter.FormatHelp(parser)
+Arguments:
+  filenames    One or more config files to validate
+
+Example:
+  pre-commit validate-config .pre-commit-config.yaml
+  pre-commit validate-config file1.yaml file2.yaml
+`
 }
 
 // Synopsis returns a short description of the validate-config command
 func (c *ValidateConfigCommand) Synopsis() string {
-	return "Validate configuration file"
+	return "Validate .pre-commit-config.yaml files"
 }
 
 // Run executes the validate-config command
+// This matches Python's validate_config behavior:
+// - Takes filenames as positional arguments
+// - Validates all files, continuing even if some fail
+// - Silent on success
+// - Returns 0 if all valid, 1 if any invalid
 func (c *ValidateConfigCommand) Run(args []string) int {
-	var opts ValidateConfigOptions
-	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = OptionsUsage
+	// Filenames are positional arguments (matching Python)
+	filenames := args
 
-	_, err := parser.ParseArgs(args)
-	if err != nil {
-		var flagsErr *flags.Error
-		if errors.As(err, &flagsErr) && flagsErr.Type == flags.ErrHelp {
-			return 0
+	ret := 0
+	for _, filename := range filenames {
+		// Load and validate configuration
+		cfg, err := config.LoadConfig(filename)
+		if err != nil {
+			// Print error and continue (matching Python behavior)
+			fmt.Println(err)
+			ret = 1
+			continue
 		}
-		fmt.Printf("Error parsing arguments: %v\n", err)
-		return 1
+
+		// Validate configuration structure
+		if err := cfg.Validate(); err != nil {
+			fmt.Println(err)
+			ret = 1
+		}
+		// Silent on success (matching Python)
 	}
 
-	// Load configuration
-	cfg, err := config.LoadConfig(".pre-commit-config.yaml")
-	if err != nil {
-		fmt.Printf("Error: failed to load configuration: %v\n", err)
-		return 1
-	}
-
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		fmt.Printf("Error: configuration is invalid: %v\n", err)
-		return 1
-	}
-
-	fmt.Println("Configuration is valid")
-	return 0
+	return ret
 }
 
 // ValidateConfigCommandFactory creates a new validate-config command instance

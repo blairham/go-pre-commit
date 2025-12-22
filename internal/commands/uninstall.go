@@ -1,17 +1,34 @@
 package commands
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/jessevdk/go-flags"
 	"github.com/mitchellh/cli"
 
 	"github.com/blairham/go-pre-commit/pkg/config"
 	"github.com/blairham/go-pre-commit/pkg/git"
+)
+
+// Hook script hash markers used by Python pre-commit to identify its hooks.
+// These are embedded in the hook template and used for ownership detection.
+// PRIOR_HASHES are for backwards compatibility with older pre-commit versions.
+var (
+	// CURRENT_HASH is the current hash marker used by Python pre-commit
+	CURRENT_HASH = []byte("138fd403232d2ddd5efb44317e38bf03")
+
+	// PRIOR_HASHES are hash markers from previous Python pre-commit versions
+	PRIOR_HASHES = [][]byte{
+		[]byte("4d9958c90bc262f47553e2c073f14cfe"),
+		[]byte("d8ee923c46731b42cd95cc869add4062"),
+		[]byte("49fd668cb42069aa1b6048464be5d395"),
+		[]byte("79f09a650522a87b0da915d0d983b2de"),
+		[]byte("e358c9dae00eac5d06b38dfdb1e33a8c"),
+	}
 )
 
 // UninstallCommand handles the uninstall command functionality
@@ -52,6 +69,7 @@ func (c *UninstallCommand) Synopsis() string {
 }
 
 // Run executes the uninstall command
+// Python's uninstall always returns 0, even on errors.
 func (c *UninstallCommand) Run(args []string) int {
 	var opts UninstallOptions
 	parser := flags.NewParser(&opts, flags.Default)
@@ -63,26 +81,25 @@ func (c *UninstallCommand) Run(args []string) int {
 		if errors.As(err, &flagsErr) && flagsErr.Type == flags.ErrHelp {
 			return 0
 		}
-		fmt.Printf("Error parsing arguments: %v\n", err)
-		return 1
+		// Python's uninstall doesn't fail on parse errors for uninstall
+		// but we should still return 0 for parity
+		return 0
 	}
 
-	// Find git repository
+	// Find git repository - if not in a git repo, silently return 0
+	// (matching Python's behavior of not failing)
 	repo, err := git.NewRepository("")
 	if err != nil {
-		fmt.Printf("Error: not in a git repository: %v\n", err)
-		return 1
+		return 0
 	}
 
 	// Determine which hook types to uninstall
 	hookTypes := c.getHookTypes(&opts)
 
 	// Uninstall each hook type
+	// Python ignores errors and continues, always returning 0
 	for _, hookType := range hookTypes {
-		if err := c.uninstallHook(repo, hookType); err != nil {
-			fmt.Printf("Error: failed to uninstall %s hook: %v\n", hookType, err)
-			return 1
-		}
+		_ = c.uninstallHook(repo, hookType)
 	}
 
 	return 0
@@ -143,26 +160,44 @@ func (c *UninstallCommand) uninstallHook(repo *git.Repository, hookType string) 
 
 	// Check if there's a legacy hook to restore
 	if _, err := os.Stat(legacyPath); err == nil {
-		// Restore legacy hook
+		// Restore legacy hook - use os.Rename which is like Python's os.replace
 		if err := os.Rename(legacyPath, hookPath); err != nil {
 			return fmt.Errorf("failed to restore legacy hook: %w", err)
 		}
-		// Use relative path for output (matching Python)
-		relPath := filepath.Join(".git", "hooks", hookType)
-		fmt.Printf("Restored previous hooks to %s\n", relPath)
+		// Python outputs the full hook_path, not a relative path
+		fmt.Printf("Restored previous hooks to %s\n", hookPath)
 	}
 
 	return nil
 }
 
-// isOurHook checks if the hook file was installed by pre-commit
+// isOurHook checks if the hook file was installed by pre-commit.
+// This matches Python's is_our_script() behavior by checking for
+// hash markers embedded in the hook template.
 func (c *UninstallCommand) isOurHook(hookPath string) (bool, error) {
+	// Check if file exists (handles symlinks)
+	if _, err := os.Stat(hookPath); os.IsNotExist(err) {
+		return false, nil
+	}
+
 	content, err := os.ReadFile(hookPath)
 	if err != nil {
 		return false, err
 	}
-	// Check for pre-commit identifier in the hook script
-	return strings.Contains(string(content), "pre-commit"), nil
+
+	// Check for current hash first
+	if bytes.Contains(content, CURRENT_HASH) {
+		return true, nil
+	}
+
+	// Check for any prior hashes (backwards compatibility)
+	for _, hash := range PRIOR_HASHES {
+		if bytes.Contains(content, hash) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // UninstallCommandFactory creates a new uninstall command instance

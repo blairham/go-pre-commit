@@ -221,3 +221,110 @@ func (r *Repository) createPatchFile(cacheDir string) (string, error) {
 	filename := fmt.Sprintf("patch%d-%x", timestamp, randomBytes)
 	return filepath.Join(cacheDir, filename), nil
 }
+
+// HasDiff checks if there are any uncommitted changes (staged or unstaged) compared to HEAD
+func (r *Repository) HasDiff() (bool, error) {
+	// Check for staged changes
+	cmd := exec.Command("git", "diff", "--cached", "--quiet", "--exit-code")
+	cmd.Dir = r.Root
+	err := cmd.Run()
+	if err != nil {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
+			return true, nil // Has staged changes
+		}
+		return false, fmt.Errorf("failed to check for staged changes: %w", err)
+	}
+
+	// Check for unstaged changes
+	hasUnstaged, err := r.HasUnstagedChanges()
+	if err != nil {
+		return false, err
+	}
+
+	return hasUnstaged, nil
+}
+
+// GetHeadRev returns the current HEAD commit hash
+func (r *Repository) GetHeadRev() (string, error) {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = r.Root
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get HEAD rev: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// HasStagedChanges checks if there are any staged changes
+func (r *Repository) HasStagedChanges() (bool, error) {
+	cmd := exec.Command("git", "diff", "--cached", "--quiet", "--exit-code")
+	cmd.Dir = r.Root
+	err := cmd.Run()
+	if err != nil {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to check for staged changes: %w", err)
+	}
+	return false, nil
+}
+
+// CloneTo clones the repository to a destination directory
+func (r *Repository) CloneTo(destDir string) error {
+	cmd := exec.Command("git", "clone", r.Root, destDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to clone repository: %w: %s", err, output)
+	}
+	return nil
+}
+
+// CheckoutBranch creates and checks out a new branch at the given ref
+func (r *Repository) CheckoutBranch(branchName, ref string) error {
+	cmd := exec.Command("git", "checkout", ref, "-b", branchName)
+	cmd.Dir = r.Root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to checkout branch: %w: %s", err, output)
+	}
+	return nil
+}
+
+// AddFiles stages the specified files
+func (r *Repository) AddFiles(files []string) error {
+	if len(files) == 0 {
+		return nil
+	}
+	args := append([]string{"add", "--"}, files...)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = r.Root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to add files: %w: %s", err, output)
+	}
+	return nil
+}
+
+// AddAllTracked stages all modified tracked files
+func (r *Repository) AddAllTracked() error {
+	cmd := exec.Command("git", "add", "-u")
+	cmd.Dir = r.Root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to add tracked files: %w: %s", err, output)
+	}
+	return nil
+}
+
+// Commit creates a commit with the given message
+func (r *Repository) Commit(message string) error {
+	cmd := exec.Command("git", "commit", "-m", message, "--allow-empty")
+	cmd.Dir = r.Root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to commit: %w: %s", err, output)
+	}
+	return nil
+}

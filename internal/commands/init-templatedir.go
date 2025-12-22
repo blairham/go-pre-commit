@@ -5,28 +5,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/go-git/go-git/v5/config"
 	"github.com/jessevdk/go-flags"
 	"github.com/mitchellh/cli"
 )
 
 // InitTemplatedirCommand handles the init-templatedir command functionality
-type InitTemplatedirCommand struct{}
+type InitTemplatedirCommand struct {
+	installer *HookInstaller
+}
 
 // InitTemplatedirOptions holds command-line options for the init-templatedir command
 type InitTemplatedirOptions struct {
-	Config             string   `short:"c" long:"config"               description:"Path to config file"       default:".pre-commit-config.yaml"`
-	HookTypes          []string `short:"t" long:"hook-type"            description:"Hook types to install"     default:"pre-commit"`
-	AllowMissingConfig bool     `          long:"allow-missing-config" description:"Allow missing config file"`
-	Verbose            bool     `short:"v" long:"verbose"              description:"Verbose output"`
-	Help               bool     `short:"h" long:"help"                 description:"Show this help message"`
+	Config                string   `short:"c" long:"config"                  description:"Path to config file"                                           default:".pre-commit-config.yaml"`
+	HookTypes             []string `short:"t" long:"hook-type"               description:"Hook types to install (default: from config or pre-commit)"`
+	NoAllowMissingConfig  bool     `          long:"no-allow-missing-config" description:"Assume cloned repos should have a pre-commit config"`
+	Color                 string   `          long:"color"                   description:"Whether to use color in output. Defaults to BTICK_auto_BTICK." default:"auto" choice:"auto" choice:"always" choice:"never"`
+	Help                  bool     `short:"h" long:"help"                    description:"Show this help message"`
 }
 
 // Help returns the help text for the init-templatedir command
 func (c *InitTemplatedirCommand) Help() string {
 	var opts InitTemplatedirOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = "DIRECTORY [OPTIONS]"
+	parser.Usage = "[-h] [--color {auto,always,never}] [-c CONFIG] [--no-allow-missing-config] [-t HOOK_TYPE] DIRECTORY"
 
 	formatter := &HelpFormatter{
 		Command:     "init-templatedir",
@@ -81,11 +85,72 @@ func (c *InitTemplatedirCommand) Run(args []string) int {
 		return 1
 	}
 
-	if opts.Verbose {
-		fmt.Printf("Successfully initialized template directory: %s\n", templateDir)
-	}
+	// Check if git config init.templateDir is set to this directory
+	c.checkGitTemplateDir(templateDir)
 
 	return 0
+}
+
+// checkGitTemplateDir checks if git init.templateDir is configured and warns if not
+// This mirrors Python's init_templatedir() which checks git config init.templateDir
+func (c *InitTemplatedirCommand) checkGitTemplateDir(templateDir string) {
+	// Get the absolute path to the template directory
+	absTemplateDir, err := filepath.Abs(templateDir)
+	if err != nil {
+		return // Skip warning if we can't resolve the path
+	}
+
+	// Read git config to check init.templateDir (checks all levels: system, global, local)
+	// Python uses: cmd_output('git', 'config', 'init.templateDir')
+	// We use go-git to read the config instead of shelling out to git CLI
+	cfg, err := config.LoadConfig(config.GlobalScope)
+	if err != nil {
+		// Try system scope if global fails
+		cfg, err = config.LoadConfig(config.SystemScope)
+	}
+	if err != nil {
+		// Config not accessible - print warning
+		fmt.Printf(
+			"[WARNING] `init.templateDir` not set to the target directory:\n"+
+				"    git config --global init.templateDir '%s'\n",
+			absTemplateDir,
+		)
+		return
+	}
+
+	// Get init.templateDir value from config
+	currentValue := cfg.Raw.Section("init").Option("templateDir")
+	if currentValue == "" {
+		// Config not set - print warning
+		fmt.Printf(
+			"[WARNING] `init.templateDir` not set to the target directory:\n"+
+				"    git config --global init.templateDir '%s'\n",
+			absTemplateDir,
+		)
+		return
+	}
+
+	currentValue = strings.TrimSpace(currentValue)
+	// Expand ~ in the current value for comparison
+	if strings.HasPrefix(currentValue, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			currentValue = filepath.Join(home, currentValue[1:])
+		}
+	}
+
+	// Normalize both paths for comparison
+	currentValueAbs, err := filepath.Abs(currentValue)
+	if err != nil {
+		currentValueAbs = currentValue
+	}
+
+	if currentValueAbs != absTemplateDir {
+		fmt.Printf(
+			"[WARNING] `init.templateDir` not set to the target directory:\n"+
+				"    git config --global init.templateDir '%s'\n",
+			absTemplateDir,
+		)
+	}
 }
 
 // parseAndValidateArgs parses command arguments and validates them
@@ -94,7 +159,7 @@ func (c *InitTemplatedirCommand) parseAndValidateArgs(
 ) (*InitTemplatedirOptions, string, int) {
 	var opts InitTemplatedirOptions
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = "DIRECTORY [OPTIONS]"
+	parser.Usage = "[-h] [--color {auto,always,never}] [-c CONFIG] [--no-allow-missing-config] [-t HOOK_TYPE] DIRECTORY"
 
 	remaining, err := parser.ParseArgs(args)
 	if err != nil {
@@ -114,62 +179,36 @@ func (c *InitTemplatedirCommand) parseAndValidateArgs(
 
 	templateDir := remaining[0]
 
-	if opts.Verbose {
-		fmt.Printf("Initializing template directory: %s\n", templateDir)
-		fmt.Printf("Hook types: %v\n", opts.HookTypes)
-		fmt.Printf("Config file: %s\n", opts.Config)
-	}
-
 	return &opts, templateDir, -1
 }
 
 // createTemplateStructure creates the template directory structure and installs hooks
+// This delegates to the shared HookInstaller, mirroring Python's delegation to install()
 func (c *InitTemplatedirCommand) createTemplateStructure(
 	templateDir string,
 	opts *InitTemplatedirOptions,
 ) error {
-	// Create template directory structure
-	hooksDir := filepath.Join(templateDir, "hooks")
-	if err := os.MkdirAll(hooksDir, 0o750); err != nil {
-		return fmt.Errorf("error creating hooks directory: %w", err)
+	// Create the installer if not already set (allows for dependency injection in tests)
+	if c.installer == nil {
+		c.installer = NewHookInstaller()
 	}
 
-	// Check if config file exists (unless we allow missing config)
-	if !opts.AllowMissingConfig {
-		if _, err := os.Stat(opts.Config); os.IsNotExist(err) {
-			return fmt.Errorf("config file not found: %s", opts.Config)
-		}
+	// Delegate to the shared install function with init-templatedir specific options:
+	// - gitDir: the template directory (not .git)
+	// - overwrite: true (always overwrite for init-templatedir, like Python)
+	// - skipOnMissingConfig: true (template dirs need this since repos may not have config)
+	// - allowMissingConfig: true by default (inverted from NoAllowMissingConfig flag)
+	//   Python uses --no-allow-missing-config to disable this, defaulting to allow
+	installOpts := &HookInstallOptions{
+		Config:              opts.Config,
+		HookTypes:           opts.HookTypes,
+		GitDir:              templateDir,
+		Overwrite:           true,                       // Python uses overwrite=True for init-templatedir
+		SkipOnMissingConfig: true,                       // Python uses skip_on_missing_config=True for init-templatedir
+		AllowMissingConfig:  !opts.NoAllowMissingConfig, // Default true, --no-allow-missing-config sets to false
 	}
 
-	// Install hook scripts for each hook type
-	for _, hookType := range opts.HookTypes {
-		hookPath := filepath.Join(hooksDir, hookType)
-
-		// Create the hook script
-		hookScript := fmt.Sprintf(`#!/bin/sh
-# Installed by pre-commit
-# See https://pre-commit.com for more information
-
-if [ -x "$(command -v pre-commit)" ]; then
-    exec pre-commit hook-impl --config=%s --hook-type=%s "$@"
-else
-    echo "pre-commit not found. Install pre-commit to use this hook."
-    exit 1
-fi
-`, opts.Config, hookType)
-
-		if err := os.WriteFile(hookPath, []byte(hookScript), 0o600); err != nil {
-			return fmt.Errorf("error writing hook script: %w", err)
-		}
-
-		// Make the hook script executable
-		// #nosec G302 - Hook scripts need to be executable
-		if err := os.Chmod(hookPath, 0o700); err != nil {
-			return fmt.Errorf("error making hook script executable: %w", err)
-		}
-	}
-
-	return nil
+	return c.installer.Install(installOpts)
 }
 
 // InitTemplatedirCommandFactory creates a new init-templatedir command instance

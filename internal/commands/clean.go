@@ -63,23 +63,22 @@ func (c *CleanCommand) Run(args []string) int {
 
 	// Get cache directory (matches Python pre-commit behavior)
 	cacheDir := getCacheDirectory()
-	legacyDir := filepath.Join(os.Getenv("HOME"), ".pre-commit") // Legacy directory
 
-	// Clean main cache directory (always print message like Python does)
-	if _, err := os.Stat(cacheDir); err == nil {
-		if err := os.RemoveAll(cacheDir); err != nil {
-			fmt.Printf("Error: failed to clean cache directory: %v\n", err)
-			return 1
-		}
+	// Get legacy directory path - use expanduser-like behavior for ~
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = os.Getenv("HOME")
 	}
-	fmt.Printf("Cleaned %s.\n", cacheDir)
+	legacyDir := filepath.Join(homeDir, ".pre-commit")
 
-	// Clean legacy directory if it exists
-	if _, err := os.Stat(legacyDir); err == nil {
-		if err := os.RemoveAll(legacyDir); err != nil {
-			fmt.Printf("⚠️  Warning: failed to clean legacy directory: %v\n", err)
-		} else {
-			fmt.Printf("Cleaned %s.\n", legacyDir)
+	// Clean directories - only print if directory exists (matches Python behavior exactly)
+	for _, directory := range []string{cacheDir, legacyDir} {
+		if _, err := os.Stat(directory); err == nil {
+			if err := os.RemoveAll(directory); err != nil {
+				fmt.Printf("Error: failed to clean directory %s: %v\n", directory, err)
+				return 1
+			}
+			fmt.Printf("Cleaned %s.\n", directory)
 		}
 	}
 
@@ -87,24 +86,35 @@ func (c *CleanCommand) Run(args []string) int {
 }
 
 // getCacheDirectory returns the cache directory path (matches Python pre-commit logic)
+// Uses filepath.EvalSymlinks to resolve symlinks like Python's os.path.realpath()
 func getCacheDirectory() string {
+	var path string
+
 	// Check PRE_COMMIT_HOME environment variable
 	if preCommitHome := os.Getenv("PRE_COMMIT_HOME"); preCommitHome != "" {
-		return preCommitHome
+		path = preCommitHome
+	} else if xdgCacheHome := os.Getenv("XDG_CACHE_HOME"); xdgCacheHome != "" {
+		// Check XDG_CACHE_HOME environment variable
+		path = filepath.Join(xdgCacheHome, "pre-commit")
+	} else {
+		// Default: ~/.cache/pre-commit
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			// Fallback if we can't get home directory
+			return filepath.Join(os.TempDir(), ".cache", "pre-commit")
+		}
+		path = filepath.Join(homeDir, ".cache", "pre-commit")
 	}
 
-	// Check XDG_CACHE_HOME environment variable
-	if xdgCacheHome := os.Getenv("XDG_CACHE_HOME"); xdgCacheHome != "" {
-		return filepath.Join(xdgCacheHome, "pre-commit")
+	// Resolve symlinks like Python's os.path.realpath()
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
 	}
-
-	// Default: ~/.cache/pre-commit
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		// Fallback if we can't get home directory
-		return filepath.Join(os.TempDir(), ".cache", "pre-commit")
+	// If path doesn't exist yet, try resolving parent directory
+	if resolved, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		return filepath.Join(resolved, filepath.Base(path))
 	}
-	return filepath.Join(homeDir, ".cache", "pre-commit")
+	return path
 }
 
 // CleanCommandFactory creates a new clean command instance

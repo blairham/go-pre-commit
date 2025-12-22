@@ -51,6 +51,23 @@ type Context struct {
 	AllFiles    bool
 	Verbose     bool
 	ShowDiff    bool
+	FailFast    bool
+	// Diff-based execution
+	FromRef string
+	ToRef   string
+	// Git hook-specific context
+	RemoteBranch               string
+	LocalBranch                string
+	RemoteName                 string
+	RemoteURL                  string
+	CommitMsgFilename          string
+	PrepareCommitMessageSource string
+	CommitObjectName           string
+	PreRebaseUpstream          string
+	PreRebaseBranch            string
+	CheckoutType               string
+	IsSquashMerge              string
+	RewriteCommand             string
 }
 
 // Result represents the result of hook execution

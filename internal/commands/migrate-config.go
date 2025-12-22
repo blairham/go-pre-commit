@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/jessevdk/go-flags"
@@ -16,9 +17,8 @@ type MigrateConfigCommand struct{}
 
 // MigrateConfigOptions holds command-line options for the migrate-config command
 type MigrateConfigOptions struct {
-	Config  string `short:"c" long:"config"  description:"Path to config file"    default:".pre-commit-config.yaml"`
-	Verbose bool   `short:"v" long:"verbose" description:"Verbose output"`
-	Help    bool   `short:"h" long:"help"    description:"Show this help message"`
+	Config string `short:"c" long:"config" description:"Path to config file" default:".pre-commit-config.yaml"`
+	Help   bool   `short:"h" long:"help"   description:"Show this help message"`
 }
 
 // Help returns the help text for the migrate-config command
@@ -35,26 +35,18 @@ func (c *MigrateConfigCommand) Help() string {
 				Command:     "pre-commit migrate-config",
 				Description: "Migrate .pre-commit-config.yaml to new format",
 			},
-			{
-				Command:     "pre-commit migrate-config --verbose",
-				Description: "Show detailed migration output",
-			},
 		},
 		Notes: []string{
 			"This command migrates old-style pre-commit configuration files to the",
 			"newer format. The old format used a list of repositories, while the",
 			"new format uses a 'repos' key with a list of repositories.",
 			"",
-			"Old format:",
-			"  - repo: https://github.com/example/repo",
-			"    hooks:",
-			"    - id: example-hook",
-			"",
-			"New format:",
-			"  repos:",
-			"  - repo: https://github.com/example/repo",
-			"    hooks:",
-			"    - id: example-hook",
+			"Migrations performed:",
+			"  - List format → 'repos:' key format",
+			"  - 'sha:' → 'rev:' key rename",
+			"  - 'language: python_venv' → 'language: python'",
+			"  - Stage names: 'commit' → 'pre-commit', 'push' → 'pre-push',",
+			"                 'merge-commit' → 'pre-merge-commit'",
 			"",
 			"This migration is typically only needed when upgrading from very old",
 			"versions of pre-commit.",
@@ -91,10 +83,6 @@ func (c *MigrateConfigCommand) Run(args []string) int {
 		return 1
 	}
 
-	if opts.Verbose {
-		fmt.Printf("Checking configuration file: %s\n", opts.Config)
-	}
-
 	// Read and validate the config file
 	content, err := c.readAndValidateConfig(opts.Config)
 	if err != nil {
@@ -102,27 +90,56 @@ func (c *MigrateConfigCommand) Run(args []string) int {
 		return 1
 	}
 
-	// Check if migration is needed
-	needsMigration := c.needsMigration(string(content))
-	if !needsMigration {
-		c.printNoMigrationNeeded(opts.Verbose)
+	return c.migrateConfigFile(opts.Config, string(content), false)
+}
+
+// MigrateConfigQuiet is called internally by other commands (like autoupdate)
+// with quiet=true to suppress output
+func (c *MigrateConfigCommand) MigrateConfigQuiet(configPath string) error {
+	// Check if config file exists
+	if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+		return fmt.Errorf("config file not found: %s", configPath)
+	}
+
+	content, err := c.readAndValidateConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	exitCode := c.migrateConfigFile(configPath, string(content), true)
+	if exitCode != 0 {
+		return fmt.Errorf("migration failed")
+	}
+	return nil
+}
+
+// migrateConfigFile performs migration and handles output based on quiet flag
+func (c *MigrateConfigCommand) migrateConfigFile(configPath, content string, quiet bool) int {
+	origContent := content
+
+	// Apply all migrations
+	content = c.migrateMap(content)
+	content = c.migrateComposed(content)
+
+	// Check if any changes were made
+	if content == origContent {
+		if !quiet {
+			fmt.Println("Configuration is already migrated.")
+		}
 		return 0
 	}
 
-	if opts.Verbose {
-		fmt.Println("Configuration needs migration from old format to new format")
-	}
-
-	// Perform the migration
-	migratedContent := c.migrateConfig(string(content))
-
 	// Write the migrated configuration back to the file
-	if err := os.WriteFile(opts.Config, []byte(migratedContent), 0o600); err != nil {
-		fmt.Printf("Error writing migrated config: %v\n", err)
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		if !quiet {
+			fmt.Printf("Error writing migrated config: %v\n", err)
+		}
 		return 1
 	}
 
-	c.printMigrationSuccess(opts.Verbose, opts.Config)
+	if !quiet {
+		fmt.Println("Configuration has been migrated.")
+	}
 	return 0
 }
 
@@ -143,54 +160,207 @@ func (c *MigrateConfigCommand) readAndValidateConfig(configPath string) ([]byte,
 	return content, nil
 }
 
-// needsMigration checks if the configuration needs migration
-func (c *MigrateConfigCommand) needsMigration(configStr string) bool {
-	// Simple heuristic: if the file doesn't start with "repos:" and contains "- repo:"
-	// then it's likely the old format
-	return !strings.Contains(configStr, "repos:") && strings.Contains(configStr, "- repo:")
+// isHeaderLine checks if a line is a header line (comment, document marker, or empty)
+// This matches Python's _is_header_line function
+func (c *MigrateConfigCommand) isHeaderLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "---")
 }
 
-// printNoMigrationNeeded prints message when no migration is needed
-func (c *MigrateConfigCommand) printNoMigrationNeeded(verbose bool) {
-	if verbose {
-		fmt.Println("Configuration is already in the new format")
-	} else {
-		fmt.Println("No migration needed")
+// migrateMap migrates list format to repos: map format
+// This matches Python's _migrate_map function
+func (c *MigrateConfigCommand) migrateMap(content string) string {
+	// Check if content is a list (old format)
+	var yamlData any
+	if err := yaml.Unmarshal([]byte(content), &yamlData); err != nil {
+		return content
 	}
-}
 
-// migrateConfig performs the actual migration
-func (c *MigrateConfigCommand) migrateConfig(configStr string) string {
-	// Add "repos:" at the beginning and indent the rest
-	lines := strings.Split(configStr, "\n")
-	var migratedLines []string
-	migratedLines = append(migratedLines, "repos:")
+	// Only migrate if it's a list at the top level
+	if _, isList := yamlData.([]any); !isList {
+		return content
+	}
 
-	for _, line := range lines {
-		// Skip empty lines at the beginning
-		if len(migratedLines) == 1 && strings.TrimSpace(line) == "" {
-			continue
+	// Split into lines, preserving line endings
+	lines := strings.Split(content, "\n")
+
+	// Find header lines (comments, ---, empty lines at the start)
+	headerEnd := 0
+	for i, line := range lines {
+		if !c.isHeaderLine(line) {
+			headerEnd = i
+			break
 		}
+		// If we reach the end without finding non-header content
+		if i == len(lines)-1 {
+			headerEnd = len(lines)
+		}
+	}
 
-		// Indent each line by 2 spaces (or keep existing indentation if already indented)
+	header := strings.Join(lines[:headerEnd], "\n")
+	rest := strings.Join(lines[headerEnd:], "\n")
+
+	// If header is non-empty, add newline after it
+	if header != "" && !strings.HasSuffix(header, "\n") {
+		header += "\n"
+	}
+
+	// Try the simple approach first (just prepend repos:)
+	trialContent := header + "repos:\n" + rest
+	var testData any
+	if err := yaml.Unmarshal([]byte(trialContent), &testData); err == nil {
+		return trialContent
+	}
+
+	// If that fails, indent the rest by 4 spaces (matching Python's textwrap.indent)
+	indentedLines := []string{}
+	for _, line := range strings.Split(rest, "\n") {
 		if strings.TrimSpace(line) != "" {
-			migratedLines = append(migratedLines, "  "+line)
+			indentedLines = append(indentedLines, "    "+line)
 		} else {
-			migratedLines = append(migratedLines, line)
+			indentedLines = append(indentedLines, line)
+		}
+	}
+	return header + "repos:\n" + strings.Join(indentedLines, "\n")
+}
+
+// migrateComposed applies composed migrations (sha→rev, python_venv→python, stages)
+// This matches Python's _migrate_composed function
+func (c *MigrateConfigCommand) migrateComposed(content string) string {
+	// Apply sha → rev migration
+	content = c.migrateShaToRev(content)
+
+	// Apply python_venv → python migration
+	content = c.migratePythonVenv(content)
+
+	// Apply stages migration
+	content = c.migrateStages(content)
+
+	return content
+}
+
+// migrateShaToRev replaces 'sha:' with 'rev:' in repo definitions
+// Preserves quote style around the key
+func (c *MigrateConfigCommand) migrateShaToRev(content string) string {
+	// Match sha: key in YAML (with optional quotes)
+	// Pattern matches: sha:, 'sha':, "sha":
+	patterns := []struct {
+		pattern     *regexp.Regexp
+		replacement string
+	}{
+		// Unquoted sha: at start of line or after whitespace
+		{regexp.MustCompile(`(\n\s*)sha:`), "${1}rev:"},
+		// Single-quoted 'sha':
+		{regexp.MustCompile(`(\n\s*)'sha':`), "${1}'rev':"},
+		// Double-quoted "sha":
+		{regexp.MustCompile(`(\n\s*)"sha":`), `${1}"rev":`},
+	}
+
+	for _, p := range patterns {
+		content = p.pattern.ReplaceAllString(content, p.replacement)
+	}
+
+	return content
+}
+
+// migratePythonVenv replaces 'python_venv' with 'python' for language
+// Preserves quote style around the value
+func (c *MigrateConfigCommand) migratePythonVenv(content string) string {
+	// Match language: python_venv (with optional quotes around value)
+	patterns := []struct {
+		pattern     *regexp.Regexp
+		replacement string
+	}{
+		// Unquoted python_venv
+		{regexp.MustCompile(`(language:\s*)python_venv(\s*)$`), "${1}python${2}"},
+		{regexp.MustCompile(`(language:\s*)python_venv(\s*\n)`), "${1}python${2}"},
+		// Single-quoted 'python_venv'
+		{regexp.MustCompile(`(language:\s*)'python_venv'`), "${1}'python'"},
+		// Double-quoted "python_venv"
+		{regexp.MustCompile(`(language:\s*)"python_venv"`), `${1}"python"`},
+	}
+
+	for _, p := range patterns {
+		content = p.pattern.ReplaceAllString(content, p.replacement)
+	}
+
+	return content
+}
+
+// migrateStages migrates old stage names to new format
+// commit → pre-commit, push → pre-push, merge-commit → pre-merge-commit
+func (c *MigrateConfigCommand) migrateStages(content string) string {
+	// Old stage names that need the "pre-" prefix
+	oldStages := map[string]string{
+		"commit":       "pre-commit",
+		"push":         "pre-push",
+		"merge-commit": "pre-merge-commit",
+	}
+
+	// We need to be careful to only replace stage names in stages: or default_stages: contexts
+	// Use regex to match stage values in array contexts
+
+	for old, new := range oldStages {
+		// Match in array context: [commit, ...] or - commit
+		// Be careful not to replace "pre-commit" with "pre-pre-commit"
+
+		// Array syntax: [commit] or [commit, push]
+		// Match word boundaries to avoid partial matches
+		patterns := []struct {
+			pattern     *regexp.Regexp
+			replacement string
+		}{
+			// In square brackets: [commit or , commit or commit]
+			{regexp.MustCompile(`(\[|\s*,\s*)` + regexp.QuoteMeta(old) + `(\s*,|\s*\])`), "${1}" + new + "${2}"},
+			// Single-quoted in array
+			{regexp.MustCompile(`(\[|\s*,\s*)'` + regexp.QuoteMeta(old) + `'(\s*,|\s*\])`), "${1}'" + new + "'${2}"},
+			// Double-quoted in array
+			{regexp.MustCompile(`(\[|\s*,\s*)"` + regexp.QuoteMeta(old) + `"(\s*,|\s*\])`), `${1}"` + new + `"${2}`},
+			// List syntax: - commit (for stages: or default_stages:)
+			{regexp.MustCompile(`(stages:\s*\n(?:\s*-\s*\S+\n)*\s*-\s*)` + regexp.QuoteMeta(old) + `(\s*\n)`), "${1}" + new + "${2}"},
+			{regexp.MustCompile(`(default_stages:\s*\n(?:\s*-\s*\S+\n)*\s*-\s*)` + regexp.QuoteMeta(old) + `(\s*\n)`), "${1}" + new + "${2}"},
+		}
+
+		for _, p := range patterns {
+			content = p.pattern.ReplaceAllString(content, p.replacement)
 		}
 	}
 
-	return strings.Join(migratedLines, "\n")
+	return content
 }
 
-// printMigrationSuccess prints success message after migration
-func (c *MigrateConfigCommand) printMigrationSuccess(verbose bool, configPath string) {
-	fmt.Println("Configuration has been migrated.")
-
-	if verbose {
-		fmt.Printf("Updated configuration file: %s\n", configPath)
-		fmt.Println("Please review the changes and commit them to your repository")
+// needsMigration checks if the configuration needs migration (legacy method for compatibility)
+func (c *MigrateConfigCommand) needsMigration(configStr string) bool {
+	// Check for list format (no repos: key but has - repo:)
+	if !strings.Contains(configStr, "repos:") && strings.Contains(configStr, "- repo:") {
+		return true
 	}
+
+	// Check for sha: key
+	if regexp.MustCompile(`\n\s*['"]?sha['"]?:`).MatchString(configStr) {
+		return true
+	}
+
+	// Check for python_venv language
+	if strings.Contains(configStr, "python_venv") {
+		return true
+	}
+
+	// Check for old stage names (only in stages context)
+	stagesPattern := regexp.MustCompile(`stages:.*\b(commit|push|merge-commit)\b`)
+	defaultStagesPattern := regexp.MustCompile(`default_stages:.*\b(commit|push|merge-commit)\b`)
+	if stagesPattern.MatchString(configStr) || defaultStagesPattern.MatchString(configStr) {
+		return true
+	}
+
+	return false
+}
+
+// migrateConfig performs the actual migration (legacy method for compatibility)
+func (c *MigrateConfigCommand) migrateConfig(configStr string) string {
+	content := c.migrateMap(configStr)
+	content = c.migrateComposed(content)
+	return content
 }
 
 // MigrateConfigCommandFactory creates a new migrate-config command instance
