@@ -9,8 +9,36 @@ import (
 	"github.com/blairham/go-pre-commit/internal/config"
 )
 
+// BuildInfo holds build-time metadata injected via ldflags.
+type BuildInfo struct {
+	Version string
+	Commit  string
+	Date    string
+}
+
+// versionString returns the display version combining the Python-compatible
+// version with the build metadata.
+func versionString(b BuildInfo) string {
+	v := "pre-commit " + config.Version
+	if b.Version != "" && b.Version != "dev" {
+		v += " (build " + b.Version
+		if b.Commit != "" && b.Commit != "none" {
+			short := b.Commit
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			v += ", " + short
+		}
+		if b.Date != "" && b.Date != "unknown" {
+			v += ", " + b.Date
+		}
+		v += ")"
+	}
+	return v
+}
+
 // Run creates the CLI application and executes the command specified by args.
-func Run(args []string) int {
+func Run(args []string, build BuildInfo) int {
 	ui := &mcli.BasicUi{
 		Reader:      os.Stdin,
 		Writer:      os.Stdout,
@@ -21,7 +49,7 @@ func Run(args []string) int {
 
 	c := &mcli.CLI{
 		Name:    "pre-commit",
-		Version: "pre-commit " + config.Version,
+		Version: versionString(build),
 		Args:    args,
 		Commands: map[string]mcli.CommandFactory{
 			"run":               func() (mcli.Command, error) { return &RunCommand{Meta: meta}, nil },

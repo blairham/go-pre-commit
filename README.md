@@ -13,14 +13,30 @@ A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) 
 
 ## Installation
 
+### Pre-built binaries
+
+Download the latest release from the [Releases page](https://github.com/blairham/go-pre-commit/releases). Archives are available for Linux, macOS, and Windows (amd64/arm64).
+
+```bash
+# Example: macOS arm64
+curl -Lo pre-commit.tar.gz https://github.com/blairham/go-pre-commit/releases/latest/download/pre-commit_Darwin_arm64.tar.gz
+tar xzf pre-commit.tar.gz
+sudo mv pre-commit /usr/local/bin/
+```
+
+### Go install
+
 ```bash
 go install github.com/blairham/go-pre-commit/cmd/pre-commit@latest
 ```
 
-Or build from source:
+### Build from source
 
 ```bash
+git clone https://github.com/blairham/go-pre-commit.git
+cd go-pre-commit
 make build
+# Binary is at build/pre-commit
 ```
 
 ## Usage
@@ -106,6 +122,20 @@ make fmt         # Format code
 make vet         # Run go vet
 make check       # Format + vet + test
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and release process.
+
+## Releasing
+
+Releases are automated with [GoReleaser](https://goreleaser.com) via GitHub Actions. To create a release:
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+gh release create v0.1.0 --generate-notes
+```
+
+CI will build cross-platform binaries and attach them to the GitHub release. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 

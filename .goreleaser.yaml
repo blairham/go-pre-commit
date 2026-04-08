@@ -1,3 +1,5 @@
+version: 2
+
 # GoReleaser configuration for go-pre-commit
 # See: https://goreleaser.com
 project_name: pre-commit
@@ -31,7 +33,6 @@ builds:
   - -X main.version={{.Version}}
   - -X main.commit={{.Commit}}
   - -X main.date={{.Date}}
-  - -X main.builtBy=goreleaser
 
 archives:
 - id: default
@@ -69,11 +70,7 @@ release:
     Welcome to this new release!
 
   footer: |
-    ## Docker Images
-
-    - `ghcr.io/go-pre-commit/pre-commit:{{ .Tag }}`
-    - `ghcr.io/go-pre-commit/pre-commit:latest`
+    **Full Changelog**: https://github.com/blairham/go-pre-commit/compare/{{ .PreviousTag }}...{{ .Tag }}
 
   extra_files:
   - glob: ./README.md
-  - glob: ./docs/*.md
