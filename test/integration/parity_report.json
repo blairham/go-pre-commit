@@ -1,0 +1,659 @@
+{
+  "generated": "2026-04-08T12:57:26-04:00",
+  "total": 76,
+  "pass": 76,
+  "fail": 0,
+  "parity": "100.0%",
+  "results": [
+    {
+      "command": "--version",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "--version",
+      "category": "output",
+      "test": "output contains 'pre-commit'",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=\"pre-commit 4.5.1\" go=\"pre-commit 4.5.0\""
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"autoupdate\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"clean\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"gc\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"init-templatedir\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"install\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"install-hooks\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"migrate-config\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"run\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"sample-config\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"try-repo\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"uninstall\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"validate-config\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "help",
+      "category": "output",
+      "test": "lists \"validate-manifest\"",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "sample-config",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "sample-config",
+      "category": "output",
+      "test": "same line count",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=10 go=10"
+    },
+    {
+      "command": "sample-config",
+      "category": "output",
+      "test": "content matches (ignoring rev)",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "validate-config",
+      "category": "exit code",
+      "test": "missing file fails",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "validate-config",
+      "category": "exit code",
+      "test": "valid file succeeds",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "validate-config",
+      "category": "exit code",
+      "test": "invalid YAML fails",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "validate-config",
+      "category": "exit code",
+      "test": "empty file",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "validate-manifest",
+      "category": "exit code",
+      "test": "missing file fails",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "validate-manifest",
+      "category": "exit code",
+      "test": "valid manifest succeeds",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "clean",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "gc",
+      "category": "exit code",
+      "test": "exits 0 with config",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "install",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "install",
+      "category": "filesystem",
+      "test": "hook file exists",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "install",
+      "category": "filesystem",
+      "test": "hook file contains hook-impl",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "install",
+      "category": "filesystem",
+      "test": "hook file is executable",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "install",
+      "category": "exit code",
+      "test": "-t pre-push exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "install",
+      "category": "filesystem",
+      "test": "pre-push hook file exists",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "install",
+      "category": "filesystem",
+      "test": "only requested hook type created",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py_no_default=false go_no_default=false"
+    },
+    {
+      "command": "install",
+      "category": "exit code",
+      "test": "no config succeeds",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "install",
+      "category": "exit code",
+      "test": "--allow-missing-config exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "install",
+      "category": "exit code",
+      "test": "--overwrite exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "install",
+      "category": "filesystem",
+      "test": "overwritten hook contains hook-impl",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "install",
+      "category": "filesystem",
+      "test": "legacy hook backed up",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "uninstall",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "uninstall",
+      "category": "filesystem",
+      "test": "hook file removed",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "uninstall",
+      "category": "exit code",
+      "test": "noop exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "uninstall",
+      "category": "filesystem",
+      "test": "legacy hook restored",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "no config fails",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "trailing whitespace fails",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "output",
+      "test": "hook count matches",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=3 go=3"
+    },
+    {
+      "command": "run",
+      "category": "output",
+      "test": "hook \"trim trailing whitespace\" status",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=failed go=failed"
+    },
+    {
+      "command": "run",
+      "category": "output",
+      "test": "hook \"fix end of files\" status",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=passed go=passed"
+    },
+    {
+      "command": "run",
+      "category": "output",
+      "test": "hook \"check yaml\" status",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=passed go=passed"
+    },
+    {
+      "command": "run",
+      "category": "filesystem",
+      "test": "trailing whitespace removed from file",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=\"hello\\nworld\\n\" go=\"hello\\nworld\\n\""
+    },
+    {
+      "command": "run",
+      "category": "filesystem",
+      "test": "file content matches expected",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "expected=\"hello\\nworld\\n\" py=\"hello\\nworld\\n\" go=\"hello\\nworld\\n\""
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "clean repo passes",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "filesystem",
+      "test": "clean files unmodified",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "specific hook-id fails",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "output",
+      "test": "only 1 hook runs",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=1 go=1"
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "verbose exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "output",
+      "test": "verbose shows hook id",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "nonexistent hook-id fails",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "--files flag",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "filesystem",
+      "test": "--files: file modified identically",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=\"hello\\n\" go=\"hello\\n\""
+    },
+    {
+      "command": "run",
+      "category": "exit code",
+      "test": "end-of-file-fixer exit agreement",
+      "py_exit": 1,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "run",
+      "category": "filesystem",
+      "test": "end-of-file-fixer adds newline identically",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=\"no newline at end\\n\" go=\"no newline at end\\n\""
+    },
+    {
+      "command": "run",
+      "category": "filesystem",
+      "test": "end-of-file content correct",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "expected=\"no newline at end\\n\""
+    },
+    {
+      "command": "migrate-config",
+      "category": "exit code",
+      "test": "up-to-date exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "migrate-config",
+      "category": "output",
+      "test": "reports no changes needed",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=\"Configuration is already migrated.\" go=\"Configuration is already up to date.\""
+    },
+    {
+      "command": "migrate-config",
+      "category": "filesystem",
+      "test": "config unchanged",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "migrate-config",
+      "category": "exit code",
+      "test": "sha-\u003erev exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "migrate-config",
+      "category": "filesystem",
+      "test": "sha replaced with rev",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "init-templatedir",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "init-templatedir",
+      "category": "filesystem",
+      "test": "hook file created",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "init-templatedir",
+      "category": "filesystem",
+      "test": "hook file is executable",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "init-templatedir",
+      "category": "filesystem",
+      "test": "hook contains hook-impl",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "autoupdate",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    },
+    {
+      "command": "autoupdate",
+      "category": "output",
+      "test": "produces update output",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=true go=true"
+    },
+    {
+      "command": "autoupdate",
+      "category": "filesystem",
+      "test": "configs have same rev after update",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true,
+      "detail": "py=v6.0.0 go=v6.0.0"
+    },
+    {
+      "command": "try-repo",
+      "category": "exit code",
+      "test": "no args fails",
+      "py_exit": 2,
+      "go_exit": 1,
+      "match": true
+    },
+    {
+      "command": "install-hooks",
+      "category": "exit code",
+      "test": "exits 0",
+      "py_exit": 0,
+      "go_exit": 0,
+      "match": true
+    }
+  ]
+}
