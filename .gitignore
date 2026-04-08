@@ -304,6 +304,7 @@ $RECYCLE.BIN/
 
 # Project-specific build artifacts
 bin/
+build/
 dist/
 
 # Mage-managed directories
