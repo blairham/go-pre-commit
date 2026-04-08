@@ -10,8 +10,8 @@ import (
 // Python implements the Language interface for Python hooks.
 type Python struct{}
 
-func (p *Python) Name() string           { return "python" }
-func (p *Python) EnvironmentDir() string  { return "py_env" }
+func (p *Python) Name() string              { return "python" }
+func (p *Python) EnvironmentDir() string    { return "py_env" }
 func (p *Python) GetDefaultVersion() string { return "python3" }
 
 func (p *Python) HealthCheck(prefix, version string) error {

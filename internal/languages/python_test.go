@@ -211,7 +211,7 @@ func TestPythonRunSimpleHook(t *testing.T) {
 	if err := p.InstallEnvironment(prefix, "default", nil); err != nil {
 		t.Fatalf("InstallEnvironment: %v", err)
 	}
-	code, out, err := p.Run(context.Background(), prefix, prefix,"socks", nil, []string{"/dev/null"}, "default")
+	code, out, err := p.Run(context.Background(), prefix, prefix, "socks", nil, []string{"/dev/null"}, "default")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestPythonRunVersionDefault(t *testing.T) {
 	if err := p.InstallEnvironment(prefix, "default", nil); err != nil {
 		t.Fatalf("InstallEnvironment: %v", err)
 	}
-	code, out, err := p.Run(context.Background(), prefix, prefix,"python", []string{"--version"}, nil, "default")
+	code, out, err := p.Run(context.Background(), prefix, prefix, "python", []string{"--version"}, nil, "default")
 	if err != nil {
 		t.Fatalf("Run python --version: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestPythonRunExitCode(t *testing.T) {
 	if err := p.InstallEnvironment(prefix, "default", nil); err != nil {
 		t.Fatalf("InstallEnvironment: %v", err)
 	}
-	code, _, err := p.Run(context.Background(), prefix, prefix,"python", []string{"-c", "import sys; sys.exit(42)"}, nil, "default")
+	code, _, err := p.Run(context.Background(), prefix, prefix, "python", []string{"-c", "import sys; sys.exit(42)"}, nil, "default")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

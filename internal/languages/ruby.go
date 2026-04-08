@@ -10,8 +10,8 @@ import (
 // Ruby implements the Language interface for Ruby hooks.
 type Ruby struct{}
 
-func (r *Ruby) Name() string           { return "ruby" }
-func (r *Ruby) EnvironmentDir() string  { return "rbenv" }
+func (r *Ruby) Name() string              { return "ruby" }
+func (r *Ruby) EnvironmentDir() string    { return "rbenv" }
 func (r *Ruby) GetDefaultVersion() string { return "default" }
 
 func (r *Ruby) HealthCheck(prefix, version string) error {

@@ -10,8 +10,8 @@ import (
 // Node implements the Language interface for Node.js hooks.
 type Node struct{}
 
-func (n *Node) Name() string           { return "node" }
-func (n *Node) EnvironmentDir() string  { return "node_env" }
+func (n *Node) Name() string              { return "node" }
+func (n *Node) EnvironmentDir() string    { return "node_env" }
 func (n *Node) GetDefaultVersion() string { return "default" }
 
 func (n *Node) HealthCheck(prefix, version string) error {

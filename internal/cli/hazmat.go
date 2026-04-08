@@ -109,7 +109,7 @@ func (c *HazmatN1Command) Run(args []string) int {
 
 	exitCode := 0
 	for _, f := range files {
-		allArgs := append(cmdArgs[1:], f)
+		allArgs := append(append([]string{}, cmdArgs[1:]...), f)
 		cmd := exec.Command(cmdArgs[0], allArgs...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout

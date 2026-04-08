@@ -37,7 +37,9 @@ func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs []str
 		return -1, nil, fmt.Errorf("empty entry")
 	}
 
-	cmdArgs := append(parts[1:], args...)
+	cmdArgs := make([]string, 0, len(parts)-1+len(args)+len(fileArgs))
+	cmdArgs = append(cmdArgs, parts[1:]...)
+	cmdArgs = append(cmdArgs, args...)
 	cmdArgs = append(cmdArgs, fileArgs...)
 
 	// exec.Command resolves the binary at call-time using the CURRENT process
@@ -53,8 +55,8 @@ func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs []str
 	cmd := exec.CommandContext(ctx, resolvedBin, cmdArgs...)
 	cmd.Dir = dir
 	// Put custom env vars first so our PATH takes precedence (mirrors Python's
-	// envcontext behaviour of replacing os.environ entries).
-	cmd.Env = append(env, os.Environ()...)
+	// envcontext behavior of replacing os.environ entries).
+	cmd.Env = append(append([]string{}, env...), os.Environ()...)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
@@ -71,8 +73,8 @@ func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs []str
 }
 
 // ParseEntry splits an entry string respecting quotes.
-// Matches the behaviour of Python's shlex.split() used by the upstream
-// pre_commit.lang_base.hook_cmd helper: quoted empty strings ('', "") produce
+// Matches the behavior of Python's shlex.split() used by the upstream
+// pre_commit.lang_base.hook_cmd helper: quoted empty strings (”, "") produce
 // an empty-string token.
 func ParseEntry(entry string) []string {
 	var parts []string
@@ -108,7 +110,7 @@ func ParseEntry(entry string) []string {
 	}
 	return parts
 }
-	
+
 // lookPathInEnv finds an executable by searching the PATH entries in the given
 // env slice (e.g. ["PATH=/venv/bin:/usr/bin", ...]). Falls back to
 // exec.LookPath (current-process PATH) if not found.

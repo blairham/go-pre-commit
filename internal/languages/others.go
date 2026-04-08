@@ -11,8 +11,8 @@ import (
 // Conda implements the Language interface for Conda hooks.
 type Conda struct{}
 
-func (c *Conda) Name() string           { return "conda" }
-func (c *Conda) EnvironmentDir() string  { return "conda_env" }
+func (c *Conda) Name() string              { return "conda" }
+func (c *Conda) EnvironmentDir() string    { return "conda_env" }
 func (c *Conda) GetDefaultVersion() string { return "default" }
 
 func (c *Conda) HealthCheck(prefix, version string) error {
@@ -71,8 +71,8 @@ func condaExecutable() string {
 // Coursier implements the Language interface for Coursier (JVM) hooks.
 type Coursier struct{}
 
-func (c *Coursier) Name() string           { return "coursier" }
-func (c *Coursier) EnvironmentDir() string  { return "coursier_env" }
+func (c *Coursier) Name() string              { return "coursier" }
+func (c *Coursier) EnvironmentDir() string    { return "coursier_env" }
 func (c *Coursier) GetDefaultVersion() string { return "default" }
 
 func (c *Coursier) HealthCheck(prefix, version string) error {
@@ -111,8 +111,8 @@ func (c *Coursier) Run(ctx context.Context, prefix, workDir, entry string, args,
 // Dart implements the Language interface for Dart hooks.
 type Dart struct{}
 
-func (d *Dart) Name() string           { return "dart" }
-func (d *Dart) EnvironmentDir() string  { return "dart_env" }
+func (d *Dart) Name() string              { return "dart" }
+func (d *Dart) EnvironmentDir() string    { return "dart_env" }
 func (d *Dart) GetDefaultVersion() string { return "default" }
 
 func (d *Dart) HealthCheck(prefix, version string) error {
@@ -153,8 +153,8 @@ func (d *Dart) Run(ctx context.Context, prefix, workDir, entry string, args, fil
 // Dotnet implements the Language interface for .NET hooks.
 type Dotnet struct{}
 
-func (d *Dotnet) Name() string           { return "dotnet" }
-func (d *Dotnet) EnvironmentDir() string  { return "dotnet_env" }
+func (d *Dotnet) Name() string              { return "dotnet" }
+func (d *Dotnet) EnvironmentDir() string    { return "dotnet_env" }
 func (d *Dotnet) GetDefaultVersion() string { return "default" }
 
 func (d *Dotnet) HealthCheck(prefix, version string) error {
@@ -186,8 +186,8 @@ func (d *Dotnet) Run(ctx context.Context, prefix, workDir, entry string, args, f
 // Haskell implements the Language interface for Haskell hooks.
 type Haskell struct{}
 
-func (h *Haskell) Name() string           { return "haskell" }
-func (h *Haskell) EnvironmentDir() string  { return "hs_env" }
+func (h *Haskell) Name() string              { return "haskell" }
+func (h *Haskell) EnvironmentDir() string    { return "hs_env" }
 func (h *Haskell) GetDefaultVersion() string { return "default" }
 
 func (h *Haskell) HealthCheck(prefix, version string) error {
@@ -219,8 +219,8 @@ func (h *Haskell) Run(ctx context.Context, prefix, workDir, entry string, args, 
 // Julia implements the Language interface for Julia hooks.
 type Julia struct{}
 
-func (j *Julia) Name() string           { return "julia" }
-func (j *Julia) EnvironmentDir() string  { return "julia_env" }
+func (j *Julia) Name() string              { return "julia" }
+func (j *Julia) EnvironmentDir() string    { return "julia_env" }
 func (j *Julia) GetDefaultVersion() string { return "default" }
 
 func (j *Julia) HealthCheck(prefix, version string) error {
@@ -273,8 +273,8 @@ func (j *Julia) Run(ctx context.Context, prefix, workDir, entry string, args, fi
 // Lua implements the Language interface for Lua hooks.
 type Lua struct{}
 
-func (l *Lua) Name() string           { return "lua" }
-func (l *Lua) EnvironmentDir() string  { return "lua_env" }
+func (l *Lua) Name() string              { return "lua" }
+func (l *Lua) EnvironmentDir() string    { return "lua_env" }
 func (l *Lua) GetDefaultVersion() string { return "default" }
 
 func (l *Lua) HealthCheck(prefix, version string) error {
@@ -307,8 +307,8 @@ func (l *Lua) Run(ctx context.Context, prefix, workDir, entry string, args, file
 // Perl implements the Language interface for Perl hooks.
 type Perl struct{}
 
-func (p *Perl) Name() string           { return "perl" }
-func (p *Perl) EnvironmentDir() string  { return "perl_env" }
+func (p *Perl) Name() string              { return "perl" }
+func (p *Perl) EnvironmentDir() string    { return "perl_env" }
 func (p *Perl) GetDefaultVersion() string { return "default" }
 
 func (p *Perl) HealthCheck(prefix, version string) error {
@@ -349,8 +349,8 @@ func (p *Perl) Run(ctx context.Context, prefix, workDir, entry string, args, fil
 // R implements the Language interface for R hooks.
 type R struct{}
 
-func (r *R) Name() string           { return "r" }
-func (r *R) EnvironmentDir() string  { return "r_env" }
+func (r *R) Name() string              { return "r" }
+func (r *R) EnvironmentDir() string    { return "r_env" }
 func (r *R) GetDefaultVersion() string { return "default" }
 
 func (r *R) HealthCheck(prefix, version string) error {
@@ -387,8 +387,8 @@ func (r *R) Run(ctx context.Context, prefix, workDir, entry string, args, fileAr
 // Swift implements the Language interface for Swift hooks.
 type Swift struct{}
 
-func (s *Swift) Name() string           { return "swift" }
-func (s *Swift) EnvironmentDir() string  { return "swift_env" }
+func (s *Swift) Name() string              { return "swift" }
+func (s *Swift) EnvironmentDir() string    { return "swift_env" }
 func (s *Swift) GetDefaultVersion() string { return "default" }
 
 func (s *Swift) HealthCheck(prefix, version string) error {

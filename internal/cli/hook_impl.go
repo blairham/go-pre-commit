@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/blairham/go-pre-commit/internal/output"
 	flags "github.com/jessevdk/go-flags"
+
+	"github.com/blairham/go-pre-commit/internal/output"
 )
 
 // HookImplCommand is the hidden hook-impl command.
@@ -79,20 +80,16 @@ func (c *HookImplCommand) Run(args []string) int {
 			runArgs = append(runArgs, "--remote-url", remaining[1])
 		}
 		// Read stdin for refs (pre-push receives ref info on stdin).
-		stdinRefs := readPrePushStdin()
-		if stdinRefs != nil {
-			for _, line := range stdinRefs {
-				parts := strings.Fields(line)
-				if len(parts) >= 4 {
-					localRef := parts[1]
-					remoteRef := parts[3]
-					z40 := "0000000000000000000000000000000000000000"
-					if localRef != z40 && remoteRef != z40 {
-						runArgs = append(runArgs, "--from-ref", remoteRef, "--to-ref", localRef)
-					}
-					runArgs = append(runArgs, "--local-branch", parts[0])
-					runArgs = append(runArgs, "--remote-branch", parts[2])
+		for _, line := range readPrePushStdin() {
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				localRef := parts[1]
+				remoteRef := parts[3]
+				z40 := "0000000000000000000000000000000000000000"
+				if localRef != z40 && remoteRef != z40 {
+					runArgs = append(runArgs, "--from-ref", remoteRef, "--to-ref", localRef)
 				}
+				runArgs = append(runArgs, "--local-branch", parts[0], "--remote-branch", parts[2])
 			}
 		}
 

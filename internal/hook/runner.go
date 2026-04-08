@@ -11,13 +11,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dlclark/regexp2"
+
 	"github.com/blairham/go-pre-commit/internal/config"
 	"github.com/blairham/go-pre-commit/internal/identify"
 	"github.com/blairham/go-pre-commit/internal/languages"
 	"github.com/blairham/go-pre-commit/internal/output"
 	"github.com/blairham/go-pre-commit/internal/pcre"
 	"github.com/blairham/go-pre-commit/internal/xargs"
-	"github.com/dlclark/regexp2"
 )
 
 // FixedRandomSeed is used for deterministic file shuffling (matches Python).
@@ -25,30 +26,30 @@ const FixedRandomSeed = 1542676187
 
 // RunOptions controls how hooks are run.
 type RunOptions struct {
-	AllFiles       bool
-	Files          []string
-	HookID         string
-	HookStage      config.Stage
-	FromRef        string
-	ToRef          string
-	ShowDiff       bool
-	Verbose        bool
-	Color          string
-	SkipList       []string
+	AllFiles  bool
+	Files     []string
+	HookID    string
+	HookStage config.Stage
+	FromRef   string
+	ToRef     string
+	ShowDiff  bool
+	Verbose   bool
+	Color     string
+	SkipList  []string
 
 	// Environment variables to pass to hooks.
-	CommitMsgFilename         string
+	CommitMsgFilename          string
 	PrepareCommitMessageSource string
-	CommitObjectName          string
-	RemoteName                string
-	RemoteURL                 string
-	RemoteBranch              string
-	LocalBranch               string
-	CheckoutType              string
-	IsSquashMerge             string
-	RewriteCommand            string
-	PreRebaseUpstream         string
-	PreRebaseBranch           string
+	CommitObjectName           string
+	RemoteName                 string
+	RemoteURL                  string
+	RemoteBranch               string
+	LocalBranch                string
+	CheckoutType               string
+	IsSquashMerge              string
+	RewriteCommand             string
+	PreRebaseUpstream          string
+	PreRebaseBranch            string
 }
 
 // RunResult holds the overall result of running hooks.

@@ -235,7 +235,7 @@ func TestRunContextCancelled(t *testing.T) {
 		// Even if Run returns a result, the batch should have failed or context error propagated.
 		// However, exec.CommandContext may return an ExitError rather than a context error,
 		// so we check if there was any indication of cancellation.
-		t.Log("Run did not return error on cancelled context; checking if command was killed")
+		t.Log("Run did not return error on canceled context; checking if command was killed")
 	}
 }
 
@@ -246,7 +246,7 @@ func TestRunParallelContextCancelled(t *testing.T) {
 	e := &Executor{MaxJobs: 4, MaxBatchSize: 1}
 	_, err := e.Run(ctx, []string{"sleep", "10"}, []string{"1", "2", "3", "4"}, nil, t.TempDir())
 	if err == nil {
-		t.Log("Run did not return error on cancelled context for parallel execution")
+		t.Log("Run did not return error on canceled context for parallel execution")
 	}
 }
 

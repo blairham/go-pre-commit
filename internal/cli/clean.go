@@ -5,8 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/blairham/go-pre-commit/internal/store"
 	flags "github.com/jessevdk/go-flags"
+
+	"github.com/blairham/go-pre-commit/internal/store"
 )
 
 // CleanCommand implements the "clean" command.

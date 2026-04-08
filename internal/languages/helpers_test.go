@@ -9,7 +9,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// ParseEntry – mirrors pre_commit.lang_base.hook_cmd / shlex.split behaviour
+// ParseEntry – mirrors pre_commit.lang_base.hook_cmd / shlex.split behavior
 // ---------------------------------------------------------------------------
 
 func TestParseEntrySimple(t *testing.T) {

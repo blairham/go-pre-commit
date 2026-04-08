@@ -10,8 +10,8 @@ import (
 // Golang implements the Language interface for Go hooks.
 type Golang struct{}
 
-func (g *Golang) Name() string           { return "golang" }
-func (g *Golang) EnvironmentDir() string  { return "go_env" }
+func (g *Golang) Name() string              { return "golang" }
+func (g *Golang) EnvironmentDir() string    { return "go_env" }
 func (g *Golang) GetDefaultVersion() string { return "default" }
 
 func (g *Golang) HealthCheck(prefix, version string) error {

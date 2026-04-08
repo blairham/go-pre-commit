@@ -5,9 +5,10 @@ import (
 	"os"
 	"strings"
 
+	flags "github.com/jessevdk/go-flags"
+
 	"github.com/blairham/go-pre-commit/internal/config"
 	"github.com/blairham/go-pre-commit/internal/store"
-	flags "github.com/jessevdk/go-flags"
 )
 
 // GCCommand implements the "gc" command.

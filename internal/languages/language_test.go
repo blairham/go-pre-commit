@@ -6,7 +6,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Registry – Get / Register behaviour
+// Registry – Get / Register behavior
 // ---------------------------------------------------------------------------
 
 // TestAllLanguagesRegistered verifies that every language that the upstream
@@ -51,7 +51,7 @@ func TestGetUnknownLanguageReturnsError(t *testing.T) {
 }
 
 // TestGetCaseInsensitive verifies that language names are normalised to
-// lowercase before lookup, matching the upstream Python behaviour which
+// lowercase before lookup, matching the upstream Python behavior which
 // also lowercases the language string.
 func TestGetCaseInsensitive(t *testing.T) {
 	cases := []string{"Python", "PYTHON", "python", "PyThOn"}
@@ -171,10 +171,10 @@ type testLanguage struct {
 	name string
 }
 
-func (tl *testLanguage) Name() string                        { return tl.name }
-func (tl *testLanguage) EnvironmentDir() string              { return "" }
-func (tl *testLanguage) GetDefaultVersion() string           { return "default" }
-func (tl *testLanguage) HealthCheck(_, _ string) error       { return nil }
+func (tl *testLanguage) Name() string                                     { return tl.name }
+func (tl *testLanguage) EnvironmentDir() string                           { return "" }
+func (tl *testLanguage) GetDefaultVersion() string                        { return "default" }
+func (tl *testLanguage) HealthCheck(_, _ string) error                    { return nil }
 func (tl *testLanguage) InstallEnvironment(_, _ string, _ []string) error { return nil }
 func (tl *testLanguage) Run(_ context.Context, _, _, _ string, _, _ []string, _ string) (int, []byte, error) {
 	return 0, nil, nil

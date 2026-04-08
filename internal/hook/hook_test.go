@@ -227,13 +227,13 @@ func TestInstallKey(t *testing.T) {
 	t.Run("same fields produce same key", func(t *testing.T) {
 		h1 := &Hook{
 			RepoDir:         "/tmp/repo",
-			Language:         "golang",
-			LanguageVersion:  "1.21",
+			Language:        "golang",
+			LanguageVersion: "1.21",
 		}
 		h2 := &Hook{
 			RepoDir:         "/tmp/repo",
-			Language:         "golang",
-			LanguageVersion:  "1.21",
+			Language:        "golang",
+			LanguageVersion: "1.21",
 		}
 		if h1.InstallKey() != h2.InstallKey() {
 			t.Errorf("expected same InstallKey, got %q vs %q", h1.InstallKey(), h2.InstallKey())
@@ -243,8 +243,8 @@ func TestInstallKey(t *testing.T) {
 	t.Run("empty deps produces empty dep segment", func(t *testing.T) {
 		h := &Hook{
 			RepoDir:         "/tmp/repo",
-			Language:         "python",
-			LanguageVersion:  "3.11",
+			Language:        "python",
+			LanguageVersion: "3.11",
 		}
 		key := h.InstallKey()
 		want := "/tmp/repo:python:3.11:"
@@ -306,24 +306,24 @@ func TestMergeManifest(t *testing.T) {
 			Files:    `\.py$`,
 		}
 		hookCfg := &config.HookConfig{
-			ID:              "my-hook",
-			Name:            "Overridden Name",
-			Alias:           "mh",
-			Files:           `\.pyx$`,
-			Exclude:         `test_`,
-			LanguageVersion: "3.12",
-			Types:           []string{"python"},
-			TypesOr:         []string{"cython"},
-			ExcludeTypes:    []string{"text"},
-			Args:            []string{"--fix"},
-			Stages:          []config.Stage{config.HookTypePrePush},
+			ID:                     "my-hook",
+			Name:                   "Overridden Name",
+			Alias:                  "mh",
+			Files:                  `\.pyx$`,
+			Exclude:                `test_`,
+			LanguageVersion:        "3.12",
+			Types:                  []string{"python"},
+			TypesOr:                []string{"cython"},
+			ExcludeTypes:           []string{"text"},
+			Args:                   []string{"--fix"},
+			Stages:                 []config.Stage{config.HookTypePrePush},
 			AdditionalDependencies: []string{"dep1"},
-			AlwaysRun:       boolPtr(true),
-			Verbose:         boolPtr(true),
-			PassFilenames:   boolPtr(false),
-			RequireSerial:   boolPtr(true),
-			FailFast:        boolPtr(true),
-			LogFile:         "/tmp/log",
+			AlwaysRun:              boolPtr(true),
+			Verbose:                boolPtr(true),
+			PassFilenames:          boolPtr(false),
+			RequireSerial:          boolPtr(true),
+			FailFast:               boolPtr(true),
+			LogFile:                "/tmp/log",
 		}
 		repoCfg := &config.RepoConfig{Repo: "https://github.com/example/repo", Rev: "v1.0.0"}
 
@@ -692,22 +692,22 @@ func TestFromManifestHook(t *testing.T) {
 
 	t.Run("basic creation", func(t *testing.T) {
 		manifest := &config.ManifestHook{
-			ID:              "check-yaml",
-			Name:            "Check YAML",
-			Entry:           "check-yaml",
-			Language:        "python",
-			LanguageVersion: "3.11",
-			Files:           `\.yaml$`,
-			Exclude:         `^vendor/`,
-			Types:           []string{"yaml"},
-			Args:            []string{"--unsafe"},
-			Stages:          []config.Stage{config.HookTypePreCommit},
-			AlwaysRun:       true,
-			FailFast:        true,
-			Verbose:         true,
-			RequireSerial:   true,
-			PassFilenames:   boolPtr(false),
-			Description:     "Check YAML files",
+			ID:                      "check-yaml",
+			Name:                    "Check YAML",
+			Entry:                   "check-yaml",
+			Language:                "python",
+			LanguageVersion:         "3.11",
+			Files:                   `\.yaml$`,
+			Exclude:                 `^vendor/`,
+			Types:                   []string{"yaml"},
+			Args:                    []string{"--unsafe"},
+			Stages:                  []config.Stage{config.HookTypePreCommit},
+			AlwaysRun:               true,
+			FailFast:                true,
+			Verbose:                 true,
+			RequireSerial:           true,
+			PassFilenames:           boolPtr(false),
+			Description:             "Check YAML files",
 			MinimumPreCommitVersion: "2.0.0",
 		}
 

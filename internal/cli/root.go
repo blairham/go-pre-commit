@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/blairham/go-pre-commit/internal/config"
 	mcli "github.com/mitchellh/cli"
+
+	"github.com/blairham/go-pre-commit/internal/config"
 )
 
 // Run creates the CLI application and executes the command specified by args.

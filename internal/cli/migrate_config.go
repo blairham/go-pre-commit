@@ -50,7 +50,7 @@ func (c *MigrateConfigCommand) Run(args []string) int {
 		"- merge-commit": "- pre-merge-commit",
 	}
 
-	for old, new_ := range stageReplacements {
+	for old, replacement := range stageReplacements {
 		lines := strings.Split(raw, "\n")
 		inStages := false
 		for i, line := range lines {
@@ -62,7 +62,7 @@ func (c *MigrateConfigCommand) Run(args []string) int {
 			if inStages {
 				if strings.HasPrefix(trimmed, "- ") {
 					if trimmed == old {
-						lines[i] = strings.Replace(line, old, new_, 1)
+						lines[i] = strings.Replace(line, old, replacement, 1)
 						migrated = true
 					}
 				} else {

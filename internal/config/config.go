@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/blairham/go-pre-commit/internal/pcre"
 	"gopkg.in/yaml.v3"
+
+	"github.com/blairham/go-pre-commit/internal/pcre"
 )
 
 // Version is the current version of go-pre-commit.
@@ -79,13 +80,13 @@ func AllStages() []Stage {
 type Config struct {
 	Repos                   []RepoConfig      `yaml:"repos"`
 	DefaultInstallHookTypes []HookType        `yaml:"default_install_hook_types,omitempty"`
-	DefaultLanguageVersion  map[string]string  `yaml:"default_language_version,omitempty"`
-	DefaultStages           []Stage            `yaml:"default_stages,omitempty"`
-	Files                   string             `yaml:"files,omitempty"`
-	Exclude                 string             `yaml:"exclude,omitempty"`
-	FailFast                bool               `yaml:"fail_fast,omitempty"`
-	MinimumPreCommitVersion string             `yaml:"minimum_pre_commit_version,omitempty"`
-	CIConfig                map[string]any     `yaml:"ci,omitempty"`
+	DefaultLanguageVersion  map[string]string `yaml:"default_language_version,omitempty"`
+	DefaultStages           []Stage           `yaml:"default_stages,omitempty"`
+	Files                   string            `yaml:"files,omitempty"`
+	Exclude                 string            `yaml:"exclude,omitempty"`
+	FailFast                bool              `yaml:"fail_fast,omitempty"`
+	MinimumPreCommitVersion string            `yaml:"minimum_pre_commit_version,omitempty"`
+	CIConfig                map[string]any    `yaml:"ci,omitempty"`
 }
 
 // RepoConfig represents a single repo entry in the config.

@@ -14,8 +14,8 @@ import (
 // It always fails with the entry message.
 type Fail struct{}
 
-func (f *Fail) Name() string           { return "fail" }
-func (f *Fail) EnvironmentDir() string  { return "" }
+func (f *Fail) Name() string              { return "fail" }
+func (f *Fail) EnvironmentDir() string    { return "" }
 func (f *Fail) GetDefaultVersion() string { return "default" }
 
 func (f *Fail) HealthCheck(prefix, version string) error { return nil }
@@ -32,8 +32,8 @@ func (f *Fail) Run(ctx context.Context, prefix, workDir, entry string, args, fil
 // pygrep is a regex-based grep that uses Go's regexp.
 type Pygrep struct{}
 
-func (p *Pygrep) Name() string           { return "pygrep" }
-func (p *Pygrep) EnvironmentDir() string  { return "" }
+func (p *Pygrep) Name() string              { return "pygrep" }
+func (p *Pygrep) EnvironmentDir() string    { return "" }
 func (p *Pygrep) GetDefaultVersion() string { return "default" }
 
 func (p *Pygrep) HealthCheck(prefix, version string) error { return nil }
@@ -114,9 +114,9 @@ func (p *Pygrep) Run(ctx context.Context, prefix, workDir, entry string, args, f
 // Unsupported implements the Language interface for system hooks.
 type Unsupported struct{}
 
-func (u *Unsupported) Name() string           { return "unsupported" }
-func (u *Unsupported) EnvironmentDir() string  { return "" }
-func (u *Unsupported) GetDefaultVersion() string { return "default" }
+func (u *Unsupported) Name() string                             { return "unsupported" }
+func (u *Unsupported) EnvironmentDir() string                   { return "" }
+func (u *Unsupported) GetDefaultVersion() string                { return "default" }
 func (u *Unsupported) HealthCheck(prefix, version string) error { return nil }
 
 func (u *Unsupported) InstallEnvironment(prefix, version string, additionalDeps []string) error {
@@ -130,9 +130,9 @@ func (u *Unsupported) Run(ctx context.Context, prefix, workDir, entry string, ar
 // UnsupportedScript implements the Language interface for script hooks.
 type UnsupportedScript struct{}
 
-func (u *UnsupportedScript) Name() string           { return "unsupported_script" }
-func (u *UnsupportedScript) EnvironmentDir() string  { return "" }
-func (u *UnsupportedScript) GetDefaultVersion() string { return "default" }
+func (u *UnsupportedScript) Name() string                             { return "unsupported_script" }
+func (u *UnsupportedScript) EnvironmentDir() string                   { return "" }
+func (u *UnsupportedScript) GetDefaultVersion() string                { return "default" }
 func (u *UnsupportedScript) HealthCheck(prefix, version string) error { return nil }
 
 func (u *UnsupportedScript) InstallEnvironment(prefix, version string, additionalDeps []string) error {

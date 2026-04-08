@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 
+	flags "github.com/jessevdk/go-flags"
+
 	"github.com/blairham/go-pre-commit/internal/config"
 	"github.com/blairham/go-pre-commit/internal/git"
 	"github.com/blairham/go-pre-commit/internal/hook"
@@ -14,7 +16,6 @@ import (
 	"github.com/blairham/go-pre-commit/internal/repository"
 	"github.com/blairham/go-pre-commit/internal/staged"
 	"github.com/blairham/go-pre-commit/internal/store"
-	flags "github.com/jessevdk/go-flags"
 )
 
 // RunCommand implements the "run" command.
@@ -24,30 +25,30 @@ type RunCommand struct {
 
 type runFlags struct {
 	GlobalFlags
-	AllFiles       bool     `short:"a" long:"all-files" description:"Run on all files in the repo."`
-	Files          []string `long:"files" description:"Specific filenames to run hooks on."`
-	ShowDiffOnFail bool     `long:"show-diff-on-failure" description:"When hooks fail, show the diff of changes."`
-	HookStage      string   `long:"hook-stage" description:"The stage during which the hook is fired."`
-	FromRef        string   `long:"from-ref" description:"Ref to check revision changes."`
-	ToRef          string   `long:"to-ref" description:"Ref to check revision changes."`
-	Source         string   `short:"s" long:"source" description:"(DEPRECATED: use --from-ref) Ref to check revision changes."`
-	Origin         string   `short:"o" long:"origin" description:"(DEPRECATED: use --to-ref) Ref to check revision changes."`
-	CommitMsgFn    string   `long:"commit-msg-filename" description:"Filename to check when running during commit-msg."`
-	PrepareMsg     string   `long:"prepare-commit-message-source" description:"Source for prepare-commit-msg hook."`
-	CommitObjName  string   `long:"commit-object-name" description:"Commit object name for prepare-commit-msg hook."`
-	RemoteURL      string   `long:"remote-url" description:"Remote URL for pre-push hook."`
-	RemoteName     string   `long:"remote-name" description:"Remote name for pre-push hook."`
-	RemoteBranch   string   `long:"remote-branch" description:"Remote branch for pre-push hook."`
-	LocalBranch    string   `long:"local-branch" description:"Local branch for pre-push hook."`
-	CheckoutType   string   `long:"checkout-type" description:"Checkout type for post-checkout hook."`
-	IsSquash       string   `long:"is-squash-merge" description:"Whether the merge is a squash merge."`
-	RewriteCmd     string   `long:"rewrite-command" description:"Rewrite command for post-rewrite hook."`
-	PreRebaseUp    string   `long:"pre-rebase-upstream" description:"Upstream from which the series was forked."`
-	PreRebaseBranch string  `long:"pre-rebase-branch" description:"Branch being rebased."`
-	Verbose        bool     `short:"v" long:"verbose" description:"Produce hook output regardless of success."`
-	FailFast       bool     `long:"fail-fast" description:"Stop running hooks after the first failure."`
-	NoInstall      bool     `long:"no-install" description:"Skip automatic installation of hook environments."`
-	Jobs           int      `short:"j" long:"jobs" description:"Number of jobs to run in parallel."`
+	AllFiles        bool     `short:"a" long:"all-files" description:"Run on all files in the repo."`
+	Files           []string `long:"files" description:"Specific filenames to run hooks on."`
+	ShowDiffOnFail  bool     `long:"show-diff-on-failure" description:"When hooks fail, show the diff of changes."`
+	HookStage       string   `long:"hook-stage" description:"The stage during which the hook is fired."`
+	FromRef         string   `long:"from-ref" description:"Ref to check revision changes."`
+	ToRef           string   `long:"to-ref" description:"Ref to check revision changes."`
+	Source          string   `short:"s" long:"source" description:"(DEPRECATED: use --from-ref) Ref to check revision changes."`
+	Origin          string   `short:"o" long:"origin" description:"(DEPRECATED: use --to-ref) Ref to check revision changes."`
+	CommitMsgFn     string   `long:"commit-msg-filename" description:"Filename to check when running during commit-msg."`
+	PrepareMsg      string   `long:"prepare-commit-message-source" description:"Source for prepare-commit-msg hook."`
+	CommitObjName   string   `long:"commit-object-name" description:"Commit object name for prepare-commit-msg hook."`
+	RemoteURL       string   `long:"remote-url" description:"Remote URL for pre-push hook."`
+	RemoteName      string   `long:"remote-name" description:"Remote name for pre-push hook."`
+	RemoteBranch    string   `long:"remote-branch" description:"Remote branch for pre-push hook."`
+	LocalBranch     string   `long:"local-branch" description:"Local branch for pre-push hook."`
+	CheckoutType    string   `long:"checkout-type" description:"Checkout type for post-checkout hook."`
+	IsSquash        string   `long:"is-squash-merge" description:"Whether the merge is a squash merge."`
+	RewriteCmd      string   `long:"rewrite-command" description:"Rewrite command for post-rewrite hook."`
+	PreRebaseUp     string   `long:"pre-rebase-upstream" description:"Upstream from which the series was forked."`
+	PreRebaseBranch string   `long:"pre-rebase-branch" description:"Branch being rebased."`
+	Verbose         bool     `short:"v" long:"verbose" description:"Produce hook output regardless of success."`
+	FailFast        bool     `long:"fail-fast" description:"Stop running hooks after the first failure."`
+	NoInstall       bool     `long:"no-install" description:"Skip automatic installation of hook environments."`
+	Jobs            int      `short:"j" long:"jobs" description:"Number of jobs to run in parallel."`
 }
 
 func (c *RunCommand) Run(args []string) int {

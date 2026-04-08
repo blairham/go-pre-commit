@@ -12,8 +12,8 @@ import (
 // Docker implements the Language interface for Docker hooks.
 type Docker struct{}
 
-func (d *Docker) Name() string           { return "docker" }
-func (d *Docker) EnvironmentDir() string  { return "docker" }
+func (d *Docker) Name() string              { return "docker" }
+func (d *Docker) EnvironmentDir() string    { return "docker" }
 func (d *Docker) GetDefaultVersion() string { return "default" }
 
 func (d *Docker) HealthCheck(prefix, version string) error {
@@ -66,8 +66,8 @@ func (d *Docker) imageTag(prefix string) string {
 // DockerImage implements the Language interface for pre-built Docker image hooks.
 type DockerImage struct{}
 
-func (d *DockerImage) Name() string           { return "docker_image" }
-func (d *DockerImage) EnvironmentDir() string  { return "" }
+func (d *DockerImage) Name() string              { return "docker_image" }
+func (d *DockerImage) EnvironmentDir() string    { return "" }
 func (d *DockerImage) GetDefaultVersion() string { return "default" }
 
 func (d *DockerImage) HealthCheck(prefix, version string) error {

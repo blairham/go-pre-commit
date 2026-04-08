@@ -21,7 +21,7 @@ var (
 type ColorMode int
 
 const (
-	ColorAuto   ColorMode = iota
+	ColorAuto ColorMode = iota
 	ColorAlways
 	ColorNever
 )
@@ -93,7 +93,7 @@ func render(style lipgloss.Style, text string) string {
 type HookResult int
 
 const (
-	ResultPassed  HookResult = iota
+	ResultPassed HookResult = iota
 	ResultFailed
 	ResultSkipped
 	ResultError

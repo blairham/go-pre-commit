@@ -10,8 +10,8 @@ import (
 // Rust implements the Language interface for Rust hooks.
 type Rust struct{}
 
-func (r *Rust) Name() string           { return "rust" }
-func (r *Rust) EnvironmentDir() string  { return "rustenv" }
+func (r *Rust) Name() string              { return "rust" }
+func (r *Rust) EnvironmentDir() string    { return "rustenv" }
 func (r *Rust) GetDefaultVersion() string { return "default" }
 
 func (r *Rust) HealthCheck(prefix, version string) error {

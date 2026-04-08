@@ -8,13 +8,14 @@ import (
 	"sort"
 	"strings"
 
+	flags "github.com/jessevdk/go-flags"
+
 	"github.com/blairham/go-pre-commit/internal/config"
 	"github.com/blairham/go-pre-commit/internal/git"
 	"github.com/blairham/go-pre-commit/internal/hook"
 	"github.com/blairham/go-pre-commit/internal/output"
 	"github.com/blairham/go-pre-commit/internal/repository"
 	"github.com/blairham/go-pre-commit/internal/store"
-	flags "github.com/jessevdk/go-flags"
 )
 
 // hookTemplate is the shell script template installed into .git/hooks/

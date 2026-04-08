@@ -7,10 +7,11 @@ import (
 	"strings"
 	"sync"
 
+	flags "github.com/jessevdk/go-flags"
+
 	"github.com/blairham/go-pre-commit/internal/config"
 	"github.com/blairham/go-pre-commit/internal/git"
 	"github.com/blairham/go-pre-commit/internal/output"
-	flags "github.com/jessevdk/go-flags"
 )
 
 // AutoupdateCommand implements the "autoupdate" command.
