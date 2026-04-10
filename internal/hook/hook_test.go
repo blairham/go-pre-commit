@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -801,4 +802,32 @@ func TestFromManifestHook(t *testing.T) {
 			t.Errorf("Types = %v, want empty (TypesOr is set)", h.Types)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// filterFiles
+// ---------------------------------------------------------------------------
+
+func TestFilterFiles_SkipsNonExistentFiles(t *testing.T) {
+	// Create a real file.
+	dir := t.TempDir()
+	realFile := dir + "/exists.yaml"
+	if err := os.WriteFile(realFile, []byte("key: value\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ghostFile := dir + "/ghost.yaml"
+
+	h := &Hook{
+		Types: []string{"file"},
+	}
+
+	result := filterFiles([]string{realFile, ghostFile}, h)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file, got %d: %v", len(result), result)
+	}
+	if result[0] != realFile {
+		t.Errorf("expected %q, got %q", realFile, result[0])
+	}
 }

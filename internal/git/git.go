@@ -10,9 +10,41 @@ import (
 	"strings"
 )
 
+// NoGitEnv returns the current environment with GIT_* variables removed
+// (except for a safe allowlist). This matches the Python pre-commit's
+// no_git_env() which prevents many subtle bugs:
+//   - GIT_DIR: causes git clone to clone wrong thing
+//   - GIT_INDEX_FILE: causes 'error invalid object' during commit
+//   - GIT_WORK_TREE: exported by some git versions during hook execution
+//
+// See https://github.com/pre-commit/pre-commit/issues/300
+func NoGitEnv() []string {
+	allowed := map[string]bool{
+		"GIT_EXEC_PATH":             true,
+		"GIT_SSH":                   true,
+		"GIT_SSH_COMMAND":           true,
+		"GIT_SSL_CAINFO":            true,
+		"GIT_SSL_NO_VERIFY":         true,
+		"GIT_CONFIG_COUNT":          true,
+		"GIT_HTTP_PROXY_AUTHMETHOD": true,
+		"GIT_ALLOW_PROTOCOL":        true,
+		"GIT_ASKPASS":               true,
+	}
+	var env []string
+	for _, e := range os.Environ() {
+		k, _, _ := strings.Cut(e, "=")
+		if strings.HasPrefix(k, "GIT_") && !allowed[k] && !strings.HasPrefix(k, "GIT_CONFIG_KEY_") && !strings.HasPrefix(k, "GIT_CONFIG_VALUE_") {
+			continue
+		}
+		env = append(env, e)
+	}
+	return env
+}
+
 // CmdOutput runs a git command and returns its stdout.
 func CmdOutput(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
+	cmd.Env = NoGitEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -26,6 +58,7 @@ func CmdOutput(args ...string) (string, error) {
 func CmdOutputInDir(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = NoGitEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -304,20 +337,6 @@ func GetHooksDir(root ...string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(gitDir, "hooks"), nil
-}
-
-// NoGitEnv returns the current environment with all GIT_* variables removed.
-// This matches Python's no_git_env() which strips git-specific vars to avoid
-// interference when running hooks.
-func NoGitEnv() []string {
-	var env []string
-	for _, e := range os.Environ() {
-		parts := strings.SplitN(e, "=", 2)
-		if len(parts) >= 1 && !strings.HasPrefix(parts[0], "GIT_") {
-			env = append(env, e)
-		}
-	}
-	return env
 }
 
 // IntentToAddFiles returns files that were added with --intent-to-add.
