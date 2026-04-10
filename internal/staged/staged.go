@@ -47,10 +47,16 @@ func (m *Manager) StashUnstaged() (bool, error) {
 	m.treeHash = treeHash
 
 	// Generate the patch of unstaged changes (working tree vs index).
-	diff, err := git.DiffInDir(m.dir)
+	// NOTE: we use exec.Command directly rather than git.DiffInDir because
+	// CmdOutputInDir trims whitespace, which corrupts patch output (git apply
+	// requires the trailing newline to be present).
+	diffCmd := exec.Command("git", "diff")
+	diffCmd.Dir = m.dir
+	diffOut, err := diffCmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("generating diff: %w", err)
 	}
+	diff := string(diffOut)
 
 	if strings.TrimSpace(diff) == "" {
 		return false, nil
