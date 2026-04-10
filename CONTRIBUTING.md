@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This guide covers development setup, w
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.25.7+
 - [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting)
 
 ### Building
