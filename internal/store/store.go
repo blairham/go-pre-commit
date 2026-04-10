@@ -292,7 +292,7 @@ func (s *Store) acquireLock() (func(), error) {
 	}
 
 	return func() {
-		unlockFile(lf)
+		_ = unlockFile(lf)
 		lf.Close()
 	}, nil
 }
