@@ -8,52 +8,45 @@ import (
 	"path/filepath"
 )
 
-// Conda implements the Language interface for Conda hooks.
-type Conda struct{}
+// condaLang is the Conda language backend.
+var condaLang = &SimpleLanguage{
+	LangName:   "conda",
+	EnvDirName: "conda_env",
+	HealthCheckFn: func(prefix, version string) error {
+		condaExe := condaExecutable()
+		cmd := exec.Command(condaExe, "--version")
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("%s not available: %w", condaExe, err)
+		}
+		return nil
+	},
+	InstallFn: func(prefix, version, envDirName string, additionalDeps []string) error {
+		envDir := filepath.Join(prefix, envDirName+"-"+version)
+		condaExe := condaExecutable()
 
-func (c *Conda) Name() string              { return "conda" }
-func (c *Conda) EnvironmentDir() string    { return "conda_env" }
-func (c *Conda) GetDefaultVersion() string { return "default" }
-
-func (c *Conda) HealthCheck(prefix, version string) error {
-	condaExe := condaExecutable()
-	cmd := exec.Command(condaExe, "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s not available: %w", condaExe, err)
-	}
-	return nil
-}
-
-func (c *Conda) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, c.EnvironmentDir()+"-"+version)
-	condaExe := condaExecutable()
-
-	cmd := exec.Command(condaExe, "env", "create", "--file", "environment.yml", "--prefix", envDir)
-	cmd.Dir = prefix
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%s env create failed: %s: %w", condaExe, string(out), err)
-	}
-
-	if len(additionalDeps) > 0 {
-		args := append([]string{"install", "--prefix", envDir, "-y"}, additionalDeps...)
-		cmd := exec.Command(condaExe, args...)
+		cmd := exec.Command(condaExe, "env", "create", "--file", "environment.yml", "--prefix", envDir)
 		cmd.Dir = prefix
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("%s install failed: %s: %w", condaExe, string(out), err)
+			return fmt.Errorf("%s env create failed: %s: %w", condaExe, string(out), err)
 		}
-	}
 
-	return nil
-}
+		if len(additionalDeps) > 0 {
+			args := append([]string{"install", "--prefix", envDir, "-y"}, additionalDeps...)
+			cmd := exec.Command(condaExe, args...)
+			cmd.Dir = prefix
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("%s install failed: %s: %w", condaExe, string(out), err)
+			}
+		}
 
-func (c *Conda) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, c.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	env := []string{
-		PrependPath(binDir),
-		fmt.Sprintf("CONDA_PREFIX=%s", envDir),
-	}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
+		return nil
+	},
+	RunEnvFn: func(envDir string) []string {
+		return []string{
+			PrependPath(filepath.Join(envDir, "bin")),
+			fmt.Sprintf("CONDA_PREFIX=%s", envDir),
+		}
+	},
 }
 
 // condaExecutable returns the conda-like executable to use, respecting
@@ -68,155 +61,126 @@ func condaExecutable() string {
 	return "conda"
 }
 
-// Coursier implements the Language interface for Coursier (JVM) hooks.
-type Coursier struct{}
-
-func (c *Coursier) Name() string              { return "coursier" }
-func (c *Coursier) EnvironmentDir() string    { return "coursier_env" }
-func (c *Coursier) GetDefaultVersion() string { return "default" }
-
-func (c *Coursier) HealthCheck(prefix, version string) error {
-	if _, err := exec.LookPath("cs"); err != nil {
-		if _, err := exec.LookPath("coursier"); err != nil {
-			return fmt.Errorf("coursier (cs) not available")
+// coursierLang is the Coursier (JVM) language backend.
+var coursierLang = &SimpleLanguage{
+	LangName:   "coursier",
+	EnvDirName: "coursier_env",
+	HealthCheckFn: func(prefix, version string) error {
+		if _, err := exec.LookPath("cs"); err != nil {
+			if _, err := exec.LookPath("coursier"); err != nil {
+				return fmt.Errorf("coursier (cs) not available")
+			}
 		}
-	}
-	return nil
-}
-
-func (c *Coursier) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, c.EnvironmentDir()+"-"+version)
-
-	csCmd := "cs"
-	if _, err := exec.LookPath(csCmd); err != nil {
-		csCmd = "coursier"
-	}
-
-	channelDir := filepath.Join(prefix, ".pre-commit-channel")
-	cmd := exec.Command(csCmd, "install", "--install-dir", envDir, "--default-channels=false", "--channel", channelDir)
-	cmd.Dir = prefix
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("coursier install failed: %s: %w", string(out), err)
-	}
-
-	return nil
-}
-
-func (c *Coursier) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, c.EnvironmentDir()+"-"+version)
-	env := []string{PrependPath(envDir)}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
-}
-
-// Dart implements the Language interface for Dart hooks.
-type Dart struct{}
-
-func (d *Dart) Name() string              { return "dart" }
-func (d *Dart) EnvironmentDir() string    { return "dart_env" }
-func (d *Dart) GetDefaultVersion() string { return "default" }
-
-func (d *Dart) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("dart", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("dart not available: %w", err)
-	}
-	return nil
-}
-
-func (d *Dart) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, d.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-
-	// Compile dart executables.
-	matches, _ := filepath.Glob(filepath.Join(prefix, "bin", "*.dart"))
-	for _, m := range matches {
-		name := filepath.Base(m)
-		name = name[:len(name)-5] // Remove .dart extension.
-		outPath := filepath.Join(binDir, name)
-		cmd := exec.Command("dart", "compile", "exe", m, "-o", outPath)
-		cmd.Dir = prefix
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("dart compile failed: %s: %w", string(out), err)
+		return nil
+	},
+	InstallCmd: func(envDir, prefix string) (string, []string) {
+		csCmd := "cs"
+		if _, err := exec.LookPath(csCmd); err != nil {
+			csCmd = "coursier"
 		}
-	}
-
-	return nil
+		channelDir := filepath.Join(prefix, ".pre-commit-channel")
+		return csCmd, []string{"install", "--install-dir", envDir, "--default-channels=false", "--channel", channelDir}
+	},
 }
 
-func (d *Dart) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, d.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	env := []string{PrependPath(binDir)}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
+// dartLang is the Dart language backend.
+var dartLang = &SimpleLanguage{
+	LangName:     "dart",
+	EnvDirName:   "dart_env",
+	HealthCmd:    []string{"dart", "--version"},
+	RunBinSubdir: "bin",
+	InstallFn: func(prefix, version, envDirName string, _ []string) error {
+		envDir := filepath.Join(prefix, envDirName+"-"+version)
+		binDir := filepath.Join(envDir, "bin")
+
+		matches, _ := filepath.Glob(filepath.Join(prefix, "bin", "*.dart"))
+		for _, m := range matches {
+			name := filepath.Base(m)
+			name = name[:len(name)-5] // Remove .dart extension.
+			outPath := filepath.Join(binDir, name)
+			cmd := exec.Command("dart", "compile", "exe", m, "-o", outPath)
+			cmd.Dir = prefix
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("dart compile failed: %s: %w", string(out), err)
+			}
+		}
+
+		return nil
+	},
 }
 
-// Dotnet implements the Language interface for .NET hooks.
-type Dotnet struct{}
-
-func (d *Dotnet) Name() string              { return "dotnet" }
-func (d *Dotnet) EnvironmentDir() string    { return "dotnet_env" }
-func (d *Dotnet) GetDefaultVersion() string { return "default" }
-
-func (d *Dotnet) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("dotnet", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("dotnet not available: %w", err)
-	}
-	return nil
+// dotnetLang is the .NET language backend.
+var dotnetLang = &SimpleLanguage{
+	LangName:   "dotnet",
+	EnvDirName: "dotnet_env",
+	HealthCmd:  []string{"dotnet", "--version"},
+	InstallCmd: func(envDir, prefix string) (string, []string) {
+		return "dotnet", []string{"tool", "install", "--tool-path", envDir, "--add-source", "."}
+	},
 }
 
-func (d *Dotnet) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, d.EnvironmentDir()+"-"+version)
-
-	cmd := exec.Command("dotnet", "tool", "install", "--tool-path", envDir, "--add-source", ".")
-	cmd.Dir = prefix
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("dotnet tool install failed: %s: %w", string(out), err)
-	}
-
-	return nil
+// haskellLang is the Haskell language backend.
+var haskellLang = &SimpleLanguage{
+	LangName:   "haskell",
+	EnvDirName: "hs_env",
+	HealthCmd:  []string{"cabal", "--version"},
+	InstallCmd: func(envDir, prefix string) (string, []string) {
+		return "cabal", []string{"install", "--install-method=copy", "--installdir=" + envDir}
+	},
 }
 
-func (d *Dotnet) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, d.EnvironmentDir()+"-"+version)
-	env := []string{PrependPath(envDir)}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
+// luaLang is the Lua language backend.
+var luaLang = &SimpleLanguage{
+	LangName:     "lua",
+	EnvDirName:   "lua_env",
+	HealthCmd:    []string{"luarocks", "--version"},
+	RunBinSubdir: "bin",
+	InstallCmd: func(envDir, prefix string) (string, []string) {
+		return "luarocks", []string{"install", "--tree", envDir, prefix}
+	},
 }
 
-// Haskell implements the Language interface for Haskell hooks.
-type Haskell struct{}
-
-func (h *Haskell) Name() string              { return "haskell" }
-func (h *Haskell) EnvironmentDir() string    { return "hs_env" }
-func (h *Haskell) GetDefaultVersion() string { return "default" }
-
-func (h *Haskell) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("cabal", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cabal not available: %w", err)
-	}
-	return nil
+// perlLang is the Perl language backend.
+var perlLang = &SimpleLanguage{
+	LangName:     "perl",
+	EnvDirName:   "perl_env",
+	HealthCmd:    []string{"perl", "--version"},
+	RunBinSubdir: "bin",
+	InstallCmd: func(envDir, prefix string) (string, []string) {
+		return "cpan", []string{"-T", "-l", envDir, "."}
+	},
+	InstallDepsFn: func(envDir, prefix string, deps []string) error {
+		for _, dep := range deps {
+			cmd := exec.Command("cpan", "-T", "-l", envDir, dep)
+			cmd.Dir = prefix
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("cpan install %s failed: %s: %w", dep, string(out), err)
+			}
+		}
+		return nil
+	},
 }
 
-func (h *Haskell) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, h.EnvironmentDir()+"-"+version)
-
-	cmd := exec.Command("cabal", "install", "--install-method=copy", "--installdir="+envDir)
-	cmd.Dir = prefix
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("cabal install failed: %s: %w", string(out), err)
-	}
-
-	return nil
-}
-
-func (h *Haskell) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, h.EnvironmentDir()+"-"+version)
-	env := []string{PrependPath(envDir)}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
+// rLang is the R language backend.
+var rLang = &SimpleLanguage{
+	LangName:   "r",
+	EnvDirName: "r_env",
+	HealthCmd:  []string{"Rscript", "--version"},
+	InstallCmd: func(envDir, prefix string) (string, []string) {
+		script := fmt.Sprintf(
+			"renv::activate(project = '%s')\nrenv::restore(project = '%s')\n",
+			envDir, prefix,
+		)
+		return "Rscript", []string{"--vanilla", "-e", script}
+	},
+	RunEnvFn: func(envDir string) []string {
+		return []string{fmt.Sprintf("RENV_PROJECT=%s", envDir)}
+	},
 }
 
 // Julia implements the Language interface for Julia hooks.
+// Julia is kept as a standalone struct because its Run method uses RunCommand
+// directly with a --project= flag instead of the standard RunHookCommand pattern.
 type Julia struct{}
 
 func (j *Julia) Name() string              { return "julia" }
@@ -234,7 +198,6 @@ func (j *Julia) HealthCheck(prefix, version string) error {
 func (j *Julia) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	envDir := filepath.Join(prefix, j.EnvironmentDir()+"-"+version)
 
-	// Instantiate the environment.
 	installScript := `
 using Pkg
 Pkg.activate("` + envDir + `")
@@ -270,121 +233,9 @@ func (j *Julia) Run(ctx context.Context, prefix, workDir, entry string, args, fi
 	return RunCommand(ctx, workDir, "julia", allArgs...)
 }
 
-// Lua implements the Language interface for Lua hooks.
-type Lua struct{}
-
-func (l *Lua) Name() string              { return "lua" }
-func (l *Lua) EnvironmentDir() string    { return "lua_env" }
-func (l *Lua) GetDefaultVersion() string { return "default" }
-
-func (l *Lua) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("luarocks", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("luarocks not available: %w", err)
-	}
-	return nil
-}
-
-func (l *Lua) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, l.EnvironmentDir()+"-"+version)
-
-	cmd := exec.Command("luarocks", "install", "--tree", envDir, prefix)
-	cmd.Dir = prefix
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("luarocks install failed: %s: %w", string(out), err)
-	}
-
-	return nil
-}
-
-func (l *Lua) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, l.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	env := []string{PrependPath(binDir)}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
-}
-
-// Perl implements the Language interface for Perl hooks.
-type Perl struct{}
-
-func (p *Perl) Name() string              { return "perl" }
-func (p *Perl) EnvironmentDir() string    { return "perl_env" }
-func (p *Perl) GetDefaultVersion() string { return "default" }
-
-func (p *Perl) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("perl", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("perl not available: %w", err)
-	}
-	return nil
-}
-
-func (p *Perl) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, p.EnvironmentDir()+"-"+version)
-
-	cmd := exec.Command("cpan", "-T", "-l", envDir, ".")
-	cmd.Dir = prefix
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("cpan install failed: %s: %w", string(out), err)
-	}
-
-	for _, dep := range additionalDeps {
-		cmd := exec.Command("cpan", "-T", "-l", envDir, dep)
-		cmd.Dir = prefix
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("cpan install %s failed: %s: %w", dep, string(out), err)
-		}
-	}
-
-	return nil
-}
-
-func (p *Perl) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, p.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	env := []string{PrependPath(binDir)}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
-}
-
-// R implements the Language interface for R hooks.
-type R struct{}
-
-func (r *R) Name() string              { return "r" }
-func (r *R) EnvironmentDir() string    { return "r_env" }
-func (r *R) GetDefaultVersion() string { return "default" }
-
-func (r *R) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("Rscript", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("R not available: %w", err)
-	}
-	return nil
-}
-
-func (r *R) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
-
-	// Restore renv environment.
-	script := fmt.Sprintf(`
-renv::activate(project = '%s')
-renv::restore(project = '%s')
-`, envDir, prefix)
-	cmd := exec.Command("Rscript", "--vanilla", "-e", script)
-	cmd.Dir = prefix
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("renv restore failed: %s: %w", string(out), err)
-	}
-
-	return nil
-}
-
-func (r *R) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
-	env := []string{fmt.Sprintf("RENV_PROJECT=%s", envDir)}
-	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
-}
-
 // Swift implements the Language interface for Swift hooks.
+// Swift is kept as a standalone struct because its install involves a multi-step
+// build + copy workflow that doesn't fit the SimpleLanguage pattern.
 type Swift struct{}
 
 func (s *Swift) Name() string              { return "swift" }
