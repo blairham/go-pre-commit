@@ -46,10 +46,21 @@ snapshot:
 
 changelog:
   sort: asc
+  use: github
+  groups:
+  - title: Features
+    regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+    order: 0
+  - title: Bug Fixes
+    regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+    order: 1
+  - title: Other
+    order: 999
   filters:
     exclude:
     - '^docs:'
     - '^test:'
+    - '^chore:'
 
 release:
   draft: false
