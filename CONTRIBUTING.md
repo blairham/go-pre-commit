@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This guide covers development setup, w
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+ (see `.tool-versions` for the exact version; works with [asdf](https://asdf-vm.com/))
 - [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting)
 
 ### Building
@@ -23,6 +23,7 @@ The binary is output to `build/pre-commit`.
 
 ```bash
 make test        # Unit tests with race detector
+make test-cover  # Tests with coverage report (outputs coverage.html)
 make lint        # golangci-lint
 make check       # fmt + vet + test (the full suite)
 ```
@@ -37,6 +38,50 @@ go test -v -tags=integration -timeout=600s ./test/integration/
 ```
 
 These run automatically in CI on pushes to `main` and on PRs labeled `test-languages`.
+
+## Project Structure
+
+```
+cmd/pre-commit/     Entry point — calls internal/cli.Run()
+internal/
+  cli/              Command definitions (one per file, implements mitchellh/cli.Command)
+  config/           YAML config parsing (.pre-commit-config.yaml)
+  git/              Git operations (staging, refs, hooks dir)
+  hook/             Hook execution engine and runner
+  identify/         File type identification by extension, filename, shebang
+  languages/        Language backends (see "Adding a New Language" below)
+  output/           Terminal output formatting with lipgloss styles
+  pcre/             PCRE regex support via dlclark/regexp2
+  repository/       Hook repository resolution and caching
+  staged/           Stash management for staged files
+  store/            On-disk cache for cloned hook repos
+  xargs/            Parallel execution with batching
+test/integration/   Parity tests against Python pre-commit
+```
+
+## Adding a New Language
+
+Most languages follow the same pattern: check a CLI tool exists, install into an env directory, prepend PATH, and run. The `SimpleLanguage` struct in `internal/languages/configlang.go` handles this declaratively:
+
+```go
+var myLang = &SimpleLanguage{
+    LangName:     "mylang",
+    EnvDirName:   "mylang_env",
+    HealthCmd:    []string{"mylang", "--version"},
+    RunBinSubdir: "bin",
+    InstallCmd: func(envDir, prefix string) (string, []string) {
+        return "mylang", []string{"install", "--dir", envDir}
+    },
+}
+```
+
+Then register it in `internal/languages/language.go`:
+
+```go
+Register("mylang", myLang)
+```
+
+For languages that need custom install or run logic, you can use the override fields (`InstallFn`, `RunFn`, `HealthCheckFn`, `RunEnvFn`), or implement the `Language` interface directly as a standalone struct (see Julia and Swift in `others.go`).
 
 ## Pull Request Workflow
 

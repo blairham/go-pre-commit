@@ -71,8 +71,6 @@ linters:
       disabled-checks:
       - hugeParam
       - rangeValCopy
-      - unnamedResult
-      - paramTypeCombine
       - ifElseChain
       - commentedOutCode
       - appendCombine

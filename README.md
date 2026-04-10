@@ -5,7 +5,7 @@ A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) 
 ## Features
 
 - **Drop-in replacement** — identical CLI interface to the Python pre-commit tool
-- **21 supported languages**: Python, Node, Go, Ruby, Rust, Docker, Docker Image, Conda, Coursier, Dart, Dotnet, Haskell, Julia, Lua, Perl, R, Swift, Fail, Pygrep, System, Script
+- **22 supported languages**: Python, Node, Go, Ruby, Rust, Docker, Docker Image, Conda, Coursier, Dart, Dotnet, Haskell, Julia, Lua, Perl, R, Swift, Fail, Pygrep, System, Script, Python venv
 - **All hook types**: pre-commit, pre-merge-commit, pre-push, commit-msg, post-checkout, post-commit, post-merge, post-rewrite, prepare-commit-msg, pre-rebase
 - **File type identification** by extension, filename, and shebang
 - **Parallel hook execution** with xargs-style batching
@@ -139,4 +139,4 @@ CI will build cross-platform binaries and attach them to the GitHub release. See
 
 ## License
 
-MIT
+[MIT](LICENSE)
