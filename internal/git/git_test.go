@@ -56,7 +56,7 @@ func TestNoGitEnv(t *testing.T) {
 
 	stripped := map[string]bool{
 		"GIT_DIR":         true,
-		"GIT_WORK_TREE":  true,
+		"GIT_WORK_TREE":   true,
 		"GIT_AUTHOR_NAME": true,
 		"GIT_INDEX_FILE":  true,
 	}
@@ -93,7 +93,7 @@ func TestNoGitEnv_AllowedVars(t *testing.T) {
 	allowed := map[string]bool{
 		"GIT_SSH":            false,
 		"GIT_SSH_COMMAND":    false,
-		"GIT_EXEC_PATH":     false,
+		"GIT_EXEC_PATH":      false,
 		"GIT_CONFIG_KEY_0":   false,
 		"GIT_CONFIG_VALUE_0": false,
 	}

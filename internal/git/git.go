@@ -20,9 +20,9 @@ import (
 // See https://github.com/pre-commit/pre-commit/issues/300
 func NoGitEnv() []string {
 	allowed := map[string]bool{
-		"GIT_EXEC_PATH":              true,
-		"GIT_SSH":                    true,
-		"GIT_SSH_COMMAND":            true,
+		"GIT_EXEC_PATH":             true,
+		"GIT_SSH":                   true,
+		"GIT_SSH_COMMAND":           true,
 		"GIT_SSL_CAINFO":            true,
 		"GIT_SSL_NO_VERIFY":         true,
 		"GIT_CONFIG_COUNT":          true,
