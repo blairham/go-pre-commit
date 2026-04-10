@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	gitutil "github.com/blairham/go-pre-commit/internal/git"
 )
@@ -281,19 +280,19 @@ func (s *Store) acquireLock() (func(), error) {
 		return nil, err
 	}
 
-	lockFile, err := os.OpenFile(s.lockPath(), os.O_CREATE|os.O_RDWR, 0o644)
+	lf, err := os.OpenFile(s.lockPath(), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open lock file: %w", err)
 	}
 
-	// Use flock for advisory locking.
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		lockFile.Close()
+	// Use platform-specific file locking.
+	if err := lockFile(lf); err != nil {
+		lf.Close()
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
 	}
 
 	return func() {
-		syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-		lockFile.Close()
+		_ = unlockFile(lf)
+		lf.Close()
 	}, nil
 }
