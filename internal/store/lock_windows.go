@@ -16,7 +16,6 @@ var (
 
 const (
 	lockfileExclusiveLock = 0x00000002
-	lockfileFailImmediately = 0x00000001
 )
 
 func lockFile(f *os.File) error {
