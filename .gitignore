@@ -159,7 +159,8 @@ fabric.properties
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
+
 
 # Thumbnails
 ._*
@@ -259,3 +260,4 @@ coverage.out
 coverage.html
 test-output/
 *-cache/
+test/integration/parity_report.json
