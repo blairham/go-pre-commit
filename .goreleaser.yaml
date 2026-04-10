@@ -4,10 +4,6 @@ version: 2
 # See: https://goreleaser.com
 project_name: pre-commit
 
-before:
-  hooks:
-  - go mod tidy
-
 builds:
 - id: pre-commit
   binary: pre-commit
@@ -21,9 +17,6 @@ builds:
   goarch:
   - amd64
   - arm64
-  goarm:
-  - "6"
-  - "7"
   ignore:
   - goos: windows
     goarch: arm64
@@ -60,7 +53,6 @@ release:
   draft: false
   replace_existing_draft: true
   target_commitish: "{{ .Commit }}"
-  discussion_category_name: General
   prerelease: auto
   mode: replace
   header: |
