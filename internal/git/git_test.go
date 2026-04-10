@@ -46,17 +46,24 @@ func initTestRepo(t *testing.T) string {
 // --- NoGitEnv tests ---
 
 func TestNoGitEnv(t *testing.T) {
-	// Set some GIT_ env vars.
+	// Set some GIT_ env vars that should be stripped.
 	t.Setenv("GIT_DIR", "/some/path")
 	t.Setenv("GIT_WORK_TREE", "/other/path")
 	t.Setenv("GIT_AUTHOR_NAME", "test")
+	t.Setenv("GIT_INDEX_FILE", "/index")
 
 	env := NoGitEnv()
 
+	stripped := map[string]bool{
+		"GIT_DIR":         true,
+		"GIT_WORK_TREE":  true,
+		"GIT_AUTHOR_NAME": true,
+		"GIT_INDEX_FILE":  true,
+	}
 	for _, e := range env {
 		name := strings.SplitN(e, "=", 2)[0]
-		if strings.HasPrefix(name, "GIT_") {
-			t.Errorf("NoGitEnv should strip GIT_ vars, found %s", name)
+		if stripped[name] {
+			t.Errorf("NoGitEnv should strip %s but it was preserved", name)
 		}
 	}
 
@@ -70,6 +77,36 @@ func TestNoGitEnv(t *testing.T) {
 	}
 	if !hasPath {
 		t.Error("expected non-GIT_ vars to be preserved")
+	}
+}
+
+func TestNoGitEnv_AllowedVars(t *testing.T) {
+	// Allowed GIT_ vars should be preserved.
+	t.Setenv("GIT_SSH", "ssh-custom")
+	t.Setenv("GIT_SSH_COMMAND", "ssh -o Opt=val")
+	t.Setenv("GIT_EXEC_PATH", "/usr/lib/git")
+	t.Setenv("GIT_CONFIG_KEY_0", "user.name")
+	t.Setenv("GIT_CONFIG_VALUE_0", "test")
+
+	env := NoGitEnv()
+
+	allowed := map[string]bool{
+		"GIT_SSH":            false,
+		"GIT_SSH_COMMAND":    false,
+		"GIT_EXEC_PATH":     false,
+		"GIT_CONFIG_KEY_0":   false,
+		"GIT_CONFIG_VALUE_0": false,
+	}
+	for _, e := range env {
+		name := strings.SplitN(e, "=", 2)[0]
+		if _, ok := allowed[name]; ok {
+			allowed[name] = true
+		}
+	}
+	for name, found := range allowed {
+		if !found {
+			t.Errorf("NoGitEnv should preserve allowed var %s", name)
+		}
 	}
 }
 
@@ -313,6 +350,61 @@ func TestGetStagedFiles_WithStaged(t *testing.T) {
 	}
 	if len(files) != 1 || files[0] != "new.txt" {
 		t.Errorf("expected [new.txt], got %v", files)
+	}
+}
+
+func TestGetStagedFiles_ExcludesDeleted(t *testing.T) {
+	dir := initTestRepo(t)
+
+	old, _ := os.Getwd()
+	defer os.Chdir(old)
+	os.Chdir(dir)
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+
+	// Create and commit a second file.
+	if err := os.WriteFile(filepath.Join(dir, "delete-me.yaml"), []byte("test: content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "delete-me.yaml")
+	run("commit", "-m", "add file to delete")
+
+	// Stage deletion of the file.
+	run("rm", "delete-me.yaml")
+
+	// Also stage a modification to another file.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("modified\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "README.md")
+
+	files, err := GetStagedFiles()
+	if err != nil {
+		t.Fatalf("GetStagedFiles failed: %v", err)
+	}
+
+	// Should only contain README.md, not delete-me.yaml.
+	for _, f := range files {
+		if f == "delete-me.yaml" {
+			t.Error("GetStagedFiles should not include deleted files")
+		}
+	}
+	if len(files) != 1 || files[0] != "README.md" {
+		t.Errorf("expected [README.md], got %v", files)
 	}
 }
 

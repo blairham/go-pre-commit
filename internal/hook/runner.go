@@ -200,7 +200,6 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		var exitCode int
 		var hookOutput []byte
 		exitCode, hookOutput, err = runHookXargs(ctx, lang, h, fileArgs, r.root)
-
 		if err != nil {
 			output.PrintHookHeader(h.Name, output.ResultError)
 			output.Error("hook execution error: %v", err)
@@ -343,6 +342,13 @@ func filterFiles(files []string, h *Hook) []string {
 	}
 
 	for _, f := range files {
+		// Skip files that do not exist on disk (e.g. staged deletions
+		// or files removed from the working tree without git rm).
+		// Matches Python identify library which raises ValueError for
+		// non-existent paths.
+		if _, err := os.Lstat(f); err != nil {
+			continue
+		}
 		// Check include pattern.
 		if includeRe != nil && !pcre.Match(includeRe, f) {
 			continue
