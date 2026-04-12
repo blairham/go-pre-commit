@@ -191,6 +191,7 @@ func (c *RunCommand) Run(args []string) int {
 		Verbose:                    opts.Verbose,
 		ShowDiff:                   opts.ShowDiffOnFail,
 		Color:                      opts.Color,
+		Jobs:                       opts.Jobs,
 		FromRef:                    opts.FromRef,
 		ToRef:                      opts.ToRef,
 		CommitMsgFilename:          opts.CommitMsgFn,
@@ -224,14 +225,6 @@ func (c *RunCommand) Run(args []string) int {
 	if hasFailures {
 		return 1
 	}
-
-	// Set jobs env var for xargs concurrency.
-	if opts.Jobs > 0 {
-		os.Setenv("PRE_COMMIT_JOBS", fmt.Sprintf("%d", opts.Jobs))
-	}
-
-	// Suppress unused variable warning for noStash.
-	_ = noStash
 
 	return 0
 }

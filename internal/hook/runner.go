@@ -36,6 +36,7 @@ type RunOptions struct {
 	Verbose   bool
 	Color     string
 	SkipList  []string
+	Jobs      int
 
 	// Environment variables to pass to hooks.
 	CommitMsgFilename          string
@@ -199,7 +200,7 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		// Run the hook using xargs for batching.
 		var exitCode int
 		var hookOutput []byte
-		exitCode, hookOutput, err = runHookXargs(ctx, lang, h, fileArgs, r.root)
+		exitCode, hookOutput, err = runHookXargs(ctx, lang, h, fileArgs, r.root, opts.Jobs)
 		if err != nil {
 			output.PrintHookHeader(h.Name, output.ResultError)
 			output.Error("hook execution error: %v", err)
@@ -371,7 +372,7 @@ func filterFiles(files []string, h *Hook) []string {
 // runHookXargs runs a hook using xargs-style batching and concurrency.
 // All execution goes through lang.Run to ensure language-specific environment
 // setup (e.g. virtualenv PATH for Python hooks).
-func runHookXargs(ctx context.Context, lang languages.Language, h *Hook, fileArgs []string, workDir string) (int, []byte, error) {
+func runHookXargs(ctx context.Context, lang languages.Language, h *Hook, fileArgs []string, workDir string, jobs int) (int, []byte, error) {
 	if len(fileArgs) == 0 {
 		return lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, nil, h.LanguageVersion)
 	}
@@ -379,7 +380,7 @@ func runHookXargs(ctx context.Context, lang languages.Language, h *Hook, fileArg
 	// Determine batch size and concurrency.
 	maxJobs := 1
 	if !h.RequireSerial {
-		maxJobs = targetConcurrency()
+		maxJobs = targetConcurrency(jobs)
 	}
 
 	// Batch the file arguments.
@@ -449,9 +450,12 @@ func batchFileArgs(files []string, maxBatchSize int) [][]string {
 }
 
 // targetConcurrency returns the target number of parallel jobs.
-func targetConcurrency() int {
+func targetConcurrency(jobs int) int {
 	if os.Getenv("PRE_COMMIT_NO_CONCURRENCY") != "" {
 		return 1
+	}
+	if jobs > 0 {
+		return jobs
 	}
 	if os.Getenv("TRAVIS") != "" {
 		return 2

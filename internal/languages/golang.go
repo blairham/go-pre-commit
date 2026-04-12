@@ -3,6 +3,7 @@ package languages
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 )
@@ -16,10 +17,10 @@ func (g *Golang) GetDefaultVersion() string { return "default" }
 
 func (g *Golang) HealthCheck(prefix, version string) error {
 	envDir := filepath.Join(prefix, g.EnvironmentDir()+"-"+version)
-	goPath := filepath.Join(envDir, "bin")
-	cmd := exec.Command("ls", goPath)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("golang environment unhealthy: %w", err)
+	binDir := filepath.Join(envDir, "bin")
+	entries, err := os.ReadDir(binDir)
+	if err != nil || len(entries) == 0 {
+		return fmt.Errorf("golang environment unhealthy: no binaries in %s", binDir)
 	}
 	return nil
 }
