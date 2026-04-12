@@ -443,7 +443,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		DefaultInstallHookTypes: []HookType{HookTypePreCommit},
 		DefaultLanguageVersion:  make(map[string]string),
-		DefaultStages:           AllStages(),
+		DefaultStages:           AllHookTypes(),
 		Exclude:                 "^$",
 	}
 }

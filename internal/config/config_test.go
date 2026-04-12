@@ -606,9 +606,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Exclude != "^$" {
 		t.Errorf("expected exclude '^$', got %q", cfg.Exclude)
 	}
-	allStages := AllStages()
-	if len(cfg.DefaultStages) != len(allStages) {
-		t.Errorf("expected %d default stages, got %d", len(allStages), len(cfg.DefaultStages))
+	hookTypes := AllHookTypes()
+	if len(cfg.DefaultStages) != len(hookTypes) {
+		t.Errorf("expected %d default stages (non-manual), got %d", len(hookTypes), len(cfg.DefaultStages))
 	}
 }
 

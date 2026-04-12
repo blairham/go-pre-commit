@@ -98,9 +98,9 @@ func (p *Pygrep) Run(ctx context.Context, prefix, workDir, entry string, args, f
 	}
 
 	if negate {
-		// With --negate, fail if no files matched.
-		if !foundMatch {
-			return 1, []byte("no files matched\n"), nil
+		// With --negate, fail if any file matched the pattern.
+		if foundMatch {
+			return 1, output.Bytes(), nil
 		}
 		return 0, nil, nil
 	}

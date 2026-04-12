@@ -88,15 +88,6 @@ func (m *Manager) StashUnstaged() (bool, error) {
 		return false, fmt.Errorf("checkout-index: %w", err)
 	}
 
-	// Checkout staged version of all files.
-	cmd = exec.Command("git", "checkout", "--", ".")
-	cmd.Dir = m.dir
-	cmd.Env = append(os.Environ(), "_PRE_COMMIT_SKIP_POST_CHECKOUT=1")
-	if err := cmd.Run(); err != nil {
-		os.Remove(m.patchPath)
-		return false, fmt.Errorf("checkout staged: %w", err)
-	}
-
 	m.stashed = true
 	return true, nil
 }
@@ -122,7 +113,9 @@ func (m *Manager) Restore() error {
 	if m.treeHash != "" {
 		if err := git.ReadTree(m.dir, m.treeHash); err != nil {
 			// Fall back to checkout approach.
-			_ = err
+			cmd := exec.Command("git", "checkout", "--", ".")
+			cmd.Dir = m.dir
+			_ = cmd.Run()
 		}
 	}
 
