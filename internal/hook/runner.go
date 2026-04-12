@@ -2,7 +2,6 @@ package hook
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -192,9 +191,9 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		}
 
 		// Capture file state before running hook (for modification detection).
-		var fileHashesBefore map[string]string
+		var fpBefore map[string]fileFingerprint
 		if !opts.AllFiles {
-			fileHashesBefore = hashFiles(fileArgs)
+			fpBefore = fingerprintFiles(fileArgs)
 		}
 
 		// Run the hook using xargs for batching.
@@ -213,10 +212,10 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 
 		// Detect if files were modified by the hook.
 		filesModified := false
-		if fileHashesBefore != nil && exitCode == 0 {
-			fileHashesAfter := hashFiles(fileArgs)
-			for f, hashBefore := range fileHashesBefore {
-				if hashAfter, ok := fileHashesAfter[f]; ok && hashBefore != hashAfter {
+		if fpBefore != nil && exitCode == 0 {
+			fpAfter := fingerprintFiles(fileArgs)
+			for f, before := range fpBefore {
+				if after, ok := fpAfter[f]; ok && (before.size != after.size || before.modTime != after.modTime) {
 					filesModified = true
 					break
 				}
@@ -467,17 +466,25 @@ func targetConcurrency(jobs int) int {
 	return n
 }
 
-// hashFiles returns a map of filename to SHA256 hash of file contents.
-func hashFiles(files []string) map[string]string {
-	hashes := make(map[string]string, len(files))
+// fileFingerprint is a lightweight file state fingerprint using mtime and size
+// instead of reading entire file contents.
+type fileFingerprint struct {
+	size    int64
+	modTime int64
+}
+
+// fingerprintFiles returns a map of filename to stat-based fingerprint.
+// This is much faster than hashing file contents, especially for large files.
+func fingerprintFiles(files []string) map[string]fileFingerprint {
+	fps := make(map[string]fileFingerprint, len(files))
 	for _, f := range files {
-		data, err := os.ReadFile(f)
+		info, err := os.Stat(f)
 		if err != nil {
 			continue
 		}
-		hashes[f] = fmt.Sprintf("%x", sha256.Sum256(data))
+		fps[f] = fileFingerprint{size: info.Size(), modTime: info.ModTime().UnixNano()}
 	}
-	return hashes
+	return fps
 }
 
 // checkMinVersion checks if the current version meets the minimum requirement.
@@ -520,20 +527,25 @@ func parseVersionParts(v string) []int {
 // reinstalls and to detect when dependencies have changed.
 const installStateFile = "install_state_v2"
 
+// installTask represents a single environment install job.
+type installTask struct {
+	hook *Hook
+	lang languages.Language
+}
+
 // InstallEnvironments installs environments for all provided hooks.
+// Installs are run in parallel since each operates on a separate directory.
 func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
-	installed := make(map[string]bool)
-	var mu sync.Mutex
+	// Deduplicate and filter to only hooks that need installation.
+	seen := make(map[string]bool)
+	var tasks []installTask
 
 	for _, h := range hooks {
 		key := h.InstallKey()
-		mu.Lock()
-		if installed[key] {
-			mu.Unlock()
+		if seen[key] {
 			continue
 		}
-		installed[key] = true
-		mu.Unlock()
+		seen[key] = true
 
 		lang, err := languages.Get(h.Language)
 		if err != nil {
@@ -541,14 +553,14 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 		}
 
 		if lang.EnvironmentDir() == "" {
-			continue // No environment to install.
+			continue
 		}
 
-		// Check if environment is already installed with correct state.
 		envDir := h.RepoDir
 		if envDir == "" {
 			continue
 		}
+
 		stateFile := filepath.Join(envDir, lang.EnvironmentDir(), installStateFile)
 		expectedState := h.InstallKey()
 
@@ -561,25 +573,62 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 			os.RemoveAll(envPath)
 		}
 
-		output.Info("Installing environment for %s.", h.Repo)
+		tasks = append(tasks, installTask{hook: h, lang: lang})
+	}
+
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	// Run installs in parallel with bounded concurrency.
+	maxWorkers := runtime.NumCPU()
+	if maxWorkers > len(tasks) {
+		maxWorkers = len(tasks)
+	}
+	if maxWorkers > 4 {
+		maxWorkers = 4
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxWorkers)
+	errs := make([]error, len(tasks))
+
+	for i, task := range tasks {
+		output.Info("Installing environment for %s.", task.hook.Repo)
 		output.Info("Once installed this environment will be reused.")
 		output.Info("This may take a few minutes...")
 
-		if err := lang.InstallEnvironment(h.RepoDir, h.LanguageVersion, h.AdditionalDependencies); err != nil {
-			// Clean up partial install.
-			envPath := filepath.Join(envDir, lang.EnvironmentDir())
-			os.RemoveAll(envPath)
-			return fmt.Errorf("failed to install environment for hook %q: %w", h.ID, err)
-		}
+		wg.Add(1)
+		go func(idx int, t installTask) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		// Write install state file.
-		stateDir := filepath.Dir(stateFile)
-		os.MkdirAll(stateDir, 0o755)
-		if err := os.WriteFile(stateFile, []byte(expectedState), 0o644); err != nil {
-			output.Warn("Failed to write install state: %v", err)
-		}
+			if err := t.lang.InstallEnvironment(t.hook.RepoDir, t.hook.LanguageVersion, t.hook.AdditionalDependencies); err != nil {
+				envPath := filepath.Join(t.hook.RepoDir, t.lang.EnvironmentDir())
+				os.RemoveAll(envPath)
+				errs[idx] = fmt.Errorf("failed to install environment for hook %q: %w", t.hook.ID, err)
+				return
+			}
+
+			// Write install state file.
+			stateFile := filepath.Join(t.hook.RepoDir, t.lang.EnvironmentDir(), installStateFile)
+			stateDir := filepath.Dir(stateFile)
+			os.MkdirAll(stateDir, 0o755)
+			if err := os.WriteFile(stateFile, []byte(t.hook.InstallKey()), 0o644); err != nil {
+				output.Warn("Failed to write install state: %v", err)
+			}
+		}(i, task)
 	}
 
+	wg.Wait()
+
+	// Return the first error encountered.
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
