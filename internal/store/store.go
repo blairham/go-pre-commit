@@ -14,8 +14,9 @@ import (
 
 // Store manages the cache of cloned hook repositories.
 type Store struct {
-	dir string
-	mu  sync.Mutex
+	dir   string
+	mu    sync.Mutex
+	cache map[string]string // repo@rev -> path, in-memory lookup cache
 }
 
 // RepoEntry tracks a cloned repository.
@@ -244,15 +245,36 @@ func (s *Store) saveDB(db *storeDB) error {
 	return os.WriteFile(s.dbPath(), data, 0o644)
 }
 
+func (s *Store) cacheKey(repo, rev string) string {
+	return repo + "@" + rev
+}
+
 func (s *Store) lookup(repo, rev string) (string, error) {
+	key := s.cacheKey(repo, rev)
+
+	// Check in-memory cache first.
+	if s.cache != nil {
+		if path, ok := s.cache[key]; ok {
+			if _, err := os.Stat(path); err == nil {
+				return path, nil
+			}
+			// Path no longer exists, remove stale entry.
+			delete(s.cache, key)
+		}
+	}
+
 	db, err := s.loadDB()
 	if err != nil {
 		return "", err
 	}
 	for _, entry := range db.Repos {
 		if entry.Repo == repo && entry.Rev == rev {
-			// Verify the directory still exists.
 			if _, err := os.Stat(entry.Path); err == nil {
+				// Populate in-memory cache.
+				if s.cache == nil {
+					s.cache = make(map[string]string)
+				}
+				s.cache[key] = entry.Path
 				return entry.Path, nil
 			}
 		}
@@ -270,7 +292,15 @@ func (s *Store) save(repo, rev, path string) error {
 		Rev:  rev,
 		Path: path,
 	})
-	return s.saveDB(db)
+	if err := s.saveDB(db); err != nil {
+		return err
+	}
+	// Update in-memory cache.
+	if s.cache == nil {
+		s.cache = make(map[string]string)
+	}
+	s.cache[s.cacheKey(repo, rev)] = path
+	return nil
 }
 
 // acquireLock acquires file-level locking for concurrent process safety.

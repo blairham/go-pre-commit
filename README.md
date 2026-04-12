@@ -112,6 +112,35 @@ repos:
 | `init-templatedir` | Install hook into a template directory |
 | `migrate-config` | Migrate config from old format |
 
+## Performance
+
+Benchmarked against Python pre-commit v4.5.1 on the same config (macOS, Apple Silicon, warm caches, 5 iterations averaged).
+
+### Startup time (no staged files)
+
+| Tool | Avg | Min | Max |
+|------|-----|-----|-----|
+| **Go** | **0.161s** | 0.155s | 0.167s |
+| Python | 0.269s | 0.267s | 0.272s |
+
+**1.7x faster** — Go's compiled binary avoids Python interpreter startup overhead.
+
+### Per-hook execution (`--all-files`)
+
+| Hook | Go | Python | Speedup |
+|------|-----|--------|---------|
+| trailing-whitespace | 0.058s | 0.232s | **4.0x** |
+| end-of-file-fixer | 0.053s | 0.225s | **4.2x** |
+| check-yaml | 0.074s | 0.223s | **3.0x** |
+| check-added-large-files | 0.079s | 0.286s | **3.6x** |
+| check-merge-conflict | 0.066s | 0.250s | **3.8x** |
+| golangci-lint | 0.919s | 0.905s | 1.0x |
+| go-vet-mod | 0.560s | 0.711s | **1.3x** |
+
+Python-based hooks (pre-commit-hooks) see the largest improvement since Go avoids spawning a Python interpreter for each hook. Hooks that shell out to external tools (golangci-lint) show similar performance since the tool itself dominates.
+
+Run the benchmark yourself: `bash bench.sh`
+
 ## Development
 
 ```bash

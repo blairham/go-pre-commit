@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/blairham/go-pre-commit/internal/config"
 	"github.com/blairham/go-pre-commit/internal/hook"
@@ -24,15 +25,47 @@ func NewResolver(s *store.Store, cfg *config.Config) *Resolver {
 }
 
 // ResolveAll resolves all repos in a config into a flat list of hooks.
+// Remote repos are cloned in parallel to reduce wall-clock time.
 func (r *Resolver) ResolveAll(ctx context.Context, cfg *config.Config) ([]*hook.Hook, error) {
-	var allHooks []*hook.Hook
+	type repoResult struct {
+		hooks []*hook.Hook
+		err   error
+		index int
+	}
+
+	// Separate repos: local/meta can resolve instantly, remote needs cloning.
+	results := make([]repoResult, len(cfg.Repos))
+
+	// Resolve remote repos in parallel (cloning is the bottleneck).
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4) // Limit concurrent clones.
 
 	for i := range cfg.Repos {
-		hooks, err := r.resolveRepo(ctx, &cfg.Repos[i])
-		if err != nil {
-			return nil, fmt.Errorf("resolving repo %s: %w", cfg.Repos[i].Repo, err)
+		repo := &cfg.Repos[i]
+		if repo.IsLocal() || repo.IsMeta() {
+			// Resolve local/meta repos immediately (no I/O).
+			hooks, err := r.resolveRepo(ctx, repo)
+			results[i] = repoResult{hooks: hooks, err: err, index: i}
+			continue
 		}
-		allHooks = append(allHooks, hooks...)
+		wg.Add(1)
+		go func(idx int, repo *config.RepoConfig) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			hooks, err := r.resolveRepo(ctx, repo)
+			results[idx] = repoResult{hooks: hooks, err: err, index: idx}
+		}(i, repo)
+	}
+	wg.Wait()
+
+	// Collect results in config order.
+	var allHooks []*hook.Hook
+	for i, res := range results {
+		if res.err != nil {
+			return nil, fmt.Errorf("resolving repo %s: %w", cfg.Repos[i].Repo, res.err)
+		}
+		allHooks = append(allHooks, res.hooks...)
 	}
 
 	return allHooks, nil
