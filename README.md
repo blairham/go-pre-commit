@@ -1,5 +1,10 @@
 # go-pre-commit
 
+[![CI](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml/badge.svg)](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/blairham/go-pre-commit)](https://goreportcard.com/report/github.com/blairham/go-pre-commit)
+[![GoDoc](https://pkg.go.dev/badge/github.com/blairham/go-pre-commit)](https://pkg.go.dev/github.com/blairham/go-pre-commit)
+[![License](https://img.shields.io/github/license/blairham/go-pre-commit)](https://github.com/blairham/go-pre-commit/blob/main/LICENSE)
+
 A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) — a framework for managing and maintaining multi-language pre-commit hooks.
 
 ## Features
@@ -168,4 +173,4 @@ CI will build cross-platform binaries and attach them to the GitHub release. See
 
 ## License
 
-[MIT](LICENSE)
+[Apache-2.0](LICENSE)
