@@ -12,14 +12,30 @@ builds:
   - CGO_ENABLED=0
   goos:
   - linux
-  - windows
   - darwin
+  - windows
+  - freebsd
   goarch:
   - amd64
   - arm64
+  - "386"
+  - arm
+  goarm:
+  - "6"
+  - "7"
   ignore:
+  - goos: darwin
+    goarch: "386"
+  - goos: darwin
+    goarch: arm
   - goos: windows
     goarch: arm64
+  - goos: windows
+    goarch: arm
+  - goos: freebsd
+    goarch: "386"
+  - goos: freebsd
+    goarch: arm
   ldflags:
   - -s -w
   - -X main.version={{.Version}}
@@ -61,6 +77,16 @@ changelog:
     - '^docs:'
     - '^test:'
     - '^chore:'
+
+brews:
+- name: pre-commit
+  repository:
+    owner: blairham
+    name: homebrew-tap
+    token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+  homepage: https://github.com/blairham/go-pre-commit
+  description: A fast Go reimplementation of pre-commit
+  license: Apache-2.0
 
 release:
   draft: false
