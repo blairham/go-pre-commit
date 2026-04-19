@@ -78,7 +78,7 @@ changelog:
     - '^test:'
     - '^chore:'
 
-brews:
+homebrew_casks:
 - name: pre-commit
   repository:
     owner: blairham
