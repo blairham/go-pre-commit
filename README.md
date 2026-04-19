@@ -1,8 +1,8 @@
 # go-pre-commit
 
 [![CI](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml/badge.svg)](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/blairham/go-pre-commit)](https://goreportcard.com/report/github.com/blairham/go-pre-commit)
-[![GoDoc](https://pkg.go.dev/badge/github.com/blairham/go-pre-commit)](https://pkg.go.dev/github.com/blairham/go-pre-commit)
+[![Go Report Card](https://goreportcard.com/badge/github.com/blairham/go-pre-commit/v4)](https://goreportcard.com/report/github.com/blairham/go-pre-commit/v4)
+[![GoDoc](https://pkg.go.dev/badge/github.com/blairham/go-pre-commit/v4)](https://pkg.go.dev/github.com/blairham/go-pre-commit/v4)
 [![License](https://img.shields.io/github/license/blairham/go-pre-commit)](https://github.com/blairham/go-pre-commit/blob/main/LICENSE)
 
 A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) — a framework for managing and maintaining multi-language pre-commit hooks.
@@ -32,7 +32,7 @@ sudo mv pre-commit /usr/local/bin/
 ### Go install
 
 ```bash
-go install github.com/blairham/go-pre-commit/cmd/pre-commit@latest
+go install github.com/blairham/go-pre-commit/v4/cmd/pre-commit@latest
 ```
 
 ### Build from source
@@ -164,12 +164,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and releas
 Releases are automated with [GoReleaser](https://goreleaser.com) via GitHub Actions. To create a release:
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
-gh release create v0.1.0 --generate-notes
+git tag v4.6.0
+git push origin v4.6.0
 ```
 
-CI will build cross-platform binaries and attach them to the GitHub release. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+CI will build cross-platform binaries and publish a GitHub release automatically. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 

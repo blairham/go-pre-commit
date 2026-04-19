@@ -102,18 +102,12 @@ Releases are fully automated via [GoReleaser](https://goreleaser.com) and GitHub
 
 2. **Tag the release:**
    ```bash
-   git tag -a v0.1.0 -m "v0.1.0"
-   git push origin v0.1.0
+   git tag v4.6.0
+   git push origin v4.6.0
    ```
-   Use [semantic versioning](https://semver.org/). Pre-release tags (e.g., `v0.1.0-rc.1`) are automatically marked as pre-releases on GitHub.
+   Use [semantic versioning](https://semver.org/). Pre-release tags (e.g., `v4.6.0-rc.1`) are automatically marked as pre-releases on GitHub.
 
-3. **Create a GitHub release from the tag:**
-   ```bash
-   gh release create v0.1.0 --generate-notes
-   ```
-   Or use the GitHub web UI: go to **Releases > Draft a new release**, select the tag, and publish.
-
-4. **CI takes over.** The `release` job in `.github/workflows/ci.yml` runs GoReleaser, which:
+3. **CI takes over.** The GoReleaser workflow (`.github/workflows/goreleaser.yml`) triggers on tag push and:
    - Builds binaries for all platforms (`CGO_ENABLED=0`)
    - Creates archives (`.tar.gz` for Linux/macOS, `.zip` for Windows)
    - Generates a `checksums.txt`
@@ -121,10 +115,11 @@ Releases are fully automated via [GoReleaser](https://goreleaser.com) and GitHub
 
 ### Version Numbering
 
-The project uses two version numbers:
+The version is set dynamically via ldflags at build time from git tags. The module uses the `/v4` suffix to match major version 4.x.x (required by Go modules).
 
-- **Compatibility version** (`internal/config/config.go: Version`): Tracks the Python pre-commit version this tool is compatible with (currently `4.5.0`). Update this when adding support for features from a newer Python pre-commit release.
-- **Build version**: Set automatically from git tags via ldflags. Shown in `--version` output as build metadata.
+- **`go install`** users: `go install github.com/blairham/go-pre-commit/v4/cmd/pre-commit@latest`
+- **GoReleaser** injects the tag version into `internal/config.Version` via `-X` ldflags
+- **Local builds** (`make build`) use `git describe --tags` for the version
 
 ### Verifying a Release
 
