@@ -60,9 +60,11 @@ func addResult(command, category, test string, pyExit, goExit int, match bool, d
 func addExitResult(cmd, test string, py, go_ int, match bool, detail string) {
 	addResult(cmd, "exit code", test, py, go_, match, detail)
 }
+
 func addFSResult(cmd, test string, match bool, detail string) {
 	addResult(cmd, "filesystem", test, 0, 0, match, detail)
 }
+
 func addOutputResult(cmd, test string, match bool, detail string) {
 	addResult(cmd, "output", test, 0, 0, match, detail)
 }

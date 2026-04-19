@@ -18,7 +18,7 @@ func TestLoadConfig_Valid(t *testing.T) {
     hooks:
     -   id: trailing-whitespace
 `
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,7 +56,7 @@ func TestLoadConfig_MissingFile(t *testing.T) {
 func TestLoadConfig_InvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte("{{{{not yaml"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("{{{{not yaml"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +74,7 @@ func TestLoadConfig_MissingRepos(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 	content := `fail_fast: true
 `
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -495,7 +495,7 @@ func TestLoadManifest_Valid(t *testing.T) {
   entry: end-of-file-fixer
   language: python
 `
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -555,7 +555,7 @@ func TestLoadManifest_MissingFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "hooks.yaml")
-			if err := os.WriteFile(path, []byte(tc.content), 0644); err != nil {
+			if err := os.WriteFile(path, []byte(tc.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			_, err := LoadManifest(path)
@@ -758,7 +758,7 @@ repos:
     hooks:
     -   id: test
 `
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -781,7 +781,7 @@ repos:
     hooks:
     -   id: test
 `
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
