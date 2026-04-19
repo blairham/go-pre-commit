@@ -18,7 +18,7 @@ install:
 	go install $(LDFLAGS) ./$(CMD_DIR)
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) coverage.out coverage.html
 	go clean
 
 test:
@@ -28,15 +28,14 @@ test-cover:
 	go test -v -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
-lint: vet
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not installed"; exit 1; }
-	golangci-lint run ./...
+lint:
+	go tool golangci-lint run ./...
 
 vet:
 	go vet ./...
 
 fmt:
-	gofmt -s -w .
+	go tool gofumpt -w .
 
 tidy:
 	go mod tidy

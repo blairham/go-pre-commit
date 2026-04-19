@@ -7,8 +7,8 @@ A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) 
 ```bash
 make build          # Build binary to build/pre-commit
 make test           # Run tests with race detector: go test -v -race ./...
-make lint           # Run golangci-lint (requires golangci-lint installed)
-make fmt            # Format code: gofmt -s -w .
+make lint           # Run golangci-lint via go tool
+make fmt            # Format code: gofumpt -w .
 make vet            # Run go vet
 make check          # fmt + vet + test
 make tidy           # go mod tidy
