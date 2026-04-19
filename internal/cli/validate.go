@@ -7,7 +7,7 @@ import (
 
 	flags "github.com/jessevdk/go-flags"
 
-	"github.com/blairham/go-pre-commit/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
 )
 
 // ValidateConfigCommand implements the "validate-config" command.

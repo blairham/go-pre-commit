@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/blairham/go-pre-commit/internal/config"
-	"github.com/blairham/go-pre-commit/internal/pcre"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
 
 // Hook represents a fully resolved hook ready for execution.

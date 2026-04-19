@@ -10,7 +10,7 @@ import (
 
 	flags "github.com/jessevdk/go-flags"
 
-	"github.com/blairham/go-pre-commit/internal/output"
+	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 
 // HookImplCommand is the hidden hook-impl command.

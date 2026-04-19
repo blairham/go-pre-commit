@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/blairham/go-pre-commit/internal/git"
+	"github.com/blairham/go-pre-commit/v4/internal/git"
 )
 
 // Manager handles stashing and restoring of unstaged changes.

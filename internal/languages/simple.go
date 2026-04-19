@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/blairham/go-pre-commit/internal/pcre"
+	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
 
 // Fail implements the Language interface for the "fail" pseudo-language.

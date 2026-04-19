@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/blairham/go-pre-commit/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
 )
 
 // SampleConfigCommand implements the "sample-config" command.

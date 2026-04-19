@@ -9,9 +9,9 @@ import (
 
 	flags "github.com/jessevdk/go-flags"
 
-	"github.com/blairham/go-pre-commit/internal/config"
-	"github.com/blairham/go-pre-commit/internal/git"
-	"github.com/blairham/go-pre-commit/internal/output"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/git"
+	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 
 // AutoupdateCommand implements the "autoupdate" command.

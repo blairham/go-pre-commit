@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/blairham/go-pre-commit/internal/cli"
+	"github.com/blairham/go-pre-commit/v4/internal/cli"
 )
 
 // Build-time variables set via ldflags.

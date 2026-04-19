@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	gitutil "github.com/blairham/go-pre-commit/internal/git"
+	gitutil "github.com/blairham/go-pre-commit/v4/internal/git"
 )
 
 // Store manages the cache of cloned hook repositories.

@@ -38,7 +38,7 @@ builds:
     goarch: arm
   ldflags:
   - -s -w
-  - -X main.version={{.Version}}
+  - -X github.com/blairham/go-pre-commit/v4/internal/config.Version={{.Version}}
   - -X main.commit={{.Commit}}
   - -X main.date={{.Date}}
 

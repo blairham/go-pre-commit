@@ -7,13 +7,11 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/blairham/go-pre-commit/internal/pcre"
+	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
 
-// Version is the current version of go-pre-commit.
-// This tracks the Python pre-commit version we are compatible with,
-// so that minimum_pre_commit_version checks in hook manifests pass.
-const Version = "4.5.0"
+// Version is the current version of go-pre-commit, set via ldflags at build time.
+var Version = "4.5.0"
 
 // Default file names.
 const (

@@ -1,4 +1,4 @@
-module github.com/blairham/go-pre-commit
+module github.com/blairham/go-pre-commit/v4
 
 go 1.26.2
 

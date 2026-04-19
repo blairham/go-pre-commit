@@ -6,7 +6,7 @@ import (
 
 	mcli "github.com/mitchellh/cli"
 
-	"github.com/blairham/go-pre-commit/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
 )
 
 // BuildInfo holds build-time metadata injected via ldflags.

@@ -12,12 +12,12 @@ import (
 
 	"github.com/dlclark/regexp2"
 
-	"github.com/blairham/go-pre-commit/internal/config"
-	"github.com/blairham/go-pre-commit/internal/identify"
-	"github.com/blairham/go-pre-commit/internal/languages"
-	"github.com/blairham/go-pre-commit/internal/output"
-	"github.com/blairham/go-pre-commit/internal/pcre"
-	"github.com/blairham/go-pre-commit/internal/xargs"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/identify"
+	"github.com/blairham/go-pre-commit/v4/internal/languages"
+	"github.com/blairham/go-pre-commit/v4/internal/output"
+	"github.com/blairham/go-pre-commit/v4/internal/pcre"
+	"github.com/blairham/go-pre-commit/v4/internal/xargs"
 )
 
 // FixedRandomSeed is used for deterministic file shuffling (matches Python).

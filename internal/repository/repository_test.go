@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/blairham/go-pre-commit/internal/config"
-	"github.com/blairham/go-pre-commit/internal/store"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
 func TestNewResolver(t *testing.T) {

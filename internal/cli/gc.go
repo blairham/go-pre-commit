@@ -7,8 +7,8 @@ import (
 
 	flags "github.com/jessevdk/go-flags"
 
-	"github.com/blairham/go-pre-commit/internal/config"
-	"github.com/blairham/go-pre-commit/internal/store"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
 // GCCommand implements the "gc" command.

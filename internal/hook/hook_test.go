@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blairham/go-pre-commit/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/config"
 )
 
 // ---------------------------------------------------------------------------
