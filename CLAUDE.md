@@ -18,7 +18,7 @@ make tidy           # go mod tidy
 
 - **CLI framework**: `mitchellh/cli` for command dispatch, `jessevdk/go-flags` for flag parsing
 - **Coloring**: `charmbracelet/lipgloss` for terminal styling
-- **Entry point**: `cmd/pre-commit/main.go` → `internal/cli.Run()`
+- **Entry point**: `main.go` → `internal/cli.Run()`
 
 ### Internal packages
 
