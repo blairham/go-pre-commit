@@ -7,7 +7,7 @@ project_name: pre-commit
 builds:
 - id: pre-commit
   binary: pre-commit
-  main: ./cmd/pre-commit
+  main: .
   env:
   - CGO_ENABLED=0
   goos:
