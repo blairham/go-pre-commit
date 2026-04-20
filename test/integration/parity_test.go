@@ -84,7 +84,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("go", "build", "-o", goBinary, "./cmd/pre-commit")
+	cmd := exec.Command("go", "build", "-o", goBinary, ".")
 	cmd.Dir = repoRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build Go binary: %v\n%s\n", err, out)

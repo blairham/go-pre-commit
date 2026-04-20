@@ -42,7 +42,7 @@ These run automatically in CI on pushes to `main` and on PRs labeled `test-langu
 ## Project Structure
 
 ```
-cmd/pre-commit/     Entry point — calls internal/cli.Run()
+main.go             Entry point — calls internal/cli.Run()
 internal/
   cli/              Command definitions (one per file, implements mitchellh/cli.Command)
   config/           YAML config parsing (.pre-commit-config.yaml)
@@ -117,7 +117,7 @@ Releases are fully automated via [GoReleaser](https://goreleaser.com) and GitHub
 
 The version is set dynamically via ldflags at build time from git tags. The module uses the `/v4` suffix to match major version 4.x.x (required by Go modules).
 
-- **`go install`** users: `go install github.com/blairham/go-pre-commit/v4/cmd/pre-commit@latest`
+- **`go install`** users: `go install github.com/blairham/go-pre-commit/v4@latest`
 - **GoReleaser** injects the tag version into `internal/config.Version` via `-X` ldflags
 - **Local builds** (`make build`) use `git describe --tags` for the version
 

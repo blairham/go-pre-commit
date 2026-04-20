@@ -1,6 +1,5 @@
 BINARY_NAME := pre-commit
 BUILD_DIR := build
-CMD_DIR := cmd/pre-commit
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo "none")
 DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -12,10 +11,10 @@ all: build
 
 build:
 	@mkdir -p $(BUILD_DIR)
-	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./$(CMD_DIR)
+	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) .
 
 install:
-	go install $(LDFLAGS) ./$(CMD_DIR)
+	go install $(LDFLAGS) .
 
 clean:
 	rm -rf $(BUILD_DIR) coverage.out coverage.html

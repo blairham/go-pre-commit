@@ -32,7 +32,7 @@ sudo mv pre-commit /usr/local/bin/
 ### Go install
 
 ```bash
-go install github.com/blairham/go-pre-commit/v4/cmd/pre-commit@latest
+go install github.com/blairham/go-pre-commit/v4@latest
 ```
 
 ### Build from source
