@@ -379,7 +379,7 @@ func runHookXargs(ctx context.Context, lang languages.Language, h *Hook, fileArg
 	// Determine batch size and concurrency.
 	maxJobs := 1
 	if !h.RequireSerial {
-		maxJobs = targetConcurrency(jobs)
+		maxJobs = targetConcurrency(jobs, len(fileArgs))
 	}
 
 	// Batch the file arguments.
@@ -449,19 +449,30 @@ func batchFileArgs(files []string, maxBatchSize int) [][]string {
 }
 
 // targetConcurrency returns the target number of parallel jobs.
-func targetConcurrency(jobs int) int {
+// Matches Python pre-commit: min(cpu_count, max(1, fileCount/4)) when jobs is unset.
+// An explicit jobs value overrides the file-count cap.
+func targetConcurrency(jobs, fileCount int) int {
 	if os.Getenv("PRE_COMMIT_NO_CONCURRENCY") != "" {
 		return 1
 	}
 	if jobs > 0 {
 		return jobs
 	}
-	if os.Getenv("TRAVIS") != "" {
-		return 2
-	}
 	n := runtime.NumCPU()
+	if os.Getenv("TRAVIS") != "" {
+		n = 2
+	}
 	if n < 1 {
 		n = 1
+	}
+	if fileCount > 0 {
+		capped := fileCount / 4
+		if capped < 1 {
+			capped = 1
+		}
+		if capped < n {
+			n = capped
+		}
 	}
 	return n
 }
