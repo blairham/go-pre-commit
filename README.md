@@ -157,8 +157,6 @@ make vet         # Run go vet
 make check       # Format + vet + test
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and release process.
-
 ## Releasing
 
 Releases are automated with [GoReleaser](https://goreleaser.com) via GitHub Actions. To create a release:
@@ -168,7 +166,7 @@ git tag v4.6.0
 git push origin v4.6.0
 ```
 
-CI will build cross-platform binaries and publish a GitHub release automatically. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+CI will build cross-platform binaries and publish a GitHub release automatically.
 
 ## License
 
