@@ -50,6 +50,7 @@ type tryRepoFlags struct {
 	RewriteCmd      string   `long:"rewrite-command" description:"Rewrite command for post-rewrite hook."`
 	PreRebaseUp     string   `long:"pre-rebase-upstream" description:"Upstream from which the series was forked."`
 	PreRebaseBranch string   `long:"pre-rebase-branch" description:"Branch being rebased."`
+	Jobs            int      `short:"j" long:"jobs" description:"Number of jobs to run in parallel."`
 }
 
 func (c *TryRepoCommand) Run(args []string) int {
@@ -183,6 +184,7 @@ func (c *TryRepoCommand) Run(args []string) int {
 		Verbose:                    opts.Verbose,
 		ShowDiff:                   opts.ShowDiffOnFail,
 		Color:                      opts.Color,
+		Jobs:                       opts.Jobs,
 		FromRef:                    opts.FromRef,
 		ToRef:                      opts.ToRef,
 		CommitMsgFilename:          opts.CommitMsgFn,
@@ -231,6 +233,7 @@ Options:
       --fail-fast                Stop running hooks after the first failure.
       --from-ref=REF             Ref to check revision changes.
       --to-ref=REF               Ref to check revision changes.
+  -j, --jobs=N                   Number of jobs to run in parallel.
   -c, --config=FILE              Path to alternate config file.
       --color=MODE               Whether to use color (auto, always, never).
 `)

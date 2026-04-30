@@ -115,24 +115,54 @@ func TestFilterFiles(t *testing.T) {
 
 func TestTargetConcurrency(t *testing.T) {
 	t.Run("respects jobs parameter", func(t *testing.T) {
-		got := targetConcurrency(4)
+		got := targetConcurrency(4, 100)
 		if got != 4 {
-			t.Errorf("targetConcurrency(4) = %d, want 4", got)
+			t.Errorf("targetConcurrency(4, 100) = %d, want 4", got)
+		}
+	})
+
+	t.Run("explicit jobs ignores file-count cap", func(t *testing.T) {
+		got := targetConcurrency(8, 1)
+		if got != 8 {
+			t.Errorf("targetConcurrency(8, 1) = %d, want 8", got)
 		}
 	})
 
 	t.Run("zero jobs falls back to CPU count", func(t *testing.T) {
-		got := targetConcurrency(0)
+		got := targetConcurrency(0, 1000)
 		if got < 1 {
-			t.Errorf("targetConcurrency(0) = %d, want >= 1", got)
+			t.Errorf("targetConcurrency(0, 1000) = %d, want >= 1", got)
+		}
+	})
+
+	t.Run("zero jobs with no files returns CPU count", func(t *testing.T) {
+		got := targetConcurrency(0, 0)
+		if got < 1 {
+			t.Errorf("targetConcurrency(0, 0) = %d, want >= 1", got)
+		}
+	})
+
+	t.Run("file count caps concurrency at files/4", func(t *testing.T) {
+		// 1 file -> at most 1 worker.
+		if got := targetConcurrency(0, 1); got != 1 {
+			t.Errorf("targetConcurrency(0, 1) = %d, want 1", got)
+		}
+		// 3 files -> at most 1 worker (3/4 = 0, clamped to 1).
+		if got := targetConcurrency(0, 3); got != 1 {
+			t.Errorf("targetConcurrency(0, 3) = %d, want 1", got)
+		}
+		// 8 files -> at most min(cpu, 2) workers.
+		got := targetConcurrency(0, 8)
+		if got < 1 || got > 2 {
+			t.Errorf("targetConcurrency(0, 8) = %d, want in [1, 2]", got)
 		}
 	})
 
 	t.Run("NO_CONCURRENCY overrides everything", func(t *testing.T) {
 		t.Setenv("PRE_COMMIT_NO_CONCURRENCY", "1")
-		got := targetConcurrency(8)
+		got := targetConcurrency(8, 100)
 		if got != 1 {
-			t.Errorf("targetConcurrency(8) with NO_CONCURRENCY = %d, want 1", got)
+			t.Errorf("targetConcurrency(8, 100) with NO_CONCURRENCY = %d, want 1", got)
 		}
 	})
 }

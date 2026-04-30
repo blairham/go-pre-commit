@@ -25,6 +25,7 @@ type autoupdateFlags struct {
 	Freeze       bool     `long:"freeze" description:"Store the current commit SHA alongside the tag as rev."`
 	Repo         []string `long:"repo" description:"Only update this repository. May be specified multiple times."`
 	Jobs         int      `short:"j" long:"jobs" default:"1" description:"Number of threads to use."`
+	DryRun       bool     `long:"dry-run" description:"Show what would be updated without writing changes."`
 }
 
 func (c *AutoupdateCommand) Run(args []string) int {
@@ -129,7 +130,7 @@ func (c *AutoupdateCommand) Run(args []string) int {
 		changed = true
 	}
 
-	if changed {
+	if changed && !opts.DryRun {
 		if err := os.WriteFile(opts.Config, []byte(raw), 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to write config: %v\n", err)
 			return 1
@@ -151,6 +152,7 @@ Options:
       --freeze          Store the current commit SHA alongside the tag as rev.
       --repo=REPO       Only update this repository (may be repeated).
   -j, --jobs=N          Number of threads to use (default: 1).
+      --dry-run         Show what would be updated without writing changes.
   -c, --config=FILE     Path to alternate config file.
       --color=MODE      Whether to use color (auto, always, never).
 `)
