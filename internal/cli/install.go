@@ -190,7 +190,7 @@ type UninstallCommand struct {
 
 type uninstallFlags struct {
 	GlobalFlags
-	HookType string `short:"t" long:"hook-type" default:"pre-commit" description:"The hook type to uninstall."`
+	HookTypes []string `short:"t" long:"hook-type" description:"Which hook type to uninstall. May be specified multiple times. (default: pre-commit)"`
 }
 
 func (c *UninstallCommand) Run(args []string) int {
@@ -207,39 +207,53 @@ func (c *UninstallCommand) Run(args []string) int {
 		return 1
 	}
 
-	hookFile := filepath.Join(hooksDir, opts.HookType)
-
-	// Check if hook exists.
-	content, err := os.ReadFile(hookFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Printf("%s hook not found, no action taken.\n", opts.HookType)
-			return 0
-		}
-		fmt.Fprintf(os.Stderr, "Error: failed to read hook: %v\n", err)
-		return 1
+	typesToUninstall := opts.HookTypes
+	if len(typesToUninstall) == 0 {
+		typesToUninstall = []string{"pre-commit"}
 	}
 
-	if !isPreCommitHook(string(content)) {
-		fmt.Printf("%s is not a pre-commit hook, no action taken.\n", hookFile)
-		return 0
-	}
-
-	if err := os.Remove(hookFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to remove hook: %v\n", err)
-		return 1
-	}
-
-	// Restore legacy hook if it exists.
-	legacyFile := hookFile + ".legacy"
-	if _, err := os.Stat(legacyFile); err == nil {
-		if err := os.Rename(legacyFile, hookFile); err == nil {
-			output.Info("Restored previous hook to %s", hookFile)
+	for _, ht := range typesToUninstall {
+		if _, ok := hookTypes[ht]; !ok {
+			fmt.Fprintf(os.Stderr, "Error: unknown hook type: %s. Choose from: %s\n", ht, strings.Join(sortedHookTypes(), ", "))
+			return 1
 		}
 	}
 
-	fmt.Printf("pre-commit uninstalled from %s\n", hookFile)
-	return 0
+	exit := 0
+	for _, ht := range typesToUninstall {
+		hookFile := filepath.Join(hooksDir, ht)
+		content, err := os.ReadFile(hookFile)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf("%s does not exist, skipping.\n", ht)
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "Error: failed to read hook: %v\n", err)
+			exit = 1
+			continue
+		}
+
+		if !isPreCommitHook(string(content)) {
+			fmt.Printf("%s is not a pre-commit hook, skipping.\n", hookFile)
+			continue
+		}
+
+		if err := os.Remove(hookFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to remove hook: %v\n", err)
+			exit = 1
+			continue
+		}
+
+		legacyFile := hookFile + ".legacy"
+		if _, err := os.Stat(legacyFile); err == nil {
+			if err := os.Rename(legacyFile, hookFile); err == nil {
+				output.Info("Restored previous hook to %s", hookFile)
+			}
+		}
+
+		fmt.Printf("pre-commit uninstalled from %s\n", hookFile)
+	}
+	return exit
 }
 
 func (c *UninstallCommand) Help() string {
@@ -250,7 +264,7 @@ Usage: pre-commit uninstall [options]
 
 Options:
 
-  -t, --hook-type=TYPE   The hook type to uninstall (default: pre-commit).
+  -t, --hook-type=TYPE   The hook type to uninstall. May be repeated. (default: pre-commit)
   -c, --config=FILE      Path to alternate config file.
       --color=MODE       Whether to use color (auto, always, never).
 `)
