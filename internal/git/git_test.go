@@ -80,6 +80,30 @@ func TestNoGitEnv(t *testing.T) {
 	}
 }
 
+// TestScrubProcessEnv is a regression test for host-repo corruption: git exports
+// GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE (pointing at the host repo) when it invokes
+// a hook. If a child git process — e.g. a hook-repo clone — inherits them it writes
+// into the host repo's index/object store and corrupts it ("fatal: unable to read
+// <object>"). hook-impl calls ScrubProcessEnv at entry so the leak is impossible
+// regardless of which exec path runs.
+func TestScrubProcessEnv(t *testing.T) {
+	t.Setenv("GIT_DIR", "/host/.git")
+	t.Setenv("GIT_INDEX_FILE", "/host/.git/index")
+	t.Setenv("GIT_WORK_TREE", "/host")
+	t.Setenv("GIT_AUTHOR_NAME", "keep-me") // not host-scoped; must survive
+
+	ScrubProcessEnv()
+
+	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"} {
+		if v, ok := os.LookupEnv(k); ok {
+			t.Errorf("ScrubProcessEnv should unset %s, but it is still set to %q", k, v)
+		}
+	}
+	if os.Getenv("GIT_AUTHOR_NAME") != "keep-me" {
+		t.Error("ScrubProcessEnv should not touch non-host-scoped GIT_ vars")
+	}
+}
+
 func TestNoGitEnv_AllowedVars(t *testing.T) {
 	// Allowed GIT_ vars should be preserved.
 	t.Setenv("GIT_SSH", "ssh-custom")

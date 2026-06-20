@@ -41,6 +41,26 @@ func NoGitEnv() []string {
 	return env
 }
 
+// ScrubProcessEnv clears the git-managed environment variables that git exports
+// when it invokes a hook (GIT_DIR, GIT_INDEX_FILE, GIT_WORK_TREE). They point at
+// the *host* repo. If any child git process inherits them — a clone, a checkout,
+// a goroutine-spawned command, or anything that forgets NoGitEnv() — it operates
+// on the host repo instead of its own and corrupts the host index/object store
+// (e.g. a hook-repo clone whose checkout lands entries in the host's index,
+// producing "fatal: unable to read <object>").
+//
+// NoGitEnv() scrubs these per command, but call this once at hook entry as a
+// belt-and-suspenders backstop so the leak is impossible regardless of the exec
+// path. This only affects this hook process and its children; the parent
+// `git commit` retains its own copy and completes normally. The stash and
+// staged-file commands keep working because they discover the worktree's index
+// from the working directory once GIT_INDEX_FILE is gone.
+func ScrubProcessEnv() {
+	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"} {
+		_ = os.Unsetenv(k)
+	}
+}
+
 // CmdOutput runs a git command and returns its stdout.
 func CmdOutput(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
@@ -72,6 +92,7 @@ func CmdOutputInDir(dir string, args ...string) (string, error) {
 func RunInDir(dir string, args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = NoGitEnv()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -187,6 +208,12 @@ func Clone(url, dest string, args ...string) error {
 	cmdArgs = append(cmdArgs, args...)
 	cmdArgs = append(cmdArgs, url, dest)
 	cmd := exec.Command("git", cmdArgs...)
+	// Scrub GIT_* env (esp. GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE that git exports
+	// when invoking a hook). Without this, `git clone` run from inside a
+	// commit-triggered hook "clones the wrong thing" — the checkout writes index
+	// entries referencing the cloned repo's objects into the HOST repo's index,
+	// corrupting it ("fatal: unable to read <object>"). See NoGitEnv() above.
+	cmd.Env = NoGitEnv()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -288,6 +315,7 @@ func StashPop(dir string) error {
 func CheckoutIndex(dir, dest string) error {
 	cmd := exec.Command("git", "checkout-index", "-a", "--prefix="+dest+"/")
 	cmd.Dir = dir
+	cmd.Env = NoGitEnv()
 	return cmd.Run()
 }
 

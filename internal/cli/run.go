@@ -52,6 +52,11 @@ type runFlags struct {
 }
 
 func (c *RunCommand) Run(args []string) int {
+	// Backstop in case `run` is reached directly from a git-invoked hook (not via
+	// hook-impl): drop the host repo's GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE so no
+	// child git process can corrupt the host repo. See git.ScrubProcessEnv.
+	git.ScrubProcessEnv()
+
 	var opts runFlags
 	opts.Jobs = runtime.NumCPU()
 
