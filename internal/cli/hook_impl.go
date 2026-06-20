@@ -10,6 +10,7 @@ import (
 
 	flags "github.com/jessevdk/go-flags"
 
+	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 
@@ -29,6 +30,12 @@ type hookImplFlags struct {
 }
 
 func (c *HookImplCommand) Run(args []string) int {
+	// Invoked by git from within a commit/checkout/etc., so GIT_DIR,
+	// GIT_INDEX_FILE and GIT_WORK_TREE point at the host repo. Clear them up front
+	// so no child git process (e.g. a hook-repo clone) can inherit them and
+	// corrupt the host index/object store. See git.ScrubProcessEnv.
+	git.ScrubProcessEnv()
+
 	var opts hookImplFlags
 	remaining, err := flags.NewParser(&opts, flags.HelpFlag|flags.PassDoubleDash).ParseArgs(args)
 	if err != nil {

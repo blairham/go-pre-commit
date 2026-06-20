@@ -52,6 +52,7 @@ func (m *Manager) StashUnstaged() (bool, error) {
 	// requires the trailing newline to be present).
 	diffCmd := exec.Command("git", "diff")
 	diffCmd.Dir = m.dir
+	diffCmd.Env = git.NoGitEnv()
 	diffOut, err := diffCmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("generating diff: %w", err)
@@ -75,13 +76,17 @@ func (m *Manager) StashUnstaged() (bool, error) {
 		args := append([]string{"rm", "--cached", "--"}, intentFiles...)
 		cmd := exec.Command("git", args...)
 		cmd.Dir = m.dir
+		cmd.Env = git.NoGitEnv()
 		_ = cmd.Run()
 	}
 
-	// Checkout the index (staged-only content) — set env to prevent post-checkout firing.
+	// Checkout the index (staged-only content). Scrub GIT_* (NoGitEnv) so the
+	// host repo's GIT_DIR/GIT_INDEX_FILE — exported by git when it invokes this
+	// hook — don't redirect checkout-index at the commit-time index; set the
+	// post-checkout skip flag on top of the scrubbed env.
 	cmd := exec.Command("git", "checkout-index", "--all", "--force")
 	cmd.Dir = m.dir
-	cmd.Env = append(os.Environ(), "_PRE_COMMIT_SKIP_POST_CHECKOUT=1")
+	cmd.Env = append(git.NoGitEnv(), "_PRE_COMMIT_SKIP_POST_CHECKOUT=1")
 	if err := cmd.Run(); err != nil {
 		// Clean up patch file on error.
 		os.Remove(m.patchPath)
@@ -115,6 +120,7 @@ func (m *Manager) Restore() error {
 			// Fall back to checkout approach.
 			cmd := exec.Command("git", "checkout", "--", ".")
 			cmd.Dir = m.dir
+			cmd.Env = git.NoGitEnv()
 			_ = cmd.Run()
 		}
 	}
@@ -122,10 +128,12 @@ func (m *Manager) Restore() error {
 	// Apply the patch to restore unstaged changes.
 	cmd := exec.Command("git", "apply", "--allow-empty", m.patchPath)
 	cmd.Dir = m.dir
+	cmd.Env = git.NoGitEnv()
 	if err := cmd.Run(); err != nil {
 		// If direct apply fails, try 3-way merge.
 		cmd = exec.Command("git", "apply", "--3way", m.patchPath)
 		cmd.Dir = m.dir
+		cmd.Env = git.NoGitEnv()
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("restoring unstaged changes (patch saved at %s): %w", m.patchPath, err)
 		}
@@ -137,6 +145,7 @@ func (m *Manager) Restore() error {
 		args := append([]string{"add", "--intent-to-add", "--"}, intentFiles...)
 		cmd := exec.Command("git", args...)
 		cmd.Dir = m.dir
+		cmd.Env = git.NoGitEnv()
 		_ = cmd.Run()
 	}
 
