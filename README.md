@@ -44,6 +44,31 @@ make build
 # Binary is at build/pre-commit
 ```
 
+## GitHub Actions
+
+Run your hooks in CI without setting up Python — this repo doubles as a composite action that installs the release binary and runs `pre-commit run`. It is a drop-in replacement for [pre-commit/action](https://github.com/pre-commit/action):
+
+```yaml
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: blairham/go-pre-commit@main
+```
+
+Inputs:
+
+```yaml
+      - uses: blairham/go-pre-commit@main
+        with:
+          version: latest        # release to install, e.g. "v4.5.4"
+          extra_args: --all-files # passed to `pre-commit run`
+          cache: 'true'           # cache hook environments between runs
+```
+
+Hooks run as `pre-commit run --show-diff-on-failure --color=always <extra_args>`, and hook environments (`~/.cache/pre-commit`) are cached keyed on `.pre-commit-config.yaml`, so warm runs skip environment setup entirely. Hooks that need extra tools on `PATH` (e.g. `language: system` hooks) still require you to install those tools in earlier steps.
+
 ## Usage
 
 ```bash

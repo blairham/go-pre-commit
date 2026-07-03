@@ -41,6 +41,23 @@ jobs:
         version: latest
         args: --timeout=10m
 
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache: true
+
+    - name: Install gofumpt
+      run: go install mvdan.cc/gofumpt
+
+    - name: Run pre-commit hooks
+      uses: ./
+
   build:
     runs-on: ubuntu-latest
     needs: [ test, lint ]
