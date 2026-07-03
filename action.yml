@@ -21,6 +21,13 @@ inputs:
     description: Cache hook environments (~/.cache/pre-commit) between runs.
     required: false
     default: 'true'
+  install-only:
+    description: >-
+      Install the binary onto PATH (and optionally cache) but skip the
+      `pre-commit run` step. For workflows that drive pre-commit themselves
+      (diff-scoped runs, `install-hooks` cache seeding, custom log capture).
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -89,5 +96,6 @@ runs:
         key: go-pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
 
     - name: Run pre-commit
+      if: inputs.install-only != 'true'
       shell: bash
       run: pre-commit run --show-diff-on-failure --color=always ${{ inputs.extra_args }}
