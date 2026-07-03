@@ -479,6 +479,21 @@ func TestCheckMinimumVersion(t *testing.T) {
 			}
 		})
 	}
+
+	// Dev builds inject `git describe` output with a leading "v"; the check
+	// must still parse the numeric components.
+	t.Run("git describe dev version", func(t *testing.T) {
+		orig := Version
+		Version = "v4.6.0-1-gabc1234-dirty"
+		defer func() { Version = orig }()
+
+		if !CheckMinimumVersion("3.2.0") {
+			t.Error("CheckMinimumVersion(\"3.2.0\") = false with dev version, want true")
+		}
+		if CheckMinimumVersion("999.0.0") {
+			t.Error("CheckMinimumVersion(\"999.0.0\") = true with dev version, want false")
+		}
+	})
 }
 
 // --- LoadManifest tests ---

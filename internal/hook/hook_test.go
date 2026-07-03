@@ -298,6 +298,30 @@ func TestMergeManifest(t *testing.T) {
 		}
 	})
 
+	// Mirrors-style repos (e.g. mirrors-prettier) ship the real tool via
+	// manifest-level additional_dependencies; dropping them breaks installs.
+	t.Run("manifest additional_dependencies preserved", func(t *testing.T) {
+		manifest := &config.ManifestHook{
+			ID:                     "prettier",
+			Name:                   "prettier",
+			Entry:                  "prettier",
+			Language:               "node",
+			AdditionalDependencies: []string{"prettier@4.0.0-alpha.8"},
+		}
+		hookCfg := &config.HookConfig{ID: "prettier"}
+		repoCfg := &config.RepoConfig{Repo: "https://github.com/pre-commit/mirrors-prettier", Rev: "v4.0.0-alpha.8"}
+
+		h := MergeManifest(manifest, hookCfg, repoCfg, nil)
+		if len(h.AdditionalDependencies) != 1 || h.AdditionalDependencies[0] != "prettier@4.0.0-alpha.8" {
+			t.Errorf("AdditionalDependencies = %v, want [prettier@4.0.0-alpha.8]", h.AdditionalDependencies)
+		}
+
+		th := FromManifestHook(manifest)
+		if len(th.AdditionalDependencies) != 1 || th.AdditionalDependencies[0] != "prettier@4.0.0-alpha.8" {
+			t.Errorf("FromManifestHook AdditionalDependencies = %v, want [prettier@4.0.0-alpha.8]", th.AdditionalDependencies)
+		}
+	})
+
 	t.Run("config overrides manifest values", func(t *testing.T) {
 		manifest := &config.ManifestHook{
 			ID:       "my-hook",

@@ -518,6 +518,9 @@ func checkMinVersion(minVersion string) bool {
 }
 
 func parseVersionParts(v string) []int {
+	// Dev builds inject `git describe` output (e.g. "v4.6.0-1-gabc123");
+	// strip the leading "v" so the first component parses as a number.
+	v = strings.TrimPrefix(v, "v")
 	var parts []int
 	for _, s := range strings.Split(v, ".") {
 		n := 0

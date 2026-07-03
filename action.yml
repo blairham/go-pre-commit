@@ -90,7 +90,7 @@ runs:
 
     - name: Cache hook environments
       if: inputs.cache == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/pre-commit
         key: go-pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}

@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -143,6 +144,7 @@ type ManifestHook struct {
 	ExcludeTypes            []string `yaml:"exclude_types,omitempty"`
 	Args                    []string `yaml:"args,omitempty"`
 	Stages                  []Stage  `yaml:"stages,omitempty"`
+	AdditionalDependencies  []string `yaml:"additional_dependencies,omitempty"`
 	PassFilenames           *bool    `yaml:"pass_filenames,omitempty"`
 	AlwaysRun               bool     `yaml:"always_run,omitempty"`
 	Verbose                 bool     `yaml:"verbose,omitempty"`
@@ -265,6 +267,9 @@ func CheckMinimumVersion(minVersion string) bool {
 }
 
 func splitVersionParts(v string) []int {
+	// Dev builds inject `git describe` output (e.g. "v4.6.0-1-gabc123");
+	// strip the leading "v" so the first component parses as a number.
+	v = strings.TrimPrefix(v, "v")
 	var parts []int
 	for _, s := range splitDot(v) {
 		n := 0
