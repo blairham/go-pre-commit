@@ -31,6 +31,8 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 	env := []string{
 		fmt.Sprintf("GOPATH=%s", envDir),
 		fmt.Sprintf("GOBIN=%s", filepath.Join(envDir, "bin")),
+		// Don't let a hook repo's go.mod pull in a different toolchain.
+		"GOTOOLCHAIN=local",
 	}
 
 	// Install the hook package.

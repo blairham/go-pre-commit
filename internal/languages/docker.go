@@ -2,12 +2,118 @@ package languages
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"slices"
 	"strings"
+	"sync"
 )
+
+// containerIDPattern matches the container id in /proc/1/mountinfo when
+// running inside docker or podman (works for both cgroups v1 and v2).
+var containerIDPattern = regexp.MustCompile(
+	`/containers(?:/overlay-containers)?/([a-z0-9]{64})(?:/userdata)?/hostname`)
+
+func containerIDFromMountinfo(mountinfo []byte) string {
+	m := containerIDPattern.FindSubmatch(mountinfo)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+// currentContainerID returns the id of the container this process runs in,
+// or "" when not running inside a container.
+func currentContainerID() string {
+	data, err := os.ReadFile("/proc/1/mountinfo")
+	if err != nil {
+		return ""
+	}
+	return containerIDFromMountinfo(data)
+}
+
+// translateMountPath maps path through the container's bind mounts described
+// by `docker inspect` output, returning the path as seen by the host.
+func translateMountPath(path string, inspectOut []byte) string {
+	var containers []struct {
+		Mounts []struct {
+			Source      string `json:"Source"`
+			Destination string `json:"Destination"`
+		} `json:"Mounts"`
+	}
+	if err := json.Unmarshal(inspectOut, &containers); err != nil || len(containers) == 0 {
+		return path
+	}
+	for _, mount := range containers[0].Mounts {
+		if path == mount.Destination {
+			return mount.Source
+		}
+		prefix := strings.TrimSuffix(mount.Destination, "/") + "/"
+		if rest, ok := strings.CutPrefix(path, prefix); ok {
+			return strings.TrimSuffix(mount.Source, "/") + "/" + rest
+		}
+	}
+	return path
+}
+
+// dockerPath translates path for docker-in-docker: -v mount sources are
+// resolved by the host daemon, so a container-local path must be rewritten
+// to the corresponding host path.
+func dockerPath(path string) string {
+	id := currentContainerID()
+	if id == "" {
+		return path
+	}
+	out, err := exec.Command("docker", "inspect", id).Output()
+	if err != nil {
+		return path
+	}
+	return translateMountPath(path, out)
+}
+
+func rootlessFromInfo(infoJSON []byte) bool {
+	var info struct {
+		SecurityOptions []string `json:"SecurityOptions"`
+		Host            struct {
+			Security struct {
+				Rootless bool `json:"rootless"`
+			} `json:"security"`
+		} `json:"host"`
+	}
+	if err := json.Unmarshal(infoJSON, &info); err != nil {
+		return false
+	}
+	if info.Host.Security.Rootless { // podman
+		return true
+	}
+	// docker; a null SecurityOptions list unmarshals to nil.
+	return slices.Contains(info.SecurityOptions, "name=rootless")
+}
+
+// isRootless reports whether the daemon runs rootless (docker or podman),
+// in which case -u would map to an unprivileged user inside the container.
+var isRootless = sync.OnceValue(func() bool {
+	out, err := exec.Command("docker", "system", "info", "--format", "{{ json . }}").Output()
+	if err != nil {
+		return false
+	}
+	return rootlessFromInfo(out)
+})
+
+// dockerRunArgs returns the common `docker run` arguments for hooks.
+func dockerRunArgs() []string {
+	cwd, _ := os.Getwd()
+	args := []string{"run", "--rm"}
+	if runtime.GOOS != "windows" && !isRootless() {
+		args = append(args, "-u", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()))
+	}
+	return append(args, "-v", dockerPath(cwd)+":/src:rw,Z", "--workdir", "/src")
+}
 
 // Docker implements the Language interface for Docker hooks.
 type Docker struct{}
@@ -35,12 +141,7 @@ func (d *Docker) InstallEnvironment(prefix, version string, additionalDeps []str
 }
 
 func (d *Docker) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	cwd, _ := os.Getwd()
-	dockerArgs := []string{
-		"run", "--rm",
-		"-v", cwd + ":/src:rw,Z",
-		"--workdir", "/src",
-	}
+	dockerArgs := dockerRunArgs()
 
 	// Parse entry for entrypoint.
 	parts := ParseEntry(entry)
@@ -84,17 +185,12 @@ func (d *DockerImage) InstallEnvironment(prefix, version string, additionalDeps 
 }
 
 func (d *DockerImage) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
-	cwd, _ := os.Getwd()
 	parts := ParseEntry(entry)
 	if len(parts) == 0 {
 		return -1, nil, fmt.Errorf("docker_image entry is required")
 	}
 
-	dockerArgs := []string{
-		"run", "--rm",
-		"-v", cwd + ":/src:rw,Z",
-		"--workdir", "/src",
-	}
+	dockerArgs := dockerRunArgs()
 
 	// Check if entry has --entrypoint flag.
 	image := parts[0]

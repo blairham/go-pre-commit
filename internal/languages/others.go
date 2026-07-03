@@ -208,7 +208,7 @@ Pkg.instantiate()
 		installScript += `Pkg.add("` + dep + `")` + "\n"
 	}
 
-	cmd := exec.Command("julia", "-e", installScript)
+	cmd := exec.Command("julia", "--startup-file=no", "-e", installScript)
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("julia install failed: %s: %w", string(out), err)
@@ -225,7 +225,7 @@ func (j *Julia) Run(ctx context.Context, prefix, workDir, entry string, args, fi
 		return -1, nil, fmt.Errorf("empty entry")
 	}
 
-	allArgs := []string{"--project=" + envDir}
+	allArgs := []string{"--startup-file=no", "--project=" + envDir}
 	allArgs = append(allArgs, parts[1:]...)
 	allArgs = append(allArgs, args...)
 	allArgs = append(allArgs, fileArgs...)

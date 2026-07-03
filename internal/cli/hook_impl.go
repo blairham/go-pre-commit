@@ -23,7 +23,7 @@ type HookImplCommand struct {
 
 type hookImplFlags struct {
 	Config              string `long:"config" default:".pre-commit-config.yaml" description:"Path to config file."`
-	HookType            string `long:"hook-type" default:"pre-commit" description:"The hook type being run."`
+	HookType            string `long:"hook-type" required:"true" description:"The hook type being run."`
 	HookDir             string `long:"hook-dir" description:"The hook directory."`
 	SkipOnMissingConfig bool   `long:"skip-on-missing-config" description:"Skip if config file is missing."`
 	Color               string `long:"color" default:"auto" description:"Whether to use color in output."`
@@ -60,7 +60,7 @@ func (c *HookImplCommand) Run(args []string) int {
 	}
 
 	// Run legacy hook first (e.g., .pre-commit.legacy).
-	if err := runLegacyHook(opts.HookType, remaining); err != nil {
+	if err := runLegacyHook(opts.HookType, opts.HookDir, remaining); err != nil {
 		output.Warn("Legacy hook failed: %v", err)
 	}
 
@@ -193,13 +193,8 @@ func readPrePushStdin() []string {
 }
 
 // runLegacyHook runs the legacy hook script if it exists.
-func runLegacyHook(hookType string, args []string) error {
-	// Look for .pre-commit.legacy hook.
-	gitDir := os.Getenv("GIT_DIR")
-	if gitDir == "" {
-		gitDir = ".git"
-	}
-	legacyPath := filepath.Join(gitDir, "hooks", hookType+".legacy")
+func runLegacyHook(hookType, hookDir string, args []string) error {
+	legacyPath := filepath.Join(legacyHookDir(hookDir), hookType+".legacy")
 	if _, err := os.Stat(legacyPath); os.IsNotExist(err) {
 		return nil // No legacy hook.
 	}
@@ -209,4 +204,18 @@ func runLegacyHook(hookType string, args []string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// legacyHookDir resolves where a saved .legacy hook lives: the --hook-dir git
+// invoked us from when available (handles core.hooksPath and template dirs),
+// otherwise $GIT_DIR/hooks.
+func legacyHookDir(hookDir string) string {
+	if hookDir != "" {
+		return hookDir
+	}
+	gitDir := os.Getenv("GIT_DIR")
+	if gitDir == "" {
+		gitDir = ".git"
+	}
+	return filepath.Join(gitDir, "hooks")
 }

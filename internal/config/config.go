@@ -11,7 +11,7 @@ import (
 )
 
 // Version is the current version of go-pre-commit, set via ldflags at build time.
-var Version = "4.5.0"
+var Version = "4.6.0"
 
 // Default file names.
 const (

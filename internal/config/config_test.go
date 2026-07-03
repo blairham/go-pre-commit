@@ -464,10 +464,11 @@ func TestCheckMinimumVersion(t *testing.T) {
 		{name: "lower requirement", minVersion: "0.0.1", want: true},
 		{name: "higher requirement", minVersion: "99.0.0", want: false},
 		{name: "higher minor", minVersion: "4.99.0", want: false},
-		{name: "higher patch", minVersion: "4.5.999", want: false},
-		{name: "fewer parts in requirement", minVersion: "4.5", want: true},
-		{name: "more parts all zero", minVersion: "4.5.0.0", want: false},
-		{name: "more parts higher", minVersion: "4.5.0.1", want: false},
+		{name: "lower minor", minVersion: "4.5.999", want: true},
+		{name: "higher patch", minVersion: "4.6.999", want: false},
+		{name: "fewer parts in requirement", minVersion: "4.6", want: true},
+		{name: "more parts all zero", minVersion: "4.6.0.0", want: false},
+		{name: "more parts higher", minVersion: "4.6.0.1", want: false},
 		{name: "zero requirement", minVersion: "0.0.0", want: true},
 	}
 	for _, tc := range tests {
