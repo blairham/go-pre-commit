@@ -25,15 +25,27 @@ func (g *Golang) HealthCheck(prefix, version string) error {
 	return nil
 }
 
-func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	envDir := filepath.Join(prefix, g.EnvironmentDir()+"-"+version)
-
+// goInstallEnv builds the env overrides for installing a golang hook env.
+// GOTOOLCHAIN defaults to "local" so a hook repo's go.mod can't pull in a
+// different toolchain — unless the caller set GOTOOLCHAIN explicitly. CI pins
+// a repo-matching toolchain (e.g. GOTOOLCHAIN=go1.26.4) so hooks whose module
+// requires a newer Go than the one on PATH can still build; forcing "local"
+// over that pin makes such installs unbuildable.
+func goInstallEnv(envDir string) []string {
 	env := []string{
 		fmt.Sprintf("GOPATH=%s", envDir),
 		fmt.Sprintf("GOBIN=%s", filepath.Join(envDir, "bin")),
-		// Don't let a hook repo's go.mod pull in a different toolchain.
-		"GOTOOLCHAIN=local",
 	}
+	if os.Getenv("GOTOOLCHAIN") == "" {
+		env = append(env, "GOTOOLCHAIN=local")
+	}
+	return env
+}
+
+func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []string) error {
+	envDir := filepath.Join(prefix, g.EnvironmentDir()+"-"+version)
+
+	env := goInstallEnv(envDir)
 
 	// Install the hook package.
 	args := []string{"install", "./..."}
