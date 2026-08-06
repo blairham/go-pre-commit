@@ -101,6 +101,19 @@ homebrew_casks:
   homepage: https://github.com/blairham/go-pre-commit
   description: A fast Go reimplementation of pre-commit
   license: Apache-2.0
+  hooks:
+    post:
+      # Drop the download's quarantine flag, then ad-hoc sign ONLY if the
+      # binary has no valid signature already. The guard matters: once the
+      # notarize block is live, `codesign --force` would replace a real
+      # Developer ID signature with an ad-hoc one and undo the notarization.
+      install: |
+        if OS.mac?
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pre-commit"]
+          if system_command("/usr/bin/codesign", args: ["-v", "#{staged_path}/pre-commit"]).exit_status != 0
+            system_command "/usr/bin/codesign", args: ["--force", "--sign", "-", "#{staged_path}/pre-commit"]
+          end
+        end
 
 release:
   draft: false
