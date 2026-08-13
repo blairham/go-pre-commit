@@ -599,10 +599,10 @@ var filenameMap = map[string][]string{
 	"setup.cfg":         {"ini", "setuptools"},
 	// Upstream identify tags this {toml, pyproject} — NOT python. Tagging it
 	// python makes python-only hooks (black, isort, …) try to parse TOML.
-	"pyproject.toml":    {"toml", "pyproject"},
-	"pipfile":           {"toml", "pip"},
-	"pipfile.lock":      {"json", "pip", "lock"},
-	"poetry.lock":       {"toml", "lock"},
+	"pyproject.toml": {"toml", "pyproject"},
+	"pipfile":        {"toml", "pip"},
+	"pipfile.lock":   {"json", "pip", "lock"},
+	"poetry.lock":    {"toml", "lock"},
 
 	// CI
 	".travis.yml":            {"yaml", "travis"},
