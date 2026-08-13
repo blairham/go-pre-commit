@@ -1,46 +1,20 @@
-# go-pre-commit
+# CLAUDE.md
 
-A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) — a framework for managing and maintaining multi-language pre-commit hooks.
+@AGENTS.md
 
-## Build & Test
+<!--
+AGENTS.md (imported above) is the cross-tool single source of truth for this repo
+— project overview, build/test commands, structure, the upstream-parity contract,
+and CI/CD. Claude Code does not read AGENTS.md natively, so this file imports it
+and holds only Claude Code-specific extras. Put repo guidance in AGENTS.md, not
+here.
+-->
 
-```bash
-make build          # Build binary to build/pre-commit
-make test           # Run tests with race detector: go test -v -race ./...
-make lint           # Run golangci-lint via go tool
-make fmt            # Format code: gofumpt -w .
-make vet            # Run go vet
-make check          # fmt + vet + test
-make tidy           # go mod tidy
-```
+## Claude Code-specific notes
 
-## Architecture
-
-- **CLI framework**: `mitchellh/cli` for command dispatch, `jessevdk/go-flags` for flag parsing
-- **Coloring**: `charmbracelet/lipgloss` for terminal styling
-- **Entry point**: `main.go` → `internal/cli.Run()`
-
-### Internal packages
-
-| Package | Purpose |
-|---------|---------|
-| `cli` | Command definitions — each command is a struct implementing `cli.Command` |
-| `config` | YAML config parsing (`.pre-commit-config.yaml`) |
-| `git` | Git operations (staging, refs, hooks dir) |
-| `hook` | Hook execution engine and runner |
-| `identify` | File type identification by extension, filename, shebang |
-| `languages` | 21 language backends (python, node, go, rust, docker, etc.) |
-| `output` | Terminal output formatting with lipgloss styles |
-| `pcre` | PCRE regex support via `dlclark/regexp2` |
-| `repository` | Hook repository resolution and caching |
-| `staged` | Stash management for staged files |
-| `store` | On-disk cache for cloned hook repos |
-| `xargs` | Parallel execution with batching |
-
-## Conventions
-
-- Commands use `mitchellh/cli.Command` interface: `Run(args []string) int`, `Help() string`, `Synopsis() string`
-- Each command embeds `*Meta` for shared state and has a flags struct embedding `GlobalFlags`
-- Flag parsing uses `jessevdk/go-flags` struct tags
-- Error output goes to stderr, return `1` for failure, `0` for success
-- The project mirrors the Python pre-commit CLI interface exactly (drop-in replacement)
+- **`make check` is `fmt vet test` — it does not lint.** Run `make check` *and* `make lint` before proposing a PR.
+- **The repo-root `action.yml` is public API.** Changing its inputs breaks `aws-sso-config`, `aws-config-management`, and `ghorg`, which consume it in CI. Grep those repos' workflows before touching it.
+- **Behavior questions are settled by upstream, not by taste** — when unsure how a hook, flag, or cache path should behave, check Python pre-commit's source or CHANGELOG rather than choosing something reasonable-looking.
+- Parity tests need real Python pre-commit and don't run by default: `go test -v -tags=integration -timeout=600s ./test/integration/`.
+- The permission allowlist is in `.claude/settings.json`; the tree-level `~/Developer/github.com/blairham/.claude/settings.json` applies too. `.claude/settings.local.json` holds untracked, machine-local grants.
+- Commits and PRs carry no AI-attribution trailers (see the tree-level AGENTS.md).

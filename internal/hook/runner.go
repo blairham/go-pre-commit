@@ -13,6 +13,7 @@ import (
 	"github.com/dlclark/regexp2"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	"github.com/blairham/go-pre-commit/v4/internal/identify"
 	"github.com/blairham/go-pre-commit/v4/internal/languages"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
@@ -584,7 +585,9 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 			}
 			// State mismatch — deps changed, need reinstall.
 			envPath := filepath.Join(envDir, lang.EnvironmentDir())
-			os.RemoveAll(envPath)
+			// A golang/cargo env is read-only; plain os.RemoveAll would leave it
+			// behind and the stale env would be reused despite the state mismatch.
+			_ = fsutil.RemoveAll(envPath)
 		}
 
 		tasks = append(tasks, installTask{hook: h, lang: lang})
@@ -620,7 +623,7 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 
 			if err := t.lang.InstallEnvironment(t.hook.RepoDir, t.hook.LanguageVersion, t.hook.AdditionalDependencies); err != nil {
 				envPath := filepath.Join(t.hook.RepoDir, t.lang.EnvironmentDir())
-				os.RemoveAll(envPath)
+				_ = fsutil.RemoveAll(envPath)
 				errs[idx] = fmt.Errorf("failed to install environment for hook %q: %w", t.hook.ID, err)
 				return
 			}

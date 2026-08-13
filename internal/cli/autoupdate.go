@@ -10,6 +10,7 @@ import (
 	flags "github.com/jessevdk/go-flags"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
@@ -181,12 +182,12 @@ func processUpdate(repoCfg config.RepoConfig, bleeding, freeze bool) updateResul
 		res.err = fmt.Errorf("failed to create temp dir: %w", err)
 		return res
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = fsutil.RemoveAll(tmpDir) }()
 
 	// Use blobless clone for faster autoupdate (we only need tags/refs, not file content).
 	if err := git.Clone(repoCfg.Repo, tmpDir, "--filter=blob:none"); err != nil {
 		// Fall back to regular clone if filter is not supported.
-		os.RemoveAll(tmpDir)
+		_ = fsutil.RemoveAll(tmpDir)
 		tmpDir2, _ := os.MkdirTemp("", "pre-commit-autoupdate-*")
 		tmpDir = tmpDir2
 		if err := git.Clone(repoCfg.Repo, tmpDir); err != nil {

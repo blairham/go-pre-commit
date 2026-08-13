@@ -12,6 +12,7 @@ import (
 	flags "github.com/jessevdk/go-flags"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/hook"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
@@ -114,7 +115,7 @@ func (c *TryRepoCommand) Run(args []string) int {
 			return 1
 		}
 		if cleanupDir != "" {
-			defer os.RemoveAll(cleanupDir)
+			defer func() { _ = fsutil.RemoveAll(cleanupDir) }()
 		}
 
 		manifestPath := filepath.Join(repoDir, config.ManifestFile)
@@ -282,13 +283,13 @@ func shadowCloneLocal(localPath, ref string) (string, string, error) {
 
 	// Clone the local repo.
 	if err := git.Clone(absPath, tmpDir, "--no-checkout"); err != nil {
-		os.RemoveAll(tmpDir)
+		_ = fsutil.RemoveAll(tmpDir)
 		return "", "", fmt.Errorf("failed to clone local repo: %w", err)
 	}
 
 	// Checkout the target ref.
 	if err := git.Checkout(tmpDir, ref); err != nil {
-		os.RemoveAll(tmpDir)
+		_ = fsutil.RemoveAll(tmpDir)
 		return "", "", fmt.Errorf("failed to checkout %s: %w", ref, err)
 	}
 

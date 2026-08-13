@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	gitutil "github.com/blairham/go-pre-commit/v4/internal/git"
 )
 
@@ -67,7 +69,15 @@ func (s *Store) Init() error {
 
 // Clean removes the entire store directory.
 func (s *Store) Clean() error {
-	return os.RemoveAll(s.dir)
+	return fsutil.RemoveAll(s.dir)
+}
+
+// cloneDirName derives the cache directory name for a repo+rev. It is
+// deterministic, which is why a leftover directory at this path blocks every
+// future clone of the same repo+rev until it is cleared.
+func cloneDirName(repo, rev string) string {
+	hash := sha256.Sum256([]byte(repo + rev))
+	return fmt.Sprintf("repo%x", hash[:8])
 }
 
 // Clone clones a hook repository and returns the local path.
@@ -96,22 +106,33 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 		return path, nil
 	}
 
-	// Generate a unique directory name.
-	hash := sha256.Sum256([]byte(repo + rev))
-	dirName := fmt.Sprintf("repo%x", hash[:8])
-	dest := filepath.Join(s.dir, dirName)
+	dest := filepath.Join(s.dir, cloneDirName(repo, rev))
+
+	// The path is derived from repo+rev, so a directory left behind by a failed
+	// clone or a partial GC sits exactly where this clone wants to go — and
+	// `git clone` refuses a non-empty target. Clear it first, and if it will not
+	// clear, say so plainly rather than letting git fail with "destination path
+	// already exists" on every run from here on.
+	if err := fsutil.RemoveAll(dest); err != nil {
+		return "", fmt.Errorf(
+			"failed to clear stale cache directory %s (remove it manually to recover): %w",
+			dest, err)
+	}
 
 	// Try shallow clone first.
 	err = gitutil.ShallowClone(repo, dest, rev)
 	if err != nil {
 		// Fall back to full clone.
-		os.RemoveAll(dest)
+		if rmErr := fsutil.RemoveAll(dest); rmErr != nil {
+			return "", fmt.Errorf(
+				"failed to clear %s after an unsuccessful shallow clone: %w", dest, rmErr)
+		}
 		err = gitutil.Clone(repo, dest)
 		if err != nil {
 			return "", fmt.Errorf("failed to clone %s: %w", repo, err)
 		}
 		if err := gitutil.Checkout(dest, rev); err != nil {
-			os.RemoveAll(dest)
+			_ = fsutil.RemoveAll(dest)
 			return "", fmt.Errorf("failed to checkout %s at %s: %w", repo, rev, err)
 		}
 	}
@@ -183,17 +204,32 @@ func (s *Store) GC(usedRepos map[string]bool) error {
 	}
 
 	var kept []RepoEntry
+	var failures []string
 	for _, entry := range db.Repos {
 		key := entry.Repo + "@" + entry.Rev
 		if usedRepos[key] {
 			kept = append(kept, entry)
-		} else {
-			// Remove the directory.
-			os.RemoveAll(entry.Path)
+			continue
+		}
+		// If the directory cannot be removed, KEEP the database entry. Dropping
+		// the row while the directory survives strands it: cache paths are
+		// derived from repo+rev, so the next clone targets the leftover
+		// directory, git refuses the non-empty target, and the repo is wedged
+		// until someone clears the cache by hand.
+		if err := fsutil.RemoveAll(entry.Path); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", entry.Path, err))
+			kept = append(kept, entry)
 		}
 	}
 	db.Repos = kept
-	return s.saveDB(db)
+	if err := s.saveDB(db); err != nil {
+		return err
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("failed to remove %d cached repo(s): %s",
+			len(failures), strings.Join(failures, "; "))
+	}
+	return nil
 }
 
 // ListRepos returns all cached repos.
@@ -249,16 +285,27 @@ func (s *Store) cacheKey(repo, rev string) string {
 	return repo + "@" + rev
 }
 
+// isClone reports whether path holds an actual git clone. A bare os.Stat is
+// not enough: a directory can survive with only an installed language
+// environment inside it (a partially-removed cache entry), and treating that
+// as a hit runs hooks against a tree with no .pre-commit-hooks.yaml.
+func isClone(path string) bool {
+	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+		return false
+	}
+	return true
+}
+
 func (s *Store) lookup(repo, rev string) (string, error) {
 	key := s.cacheKey(repo, rev)
 
 	// Check in-memory cache first.
 	if s.cache != nil {
 		if path, ok := s.cache[key]; ok {
-			if _, err := os.Stat(path); err == nil {
+			if isClone(path) {
 				return path, nil
 			}
-			// Path no longer exists, remove stale entry.
+			// Gone or no longer a clone — drop the stale entry.
 			delete(s.cache, key)
 		}
 	}
@@ -269,7 +316,7 @@ func (s *Store) lookup(repo, rev string) (string, error) {
 	}
 	for _, entry := range db.Repos {
 		if entry.Repo == repo && entry.Rev == rev {
-			if _, err := os.Stat(entry.Path); err == nil {
+			if isClone(entry.Path) {
 				// Populate in-memory cache.
 				if s.cache == nil {
 					s.cache = make(map[string]string)
@@ -277,6 +324,10 @@ func (s *Store) lookup(repo, rev string) (string, error) {
 				s.cache[key] = entry.Path
 				return entry.Path, nil
 			}
+			// The row points at something that is not a clone. Treat it as a
+			// miss so Clone rebuilds it; Clone clears the path first, so the
+			// leftover does not block the retry.
+			break
 		}
 	}
 	return "", fmt.Errorf("not found")
