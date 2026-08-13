@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(go run:*)",
+      "Bash(go tool:*)",
+      "Bash(go doc:*)",
+      "Bash(go mod:*)",
+      "Bash(gofmt:*)",
+      "Bash(gofumpt:*)",
+      "Bash(golangci-lint:*)",
+      "Bash(./build/pre-commit:*)",
+      "Bash(pre-commit run:*)",
+      "Bash(pre-commit try-repo:*)"
+    ]
+  }
+}
