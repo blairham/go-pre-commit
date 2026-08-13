@@ -92,28 +92,33 @@ changelog:
     - '^test:'
     - '^chore:'
 
-homebrew_casks:
+# A formula, not a cask. This is a CLI binary with no bundle, no installer and
+# no service; `brew test` is worth keeping, and formulae work on Homebrew for
+# Linux exactly as they do on macOS — which matters here, since this binary is
+# what CI runs on Linux runners.
+#
+# GoReleaser marks `brews` deprecated in favour of `homebrew_casks`, on the
+# grounds that formulae installing pre-compiled binaries are "hackyish" and
+# were only needed because Linuxbrew could not handle casks. There is no
+# announced removal date, and the Linuxbrew limitation is not our reason for
+# using them.
+#
+# Note there is no quarantine hook here: casks flag their downloads with
+# com.apple.quarantine and need it stripped, formulae do not.
+brews:
 - name: pre-commit
   repository:
     owner: blairham
     name: homebrew-tap
     token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+  directory: Formula
   homepage: https://github.com/blairham/go-pre-commit
   description: A fast Go reimplementation of pre-commit
   license: Apache-2.0
-  hooks:
-    post:
-      # Drop the download's quarantine flag, then ad-hoc sign ONLY if the
-      # binary has no valid signature already. The guard matters: once the
-      # notarize block is live, `codesign --force` would replace a real
-      # Developer ID signature with an ad-hoc one and undo the notarization.
-      install: |
-        if OS.mac?
-          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pre-commit"]
-          if system_command("/usr/bin/codesign", args: ["-v", "#{staged_path}/pre-commit"]).exit_status != 0
-            system_command "/usr/bin/codesign", args: ["--force", "--sign", "-", "#{staged_path}/pre-commit"]
-          end
-        end
+  install: |
+    bin.install "pre-commit"
+  test: |
+    system "#{bin}/pre-commit", "--version"
 
 release:
   draft: false
