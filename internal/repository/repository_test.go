@@ -3,6 +3,7 @@ package repository
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
@@ -122,6 +123,85 @@ func TestResolveLocalRepo(t *testing.T) {
 	}
 	if hooks[0].ID != "my-hook" {
 		t.Errorf("expected hook ID 'my-hook', got %q", hooks[0].ID)
+	}
+	// `system` installs no environment, so the hook runs from the working
+	// directory and gets no prefix.
+	if hooks[0].RepoDir != "" {
+		t.Errorf("expected no RepoDir for a system hook, got %q", hooks[0].RepoDir)
+	}
+}
+
+func TestResolveLocalRepo_EnvironmentForAdditionalDependencies(t *testing.T) {
+	storeDir := t.TempDir()
+	s := store.New(storeDir)
+	r := NewResolver(s, config.DefaultConfig())
+
+	repo := &config.RepoConfig{
+		Repo: "local",
+		Hooks: []config.HookConfig{
+			{
+				ID:                     "dep-probe",
+				Name:                   "dep probe",
+				Entry:                  "python probe.py",
+				Language:               "python",
+				AdditionalDependencies: []string{"pyyaml>=6"},
+			},
+			{
+				ID:       "no-deps",
+				Name:     "no deps",
+				Entry:    "python -c pass",
+				Language: "python",
+			},
+		},
+	}
+
+	hooks, err := r.resolveLocalRepo(repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(hooks) != 2 {
+		t.Fatalf("expected 2 hooks, got %d", len(hooks))
+	}
+
+	withDeps, noDeps := hooks[0], hooks[1]
+	if withDeps.RepoDir == "" {
+		t.Fatal("expected a prefix for a python hook with additional_dependencies")
+	}
+	if noDeps.RepoDir == "" {
+		t.Fatal("expected a prefix for a python hook without additional_dependencies")
+	}
+	if withDeps.RepoDir == noDeps.RepoDir {
+		t.Errorf("expected different dependency sets to get different environments, both got %q", withDeps.RepoDir)
+	}
+	if filepath.Dir(withDeps.RepoDir) != storeDir {
+		t.Errorf("expected the prefix inside the store %s, got %s", storeDir, withDeps.RepoDir)
+	}
+}
+
+func TestResolveLocalRepo_AdditionalDependenciesWithoutEnvironment(t *testing.T) {
+	s := store.New(t.TempDir())
+	r := NewResolver(s, config.DefaultConfig())
+
+	repo := &config.RepoConfig{
+		Repo: "local",
+		Hooks: []config.HookConfig{
+			{
+				ID:                     "sys-probe",
+				Name:                   "sys probe",
+				Entry:                  "echo hi",
+				Language:               "system",
+				AdditionalDependencies: []string{"pyyaml"},
+			},
+		},
+	}
+
+	_, err := r.resolveLocalRepo(repo)
+	if err == nil {
+		t.Fatal("expected an error for additional_dependencies on a language with no environment")
+	}
+	if !strings.Contains(err.Error(), "sys-probe") ||
+		!strings.Contains(err.Error(), "additional_dependencies") {
+		t.Errorf("expected the error to name the hook and the setting, got: %v", err)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/hook"
+	"github.com/blairham/go-pre-commit/v4/internal/languages"
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
@@ -43,7 +44,9 @@ func (r *Resolver) ResolveAll(ctx context.Context, cfg *config.Config) ([]*hook.
 	for i := range cfg.Repos {
 		repo := &cfg.Repos[i]
 		if repo.IsLocal() || repo.IsMeta() {
-			// Resolve local/meta repos immediately (no I/O).
+			// Resolve local/meta repos inline — meta needs no I/O, and local
+			// only touches the shared store directory, which is serialized
+			// anyway.
 			hooks, err := r.resolveRepo(ctx, repo)
 			results[i] = repoResult{hooks: hooks, err: err, index: i}
 			continue
@@ -85,9 +88,60 @@ func (r *Resolver) resolveLocalRepo(repo *config.RepoConfig) ([]*hook.Hook, erro
 	var hooks []*hook.Hook
 	for i := range repo.Hooks {
 		h := hook.FromLocalConfig(&repo.Hooks[i], r.Cfg)
+		if err := r.setLocalPrefix(h); err != nil {
+			return nil, err
+		}
 		hooks = append(hooks, h)
 	}
 	return hooks, nil
+}
+
+// setLocalPrefix gives a local hook the directory its environment is built in.
+// A `repo: local` hook has nothing to clone, but a language that installs an
+// environment still needs a prefix — otherwise additional_dependencies are
+// never installed and the entry silently resolves against whatever is on PATH.
+// Languages that install nothing (system, script, pygrep, …) keep an empty
+// prefix and run from the working directory, as upstream does.
+func (r *Resolver) setLocalPrefix(h *hook.Hook) error {
+	lang, err := languages.Get(h.Language)
+	if err != nil {
+		// Unknown language — the runner reports it with better context than a
+		// resolution-time error would.
+		return nil
+	}
+
+	if lang.EnvironmentDir() == "" {
+		return checkAdditionalDependencies(h)
+	}
+
+	if r.Store == nil {
+		return nil
+	}
+
+	dir, err := r.Store.MakeLocal(h.AdditionalDependencies)
+	if err != nil {
+		return fmt.Errorf("creating environment for hook %q: %w", h.ID, err)
+	}
+	h.RepoDir = dir
+	return nil
+}
+
+// checkAdditionalDependencies mirrors Python pre-commit: declaring
+// additional_dependencies for a language that installs no environment is a
+// config error, not something to drop on the floor.
+func checkAdditionalDependencies(h *hook.Hook) error {
+	if len(h.AdditionalDependencies) == 0 {
+		return nil
+	}
+	lang, err := languages.Get(h.Language)
+	if err != nil || lang.EnvironmentDir() != "" {
+		return nil
+	}
+	return fmt.Errorf(
+		"the hook `%s` specifies `additional_dependencies` but is using language `%s` "+
+			"which does not install an environment. "+
+			"Perhaps you meant to use a specific language?",
+		h.ID, h.Language)
 }
 
 func (r *Resolver) resolveMetaRepo(repo *config.RepoConfig) ([]*hook.Hook, error) {
@@ -177,6 +231,9 @@ func (r *Resolver) resolveRemoteRepo(ctx context.Context, repo *config.RepoConfi
 
 		h := hook.MergeManifest(mh, hc, repo, r.Cfg)
 		h.RepoDir = repoDir
+		if err := checkAdditionalDependencies(h); err != nil {
+			return nil, err
+		}
 		hooks = append(hooks, h)
 	}
 

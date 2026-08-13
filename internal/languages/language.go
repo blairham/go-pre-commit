@@ -4,6 +4,7 @@ package languages
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -30,6 +31,15 @@ type Language interface {
 	// prefix is the hook repo clone directory (used for environment resolution).
 	// workDir is the user's git repository root (where the command runs).
 	Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error)
+}
+
+// EnvPath returns the directory a language installs its environment into for
+// the given prefix and version — `<prefix>/<env dir>-<version>`, matching
+// Python pre-commit's environment_dir(). Each backend derives the same path
+// internally; callers outside the backends use this so the install-state
+// marker and the environment it describes cannot drift apart.
+func EnvPath(prefix string, lang Language, version string) string {
+	return filepath.Join(prefix, lang.EnvironmentDir()+"-"+version)
 }
 
 var (

@@ -796,6 +796,57 @@ func TestRun(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Tests: repo: local hooks (environment provisioning)
+// ---------------------------------------------------------------------------
+
+func TestLocalHooks(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+
+	t.Run("python additional_dependencies are installed", func(t *testing.T) {
+		cfg := `repos:
+-   repo: local
+    hooks:
+    -   id: dep-probe
+        name: dep probe
+        entry: python
+        args: ["-c", "import yaml; print(yaml.__version__)"]
+        language: python
+        additional_dependencies: ["pyyaml>=6"]
+        pass_filenames: false
+        always_run: true
+`
+		pyRepo := initTestRepo(t, cfg, "hello\n")
+		goRepo := initTestRepo(t, cfg, "hello\n")
+
+		_, pyExit := runCmd(t, pyRepo, pyBin, "run", "--all-files", "--color=never")
+		_, goExit := runCmd(t, goRepo, goBinary, "run", "--all-files", "--color=never")
+		addExitResult("run", "local python hook gets additional_dependencies",
+			pyExit, goExit, pyExit == goExit && goExit == 0, "")
+	})
+
+	t.Run("additional_dependencies without an environment is an error", func(t *testing.T) {
+		cfg := `repos:
+-   repo: local
+    hooks:
+    -   id: sys-probe
+        name: sys probe
+        entry: echo
+        language: system
+        additional_dependencies: ["pyyaml"]
+        pass_filenames: false
+        always_run: true
+`
+		pyRepo := initTestRepo(t, cfg, "hello\n")
+		goRepo := initTestRepo(t, cfg, "hello\n")
+
+		_, pyExit := runCmd(t, pyRepo, pyBin, "run", "--all-files", "--color=never")
+		_, goExit := runCmd(t, goRepo, goBinary, "run", "--all-files", "--color=never")
+		addExitResult("run", "additional_dependencies on a language with no environment fails",
+			pyExit, goExit, (pyExit != 0) == (goExit != 0), "")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Tests: migrate-config (exit codes + filesystem)
 // ---------------------------------------------------------------------------
 

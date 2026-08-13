@@ -297,15 +297,22 @@ func isClone(path string) bool {
 }
 
 func (s *Store) lookup(repo, rev string) (string, error) {
+	return s.lookupWith(repo, rev, isClone)
+}
+
+// lookupWith finds a cached entry, using valid to decide whether what is on
+// disk still backs it — a real clone for cloned repos, an intact placeholder
+// tree for local ones.
+func (s *Store) lookupWith(repo, rev string, valid func(string) bool) (string, error) {
 	key := s.cacheKey(repo, rev)
 
 	// Check in-memory cache first.
 	if s.cache != nil {
 		if path, ok := s.cache[key]; ok {
-			if isClone(path) {
+			if valid(path) {
 				return path, nil
 			}
-			// Gone or no longer a clone — drop the stale entry.
+			// Gone or no longer intact — drop the stale entry.
 			delete(s.cache, key)
 		}
 	}
@@ -316,7 +323,7 @@ func (s *Store) lookup(repo, rev string) (string, error) {
 	}
 	for _, entry := range db.Repos {
 		if entry.Repo == repo && entry.Rev == rev {
-			if isClone(entry.Path) {
+			if valid(entry.Path) {
 				// Populate in-memory cache.
 				if s.cache == nil {
 					s.cache = make(map[string]string)
@@ -324,9 +331,9 @@ func (s *Store) lookup(repo, rev string) (string, error) {
 				s.cache[key] = entry.Path
 				return entry.Path, nil
 			}
-			// The row points at something that is not a clone. Treat it as a
-			// miss so Clone rebuilds it; Clone clears the path first, so the
-			// leftover does not block the retry.
+			// The row points at something that is no longer intact. Treat it as
+			// a miss so the caller rebuilds it; both Clone and MakeLocal clear
+			// the path first, so the leftover does not block the retry.
 			break
 		}
 	}
@@ -338,11 +345,22 @@ func (s *Store) save(repo, rev, path string) error {
 	if err != nil {
 		return err
 	}
-	db.Repos = append(db.Repos, RepoEntry{
-		Repo: repo,
-		Rev:  rev,
-		Path: path,
-	})
+	// Replace any existing row for this repo+rev rather than appending a second
+	// one. lookup stops at the first matching row, so a duplicate left by a
+	// rebuild (the old row pointing at a directory that no longer exists) would
+	// shadow the new entry and force a rebuild on every single run.
+	entry := RepoEntry{Repo: repo, Rev: rev, Path: path}
+	replaced := false
+	for i := range db.Repos {
+		if db.Repos[i].Repo == repo && db.Repos[i].Rev == rev {
+			db.Repos[i] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		db.Repos = append(db.Repos, entry)
+	}
 	if err := s.saveDB(db); err != nil {
 		return err
 	}
