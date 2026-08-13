@@ -576,7 +576,8 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 			continue
 		}
 
-		stateFile := filepath.Join(envDir, lang.EnvironmentDir(), installStateFile)
+		envPath := languages.EnvPath(envDir, lang, h.LanguageVersion)
+		stateFile := filepath.Join(envPath, installStateFile)
 		expectedState := h.InstallKey()
 
 		if data, err := os.ReadFile(stateFile); err == nil {
@@ -584,7 +585,6 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 				continue // Already installed with same deps.
 			}
 			// State mismatch — deps changed, need reinstall.
-			envPath := filepath.Join(envDir, lang.EnvironmentDir())
 			// A golang/cargo env is read-only; plain os.RemoveAll would leave it
 			// behind and the stale env would be reused despite the state mismatch.
 			_ = fsutil.RemoveAll(envPath)
@@ -621,15 +621,15 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
+			envPath := languages.EnvPath(t.hook.RepoDir, t.lang, t.hook.LanguageVersion)
 			if err := t.lang.InstallEnvironment(t.hook.RepoDir, t.hook.LanguageVersion, t.hook.AdditionalDependencies); err != nil {
-				envPath := filepath.Join(t.hook.RepoDir, t.lang.EnvironmentDir())
 				_ = fsutil.RemoveAll(envPath)
 				errs[idx] = fmt.Errorf("failed to install environment for hook %q: %w", t.hook.ID, err)
 				return
 			}
 
 			// Write install state file.
-			stateFile := filepath.Join(t.hook.RepoDir, t.lang.EnvironmentDir(), installStateFile)
+			stateFile := filepath.Join(envPath, installStateFile)
 			stateDir := filepath.Dir(stateFile)
 			os.MkdirAll(stateDir, 0o755)
 			if err := os.WriteFile(stateFile, []byte(t.hook.InstallKey()), 0o644); err != nil {

@@ -53,7 +53,16 @@ func (c *GCCommand) Run(args []string) int {
 	for _, cfgPath := range configPaths {
 		if cfg, err := config.LoadConfig(cfgPath); err == nil {
 			for _, repo := range cfg.Repos {
-				if !repo.IsLocal() && !repo.IsMeta() {
+				switch {
+				case repo.IsMeta():
+					// Meta hooks are built in — nothing cached.
+				case repo.IsLocal():
+					// Local hooks that install an environment are backed by a
+					// synthetic repo keyed on their additional_dependencies.
+					for _, h := range repo.Hooks {
+						usedRepos[store.LocalRepoKey(h.AdditionalDependencies)] = true
+					}
+				default:
 					usedRepos[repo.Repo+"@"+repo.Rev] = true
 				}
 			}

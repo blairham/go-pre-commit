@@ -56,6 +56,16 @@ func (n *Node) InstallEnvironment(prefix, version string, additionalDeps []strin
 
 	env := nodeEnvVars(envDir)
 
+	// A `repo: local` hook has no package to install — its prefix is a
+	// placeholder directory with no package.json — so there is nothing to pack
+	// and the additional_dependencies are the whole environment.
+	if _, err := os.Stat(filepath.Join(prefix, "package.json")); err != nil {
+		if len(additionalDeps) == 0 {
+			return fmt.Errorf("`language: node` must have package.json or additional_dependencies")
+		}
+		return npmInstallGlobal(prefix, env, additionalDeps)
+	}
+
 	// Install the hook repo's own dependencies locally, then pack it and
 	// install the package globally into the env alongside additional deps —
 	// the same local-install → pack → global-install dance as Python
@@ -78,14 +88,18 @@ func (n *Node) InstallEnvironment(prefix, version string, additionalDeps []strin
 	pkg := filepath.Join(prefix, strings.TrimSpace(lines[len(lines)-1]))
 	defer os.Remove(pkg)
 
-	installArgs := append([]string{"install", "-g", pkg}, additionalDeps...)
-	cmd = exec.Command("npm", installArgs...)
+	return npmInstallGlobal(prefix, env, append([]string{pkg}, additionalDeps...))
+}
+
+// npmInstallGlobal installs packages into the hook environment, which npm
+// resolves from NPM_CONFIG_PREFIX in env.
+func npmInstallGlobal(prefix string, env, pkgs []string) error {
+	cmd := exec.Command("npm", append([]string{"install", "-g"}, pkgs...)...)
 	cmd.Dir = prefix
 	cmd.Env = append(cmd.Environ(), env...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("npm install -g failed: %s: %w", string(out), err)
 	}
-
 	return nil
 }
 
