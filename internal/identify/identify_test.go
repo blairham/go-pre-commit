@@ -311,3 +311,65 @@ func TestMatchesTypesEmptyTags(t *testing.T) {
 		t.Error("empty tags should not satisfy 'file' type requirement")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TagsForFile – non-regular files get exactly one tag, never "file"
+//
+// Upstream identify's tags_from_path returns {directory}/{symlink}/{socket}
+// and nothing else. That is what keeps these paths out of hooks: the default
+// filter is `types: [file]`, which a directory-only tag set cannot satisfy.
+// ---------------------------------------------------------------------------
+
+func TestTagsForFileDirectoryIsNotAFile(t *testing.T) {
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "submodule")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tags := TagsForFile(dir)
+	if tags["file"] {
+		t.Error("a directory must not be tagged 'file' — hooks would try to open it")
+	}
+	if !tags["directory"] {
+		t.Error("a directory should be tagged 'directory'")
+	}
+	if len(tags) != 1 {
+		t.Errorf("a directory should carry exactly one tag, got %v", tags)
+	}
+}
+
+func TestTagsForFileSymlinkIsNotAFile(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "real.py")
+	if err := os.WriteFile(target, []byte("x = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(tmp, "link.py")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	tags := TagsForFile(link)
+	if tags["file"] || tags["python"] {
+		t.Errorf("a symlink must not inherit its target's tags, got %v", tags)
+	}
+	if !tags["symlink"] {
+		t.Error("a symlink should be tagged 'symlink'")
+	}
+}
+
+// pyproject.toml is TOML, not Python. Tagging it python routes it to
+// python-only hooks such as black, which then fail parsing it as source.
+func TestTagsForFilePyprojectIsNotPython(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "pyproject.toml")
+	if err := os.WriteFile(path, []byte("[tool.black]\nline-length = 150\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tags := TagsForFile(path)
+	if tags["python"] {
+		t.Error("pyproject.toml must not be tagged 'python' — black would try to parse it")
+	}
+	if !tags["toml"] || !tags["pyproject"] {
+		t.Errorf("pyproject.toml should be tagged toml+pyproject, got %v", tags)
+	}
+}
