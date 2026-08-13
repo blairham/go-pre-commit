@@ -8,7 +8,24 @@ import (
 )
 
 // TagsForFile returns the set of type tags for a file path.
+//
+// Non-regular files get exactly one tag and nothing else, matching upstream
+// identify's tags_from_path. This is what keeps them out of hooks: the default
+// filter is `types: [file]`, and a directory tagged only "directory" cannot
+// match it. Tagging them "file" instead hands a git submodule's path to hooks
+// that then try to open it as a file.
 func TagsForFile(path string) map[string]bool {
+	if info, err := os.Lstat(path); err == nil {
+		switch mode := info.Mode(); {
+		case mode.IsDir():
+			return map[string]bool{"directory": true}
+		case mode&os.ModeSymlink != 0:
+			return map[string]bool{"symlink": true}
+		case mode&os.ModeSocket != 0:
+			return map[string]bool{"socket": true}
+		}
+	}
+
 	tags := make(map[string]bool)
 
 	// Always add "file".
@@ -580,10 +597,12 @@ var filenameMap = map[string][]string{
 	"requirements.txt":  {"requirements-txt", "pip"},
 	"setup.py":          {"python", "setuptools"},
 	"setup.cfg":         {"ini", "setuptools"},
-	"pyproject.toml":    {"toml", "python"},
-	"pipfile":           {"toml", "pip"},
-	"pipfile.lock":      {"json", "pip", "lock"},
-	"poetry.lock":       {"toml", "lock"},
+	// Upstream identify tags this {toml, pyproject} — NOT python. Tagging it
+	// python makes python-only hooks (black, isort, …) try to parse TOML.
+	"pyproject.toml": {"toml", "pyproject"},
+	"pipfile":        {"toml", "pip"},
+	"pipfile.lock":   {"json", "pip", "lock"},
+	"poetry.lock":    {"toml", "lock"},
 
 	// CI
 	".travis.yml":            {"yaml", "travis"},
