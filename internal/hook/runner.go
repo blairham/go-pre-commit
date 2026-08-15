@@ -588,6 +588,16 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 			// A golang/cargo env is read-only; plain os.RemoveAll would leave it
 			// behind and the stale env would be reused despite the state mismatch.
 			_ = fsutil.RemoveAll(envPath)
+		} else if _, statErr := os.Stat(envPath); statErr == nil {
+			// Env dir exists but carries no valid state: a partial install, an
+			// interrupted run, or a CI cache restore that dropped the state
+			// file. Installing OVER such leftovers is not safe — golang's
+			// `go install ./...` runs in the hook repo with the env (and its
+			// module cache) nested inside it, so a pre-populated pkg/mod makes
+			// the pattern walk fail with "directory … outside main module".
+			// Python pre-commit removes an existing env before every install
+			// (repository.py _hook_install); mirror that for stateless leftovers.
+			_ = fsutil.RemoveAll(envPath)
 		}
 
 		tasks = append(tasks, installTask{hook: h, lang: lang})
