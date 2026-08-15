@@ -3,6 +3,7 @@ package hook
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -604,5 +605,63 @@ func TestRunnerRun_HookNotFound(t *testing.T) {
 
 	if result.Errors != 1 {
 		t.Errorf("Errors = %d, want 1", result.Errors)
+	}
+}
+
+// A leftover env dir with no install-state marker (partial install, interrupted
+// run, or a CI cache restore that dropped the state file) must be wiped before
+// installing, not installed over: golang's `go install ./...` runs in the hook
+// repo with the env's module cache nested inside it, so leftovers in pkg/mod
+// make the pattern walk fail with "directory … outside main module or its
+// selected dependencies" (the 2026-08-15 CI failure across ghorg,
+// go-pre-commit, and aws-sso-config).
+func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not on PATH")
+	}
+	repoDir := t.TempDir()
+
+	// Minimal installable golang hook repo.
+	if err := os.WriteFile(filepath.Join(repoDir, "go.mod"), []byte("module example.com/hookrepo\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate the poisoned state: env dir with a populated module cache but
+	// no install_state_v2. The junk module has its own go.mod, which is what
+	// breaks the `./...` pattern walk when it survives into the install.
+	junk := filepath.Join(repoDir, "go_env-default", "pkg", "mod", "example.com", "junk@v1.0.0")
+	if err := os.MkdirAll(junk, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(junk, "go.mod"), []byte("module example.com/junk\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(junk, "junk.go"), []byte("package junk\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := &Hook{
+		ID:              "hookrepo",
+		Repo:            "example.com/hookrepo",
+		RepoDir:         repoDir,
+		Language:        "golang",
+		LanguageVersion: "default",
+	}
+	if err := InstallEnvironments(context.Background(), []*Hook{h}); err != nil {
+		t.Fatalf("InstallEnvironments over a stateless leftover env: %v", err)
+	}
+
+	envPath := filepath.Join(repoDir, "go_env-default")
+	if _, err := os.Stat(filepath.Join(envPath, "bin", "hookrepo")); err != nil {
+		t.Errorf("hook binary not installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(envPath, installStateFile)); err != nil {
+		t.Errorf("install state not written: %v", err)
+	}
+	if _, err := os.Stat(junk); !os.IsNotExist(err) {
+		t.Errorf("leftover env content survived the install (err=%v)", err)
 	}
 }
