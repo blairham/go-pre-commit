@@ -5,7 +5,7 @@ set -euo pipefail
 GO_BIN="./build/pre-commit"
 RUNS=5
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 echo "================================================================"
 echo "  Pre-commit Performance Benchmark"

@@ -10,7 +10,7 @@ branding:
 inputs:
   version:
     description: >-
-      Release of go-pre-commit to install (e.g. "v4.5.4"), or "latest".
+      Release of go-pre-commit to install (e.g. "v4.6.6"), or "latest".
     required: false
     default: latest
   extra_args:

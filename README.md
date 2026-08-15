@@ -18,6 +18,12 @@ A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) 
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew install blairham/tap/pre-commit
+```
+
 ### Pre-built binaries
 
 Download the latest release from the [Releases page](https://github.com/blairham/go-pre-commit/releases). Archives are available for Linux, macOS, and Windows (amd64/arm64).
@@ -34,6 +40,8 @@ sudo mv pre-commit /usr/local/bin/
 ```bash
 go install github.com/blairham/go-pre-commit/v4@latest
 ```
+
+Note: `go install` names the binary `go-pre-commit` (Go strips the `/v4` suffix). Rename it to `pre-commit` on your PATH — the git hooks it installs invoke it by that name.
 
 ### Build from source
 
@@ -62,12 +70,13 @@ Inputs:
 ```yaml
       - uses: blairham/go-pre-commit@main
         with:
-          version: latest        # release to install, e.g. "v4.5.4"
+          version: latest         # release to install, e.g. "v4.6.6"
           extra_args: --all-files # passed to `pre-commit run`
           cache: 'true'           # cache hook environments between runs
+          install-only: 'false'   # set 'true' to install the binary but skip `pre-commit run`
 ```
 
-Hooks run as `pre-commit run --show-diff-on-failure --color=always <extra_args>`, and hook environments (`~/.cache/pre-commit`) are cached keyed on `.pre-commit-config.yaml`, so warm runs skip environment setup entirely. Hooks that need extra tools on `PATH` (e.g. `language: system` hooks) still require you to install those tools in earlier steps.
+Hooks run as `pre-commit run --show-diff-on-failure --color=always <extra_args>`, and hook environments (`~/.cache/pre-commit`) are cached keyed on `.pre-commit-config.yaml`, so warm runs skip environment setup entirely. Hooks that need extra tools on `PATH` (e.g. `language: system` hooks) still require you to install those tools in earlier steps. With `install-only: 'true'` the action puts the binary on `PATH` (and still caches) but skips the run step, for workflows that drive pre-commit themselves.
 
 ## Usage
 
@@ -169,29 +178,33 @@ Benchmarked against Python pre-commit v4.5.1 on the same config (macOS, Apple Si
 
 Python-based hooks (pre-commit-hooks) see the largest improvement since Go avoids spawning a Python interpreter for each hook. Hooks that shell out to external tools (golangci-lint) show similar performance since the tool itself dominates.
 
-Run the benchmark yourself: `bash bench.sh`
+Run the benchmark yourself: `bash .github/bench.sh`
 
 ## Development
 
 ```bash
-make build       # Build binary
-make test        # Run tests
-make lint        # Run linter
-make fmt         # Format code
+make build       # Build binary to build/pre-commit
+make test        # Run tests (with -race)
+make test-cover  # Tests + HTML coverage report
+make lint        # Run golangci-lint
+make fmt         # Format code (gofumpt)
 make vet         # Run go vet
+make tidy        # go mod tidy
 make check       # Format + vet + test
 ```
+
+Note that `make check` does not run the linter — run `make lint` separately before opening a PR.
 
 ## Releasing
 
 Releases are automated with [GoReleaser](https://goreleaser.com) via GitHub Actions. To create a release:
 
 ```bash
-git tag v4.6.0
-git push origin v4.6.0
+git tag v4.6.7
+git push origin v4.6.7
 ```
 
-CI will build cross-platform binaries and publish a GitHub release automatically.
+CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub release, and updates the Homebrew formula in [blairham/homebrew-tap](https://github.com/blairham/homebrew-tap) automatically. Versions track upstream parity: `v4.6.x` means feature parity with Python pre-commit 4.6.
 
 ## License
 
