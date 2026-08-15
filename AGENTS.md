@@ -39,6 +39,7 @@ action.yml               # Composite GitHub Action (repo root) — see CI/CD bel
 internal/
   cli/                   # Command definitions; each command implements cli.Command
   config/                # .pre-commit-config.yaml parsing; holds Version (ldflags target)
+  fsutil/                # Filesystem helpers
   git/                   # Git operations — staging, refs, hooks dir
   hook/                  # Hook execution engine and runner
   identify/              # File type identification by extension, filename, shebang
@@ -93,7 +94,7 @@ Releases: push a `v*` tag → GoReleaser (`.goreleaser.yaml`) builds, signs, and
 - `go.mod`'s `go` directive is authoritative and must match `.tool-versions`' `golang` pin **exactly** — enforced by the `check-go-version-sync` hook from [blairham/pre-commit-hooks](https://github.com/blairham/pre-commit-hooks), pinned by `rev` in `.pre-commit-config.yaml`
 - golangci-lint and gofumpt are pinned in `go.mod`'s `tool` block — invoke as `go tool <name>`, never a separately installed binary
 - Keep the `golangci-lint` pre-commit `rev`, the `go.mod` tool pin, and the CI action version in lockstep
-- goreleaser is pinned in `.tool-versions` (2.15.3), not `go.mod`
+- goreleaser is pinned in `.tool-versions`, not `go.mod`
 
 ## Key Dependencies
 
