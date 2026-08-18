@@ -1,4 +1,10 @@
 // Package identify provides file type identification by extension, filename, and shebang.
+//
+// The tag tables below follow the data in the MIT-licensed identify project
+// (https://github.com/pre-commit/identify, © 2017 Chris Kuehl, Anthony Sottile).
+// A hook's types/types_or/exclude_types filters are matched against these tags,
+// so a tag this project gets wrong is a hook that silently skips or wrongly
+// claims a file: when the two disagree, upstream is right. See NOTICE.
 package identify
 
 import (
