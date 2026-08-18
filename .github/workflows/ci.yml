@@ -82,7 +82,8 @@ jobs:
   language-integration:
     runs-on: ubuntu-latest
     needs: [ test ]
-    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'test-languages')
+    # Runs on every PR. Parity is this project's entire claim, so a change that
+    # breaks it should fail before review, not after a merge to main.
     steps:
     - uses: actions/checkout@v6
       with:
@@ -106,7 +107,21 @@ jobs:
         node-version: '22'
 
     - name: Install Python pre-commit
-      run: pip install pre-commit
+      # Pinned to the line our version number claims parity with. The harness
+      # rejects any other line, so a bump here is a deliberate parity decision.
+      run: pip install 'pre-commit==4.6.2'
 
     - name: Run parity tests
+      # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
+      # green skip into a failure. This job exists to make the comparison; a
+      # run that makes no comparison has not done its job.
+      env:
+        PARITY_REQUIRE: '1'
       run: go test -v -tags=integration -timeout=600s ./test/integration/
+
+    - name: Upload parity report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: parity-report
+        path: test/integration/parity_report.json
