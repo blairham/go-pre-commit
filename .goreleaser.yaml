@@ -53,6 +53,14 @@ archives:
   - goos: windows
     formats:
     - zip
+  # Listing files at all replaces GoReleaser's defaults, so LICENSE and README
+  # have to be repeated here. NOTICE is the reason: Apache-2.0 section 4(d)
+  # requires it to travel with every distributed copy, and it carries the
+  # upstream MIT notices this reimplementation is built on.
+  files:
+  - LICENSE
+  - NOTICE
+  - README.md
 
 notarize:
   macos:

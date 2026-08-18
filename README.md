@@ -206,6 +206,26 @@ git push origin v4.6.7
 
 CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub release, and updates the Homebrew formula in [blairham/homebrew-tap](https://github.com/blairham/homebrew-tap) automatically. Versions track upstream parity: `v4.6.x` means feature parity with Python pre-commit 4.6.
 
+## Attribution
+
+This is an independent reimplementation, not a fork and not an official
+project. It is not affiliated with, endorsed by, or supported by the pre-commit
+project or its maintainers.
+
+The behavior it copies — the CLI, the config and manifest schemas, the cache
+layout, exit codes and output formatting — is the design of two MIT-licensed
+projects, and the file-type tag tables in `internal/identify` follow upstream
+`identify`'s data:
+
+- [pre-commit](https://github.com/pre-commit/pre-commit) — © 2014 pre-commit dev
+  team: Anthony Sottile, Ken Struys
+- [identify](https://github.com/pre-commit/identify) — © 2017 Chris Kuehl,
+  Anthony Sottile
+
+Their MIT license is reproduced in [NOTICE](NOTICE). Bugs you find here are
+this project's bugs, not theirs — please report them
+[here](https://github.com/blairham/go-pre-commit/issues) rather than upstream.
+
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](LICENSE), with third-party notices in [NOTICE](NOTICE).

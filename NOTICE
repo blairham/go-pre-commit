@@ -1,0 +1,51 @@
+go-pre-commit
+Copyright 2026 Blair Hamilton
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+--------------------------------------------------------------------------------
+
+This project is an independent Go reimplementation of the Python `pre-commit`
+framework. It is not affiliated with, endorsed by, or supported by the
+pre-commit project or its maintainers.
+
+Its observable behavior — the command-line interface, the `.pre-commit-config.yaml`
+and hook manifest schemas, environment-directory naming, cache layout, exit codes
+and output formatting — is deliberately modeled on the following MIT-licensed
+projects, and portions of this work are derived from them:
+
+  pre-commit — https://github.com/pre-commit/pre-commit
+
+    Copyright (c) 2014 pre-commit dev team: Anthony Sottile, Ken Struys
+
+  identify — https://github.com/pre-commit/identify
+
+    The file-type tag tables in internal/identify (extension, filename and
+    interpreter mappings) follow this project's data.
+
+    Copyright (c) 2017 Chris Kuehl, Anthony Sottile
+
+Both are distributed under the MIT License, reproduced in full below as required
+by its terms.
+
+--------------------------------------------------------------------------------
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
