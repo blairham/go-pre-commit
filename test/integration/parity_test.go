@@ -6,6 +6,9 @@
 //   - Go binary buildable from the repo root
 //
 // Run with: go test -v -tags=integration -timeout=600s ./test/integration/
+//
+//go:build integration
+
 package integration
 
 import (
@@ -94,6 +97,14 @@ func TestMain(m *testing.M) {
 	exitCode := m.Run()
 	printParityReport()
 	os.RemoveAll(tmp)
+
+	// A run that measured nothing passed every check it ran, which is how a
+	// suite of skips renders as a green job. Under PARITY_REQUIRE that is the
+	// failure it looks like everywhere else.
+	if exitCode == 0 && len(parityReport.results) == 0 && os.Getenv("PARITY_REQUIRE") != "" {
+		fmt.Fprintln(os.Stderr, "PARITY_REQUIRE is set but zero parity checks ran")
+		exitCode = 1
+	}
 	os.Exit(exitCode)
 }
 
@@ -121,6 +132,11 @@ func printParityReport() {
 	fmt.Fprintln(w, "                          PRE-COMMIT PARITY REPORT")
 	fmt.Fprintln(w, "================================================================================")
 	fmt.Fprintf(w, "  Generated: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	if pythonVer != "" {
+		fmt.Fprintf(w, "  Measured against: %s (%s)\n", pythonVer, pythonPath)
+	} else {
+		fmt.Fprintf(w, "  Measured against: NOTHING - no Python pre-commit was resolved\n")
+	}
 	fmt.Fprintf(w, "  Total checks: %d   Pass: %d   Fail: %d   Parity: %.1f%%\n", total, pass, fail, pct)
 	fmt.Fprintln(w, "================================================================================")
 
@@ -158,20 +174,22 @@ func printParityReport() {
 	repoRoot, _ := filepath.Abs(filepath.Join("..", ".."))
 	reportPath := filepath.Join(repoRoot, "test", "integration", "parity_report.json")
 	type jsonReport struct {
-		Generated string         `json:"generated"`
-		Total     int            `json:"total"`
-		Pass      int            `json:"pass"`
-		Fail      int            `json:"fail"`
-		Parity    string         `json:"parity"`
-		Results   []parityResult `json:"results"`
+		Generated       string         `json:"generated"`
+		MeasuredAgainst pythonInfo     `json:"measured_against"`
+		Total           int            `json:"total"`
+		Pass            int            `json:"pass"`
+		Fail            int            `json:"fail"`
+		Parity          string         `json:"parity"`
+		Results         []parityResult `json:"results"`
 	}
 	report := jsonReport{
-		Generated: time.Now().Format(time.RFC3339),
-		Total:     total,
-		Pass:      pass,
-		Fail:      fail,
-		Parity:    fmt.Sprintf("%.1f%%", pct),
-		Results:   parityReport.results,
+		Generated:       time.Now().Format(time.RFC3339),
+		MeasuredAgainst: pythonInfo{Version: pythonVer},
+		Total:           total,
+		Pass:            pass,
+		Fail:            fail,
+		Parity:          fmt.Sprintf("%.1f%%", pct),
+		Results:         parityReport.results,
 	}
 	data, _ := json.MarshalIndent(report, "", "  ")
 	os.WriteFile(reportPath, data, 0o644)
@@ -182,13 +200,117 @@ func printParityReport() {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// parityTarget is the Python pre-commit minor line this project claims parity
+// with, and it is the meaning of our own version number: v4.6.x means "behaves
+// like Python pre-commit 4.6.x". Comparing against any other line measures
+// something we are not claiming, so resolvePython refuses to do it.
+const parityTarget = "4.6"
+
+// pythonInfo describes the counterpart binary a parity run measured against.
+// It goes into the JSON report because a parity percentage without the version
+// it was taken against is not a claim anyone can check.
+type pythonInfo struct {
+	Version string `json:"version"`
+}
+
+var (
+	pythonOnce sync.Once
+	pythonPath string
+	pythonVer  string
+	pythonErr  error
+)
+
+// pythonPreCommit returns the path to the real Python pre-commit.
+//
+// The obvious implementation — LookPath("pre-commit") — is wrong here, and
+// wrong in the most expensive way: this project installs a binary called
+// pre-commit, so on any machine that has it, LookPath finds *us*. A parity
+// suite that silently diffs the tool against an older build of itself reports
+// a healthy-looking number that means nothing. (It did: the report committed
+// before this change recorded py="pre-commit 4.5.0 (build v4.5.3)", which is
+// this project's version format, not Python's.)
+//
+// So: walk every PATH entry rather than taking the first hit, and make each
+// candidate prove it is Python by its --version output.
 func pythonPreCommit(t *testing.T) string {
 	t.Helper()
-	path, err := exec.LookPath("pre-commit")
-	if err != nil {
-		t.Skip("Python pre-commit not found on PATH")
+	pythonOnce.Do(resolvePython)
+	if pythonErr != nil {
+		// In CI the whole point of the job is this comparison, so a missing or
+		// wrong counterpart is a failure. Locally it is a skip, because not
+		// every contributor wants a Python toolchain — but a loud one.
+		if os.Getenv("PARITY_REQUIRE") != "" {
+			t.Fatalf("PARITY_REQUIRE is set and no usable Python pre-commit was found: %v", pythonErr)
+		}
+		t.Skipf("skipping parity check: %v", pythonErr)
 	}
-	return path
+	return pythonPath
+}
+
+func resolvePython() {
+	var tried []string
+
+	check := func(path string) bool {
+		out, err := exec.Command(path, "--version").CombinedOutput()
+		if err != nil {
+			tried = append(tried, fmt.Sprintf("%s (--version failed: %v)", path, err))
+			return false
+		}
+		version := strings.TrimSpace(string(out))
+
+		// Our own binary stamps build metadata onto the version line; Python's
+		// prints "pre-commit X.Y.Z" and nothing else. That difference is the
+		// only reliable way to tell the two apart by execution alone.
+		if strings.Contains(version, "(build ") {
+			tried = append(tried, fmt.Sprintf("%s (this project, not Python: %q)", path, version))
+			return false
+		}
+
+		fields := strings.Fields(version)
+		if len(fields) < 2 || fields[0] != "pre-commit" {
+			tried = append(tried, fmt.Sprintf("%s (unrecognized --version output: %q)", path, version))
+			return false
+		}
+
+		if !strings.HasPrefix(fields[1], parityTarget+".") && fields[1] != parityTarget {
+			tried = append(tried, fmt.Sprintf("%s (version %s is not on the %s line this project claims parity with)",
+				path, fields[1], parityTarget))
+			return false
+		}
+
+		pythonPath, pythonVer = path, version
+		return true
+	}
+
+	// An explicit override wins, and fails loudly if it is not what it claims —
+	// silently falling back to a search would hide the operator's mistake.
+	if override := os.Getenv("PARITY_PYTHON_PRE_COMMIT"); override != "" {
+		if check(override) {
+			return
+		}
+		pythonErr = fmt.Errorf("PARITY_PYTHON_PRE_COMMIT=%s is unusable: %s", override, strings.Join(tried, "; "))
+		return
+	}
+
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, "pre-commit")
+		if info, err := os.Stat(candidate); err != nil || info.IsDir() {
+			continue
+		}
+		if check(candidate) {
+			return
+		}
+	}
+
+	detail := "no pre-commit found on PATH"
+	if len(tried) > 0 {
+		detail = "rejected every candidate: " + strings.Join(tried, "; ")
+	}
+	pythonErr = fmt.Errorf("Python pre-commit %s.x is required (set PARITY_PYTHON_PRE_COMMIT to point at it); %s",
+		parityTarget, detail)
 }
 
 func runCmd(t *testing.T, dir, name string, args ...string) (combined string, exitCode int) {
