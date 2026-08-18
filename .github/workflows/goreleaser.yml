@@ -3,7 +3,9 @@ name: Release
 on:
   push:
     tags:
-    - "v*"
+    # Full versions only. The moving major alias (v4) is a tag too, and matching
+    # "v*" would make every alias update kick off a second, duplicate release.
+    - "v[0-9]+.[0-9]+.[0-9]+*"
   workflow_dispatch:
     inputs:
       tag:
@@ -67,3 +69,20 @@ jobs:
         MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
         MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+    # `uses: blairham/go-pre-commit@v4` is the documented way to consume the
+    # composite action, and a documented path that does not resolve is worse
+    # than no documentation. Move the alias with every release rather than
+    # remembering to do it by hand.
+    - name: Move the major-version alias tag
+      env:
+        TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      run: |
+        major="${TAG%%.*}"          # v4.6.7 -> v4
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git tag "$major" "$TAG^{}" --force
+        # Retire the old alias, then publish the new one. Deleting first keeps
+        # this a plain create rather than a rewrite of a ref someone may be
+        # resolving right now.
+        git push origin ":refs/tags/$major" || true
+        git push origin "refs/tags/$major"

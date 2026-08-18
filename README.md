@@ -5,18 +5,49 @@
 [![GoDoc](https://pkg.go.dev/badge/github.com/blairham/go-pre-commit/v4)](https://pkg.go.dev/github.com/blairham/go-pre-commit/v4)
 [![License](https://img.shields.io/github/license/blairham/go-pre-commit)](https://github.com/blairham/go-pre-commit/blob/main/LICENSE)
 
-A Go reimplementation of [pre-commit](https://github.com/pre-commit/pre-commit) — a framework for managing and maintaining multi-language pre-commit hooks.
+**Run your existing pre-commit hooks without installing Python.**
 
-## Features
+Same `.pre-commit-config.yaml`, same hook repositories, same commands — as a
+single binary. An independent Go reimplementation of
+[pre-commit](https://github.com/pre-commit/pre-commit), not a fork and not
+affiliated with it.
 
-- **Drop-in replacement** — identical CLI interface to the Python pre-commit tool
-- **22 supported languages**: Python, Node, Go, Ruby, Rust, Docker, Docker Image, Conda, Coursier, Dart, Dotnet, Haskell, Julia, Lua, Perl, R, Swift, Fail, Pygrep, System, Script, Python venv
-- **All hook types**: pre-commit, pre-merge-commit, pre-push, commit-msg, post-checkout, post-commit, post-merge, post-rewrite, prepare-commit-msg, pre-rebase
+Measured against Python pre-commit 4.6.2 on every pull request:
+**78 of 78 differential checks pass** ([how that is measured](docs/parity.md)).
+
+## Is this for you?
+
+Probably not, and that is worth two minutes of your time:
+**[should you use this instead of Python pre-commit?](docs/comparison.md)**
+
+The short version — if you already have Python and pre-commit working, keep
+them. The case for this tool is a repo whose *only* reason to install a Python
+toolchain is to run its hooks.
+
+## What it does
+
+- **Drop-in** — the same CLI, config format, hook repositories and cache
+  location as the Python tool
+- **One binary** — no interpreter, no virtualenv, no `pip`
+- **All hook types**: pre-commit, pre-merge-commit, pre-push, commit-msg,
+  post-checkout, post-commit, post-merge, post-rewrite, prepare-commit-msg,
+  pre-rebase
+- **22 languages** implemented — though not equally proven; the
+  [parity grading](docs/parity.md#language-support-graded) says which are
+  well-trodden and which you would be the first to try
 - **File type identification** by extension, filename, and shebang
 - **Parallel hook execution** with xargs-style batching
-- **Automatic caching** of hook repositories
 
 ## Installation
+
+> **It installs a binary called `pre-commit`, and that is deliberate.**
+> `pre-commit install` writes a git hook that invokes `pre-commit` by name, so a
+> drop-in has to answer to that name. On Homebrew it shadows
+> `homebrew/core/pre-commit`, and `brew` will say so. If you keep both tools,
+> know which one you are getting: `pre-commit --version` prints a `(build …)`
+> suffix here and nothing of the sort upstream. The cache directory is shared
+> with the Python tool too — details, including what `clean` removes, are in
+> [docs/parity.md](docs/parity.md#deliberate-behaviors-that-surprise-people).
 
 ### Homebrew
 
@@ -62,13 +93,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: blairham/go-pre-commit@main
+      - uses: blairham/go-pre-commit@v4
 ```
 
 Inputs:
 
 ```yaml
-      - uses: blairham/go-pre-commit@main
+      - uses: blairham/go-pre-commit@v4
         with:
           version: latest         # release to install, e.g. "v4.6.6"
           extra_args: --all-files # passed to `pre-commit run`
@@ -204,7 +235,19 @@ git tag v4.6.7
 git push origin v4.6.7
 ```
 
+The release workflow also moves the `v4` alias tag to the new release, which is
+what `uses: blairham/go-pre-commit@v4` resolves to. Its tag trigger deliberately
+matches full versions only, so moving the alias does not start a second release.
+
 CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub release, and updates the Homebrew formula in [blairham/homebrew-tap](https://github.com/blairham/homebrew-tap) automatically. Versions track upstream parity: `v4.6.x` means feature parity with Python pre-commit 4.6.
+
+## Documentation
+
+| | |
+|---|---|
+| [Should you use this?](docs/comparison.md) | The case for staying on Python pre-commit, and the narrow case against it |
+| [Parity](docs/parity.md) | What is measured, what is not, and which languages are actually proven |
+| [Stability](docs/stability.md) | What the version number means, and what is frozen |
 
 ## Attribution
 
