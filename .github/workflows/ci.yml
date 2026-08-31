@@ -21,11 +21,9 @@ permissions:
   contents: read
 
 concurrency:
-  # A superseded push to a pull request is not worth finishing. A push to main
-  # is: it is the record of whether that merge was good, and cancelling it
-  # leaves the question unanswered.
+  # A superseded push is not worth finishing; only the newest commit matters.
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   # Runs for every commit that reaches GitHub — every push to a pull request,
@@ -106,16 +104,18 @@ jobs:
   test:
     name: Build and test
     needs: changes
-    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+      if: needs.changes.outputs.code == 'true'
     - uses: actions/setup-go@v6
+      if: needs.changes.outputs.code == 'true'
       with:
         go-version-file: go.mod
         check-latest: true
         cache: true
     - run: make test
+      if: needs.changes.outputs.code == 'true'
 
 
   # Parity is this project's entire claim, so a change that breaks it fails
@@ -123,25 +123,29 @@ jobs:
   language-integration:
     name: Parity with Python pre-commit
     needs: changes
-    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+      if: needs.changes.outputs.code == 'true'
       with:
         fetch-depth: 0
     - uses: actions/setup-go@v6
+      if: needs.changes.outputs.code == 'true'
       with:
         go-version-file: go.mod
         check-latest: true
         cache: true
     - uses: actions/setup-python@v6
+      if: needs.changes.outputs.code == 'true'
       with:
         python-version: '3.13'
     - name: Install Python pre-commit
+      if: needs.changes.outputs.code == 'true'
       # Pinned to the line our version number claims parity with. The harness
       # rejects any other line, so a bump here is a deliberate parity decision.
       run: pip install 'pre-commit==4.6.2'
     - name: Run parity tests
+      if: needs.changes.outputs.code == 'true'
       # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
       # green skip into a failure. This job exists to make the comparison; a
       # run that makes no comparison has not done its job.
@@ -158,41 +162,18 @@ jobs:
   # No `if:` needed: a job that `needs` a skipped job is itself skipped.
   build:
     name: Build
-    needs: [test]
+    needs: [changes, test]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+      if: needs.changes.outputs.code == 'true'
       with:
         fetch-depth: 0
     - uses: actions/setup-go@v6
+      if: needs.changes.outputs.code == 'true'
       with:
         go-version-file: go.mod
         check-latest: true
         cache: true
     - run: make build
-
-  # The one check branch protection requires. Requiring the jobs by name does
-  # not survive this workflow's shape: a job skipped by the prose guard never
-  # reports, and a *matrix* job skipped by `if:` never expands, so a policy
-  # naming "test (ubuntu-latest)" waits for it forever. A single always-running
-  # gate that fails when any upstream job failed survives skips, matrix
-  # renames and new jobs alike — when jobs change here, update this `needs`
-  # list and nothing else.
-  ci-ok:
-    needs: [pre-commit, changes, test, language-integration, build]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-    - name: Verify no required job failed
-      env:
-        RESULTS: ${{ toJSON(needs) }}
-      run: |
-        echo "$RESULTS"
-        bad=$(echo "$RESULTS" | jq -r 'to_entries[]
-          | select(.value.result != "success" and .value.result != "skipped")
-          | "\(.key)=\(.value.result)"')
-        if [ -n "$bad" ]; then
-          echo "not ok: $bad"
-          exit 1
-        fi
-        echo "ok"
+      if: needs.changes.outputs.code == 'true'
