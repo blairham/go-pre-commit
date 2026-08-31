@@ -36,6 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+      with:
+        # `--new-from-merge-base` needs the base branch's history to find the
+        # common ancestor; a shallow clone has none of it.
+        fetch-depth: 0
     - uses: actions/setup-go@v6
       with:
         go-version-file: go.mod
@@ -47,8 +51,20 @@ jobs:
       # this project's product, and the hook reporting nothing against a clean
       # checkout is beside the point — that it *builds and runs* is the thing
       # under test, and this is the one job that runs the action from the
-      # checkout. The Lint job still gates the change itself.
+      # checkout. The step below is what gates the change itself.
       uses: ./
+    - name: Assert the lint base is present
+      # A base ref that does not resolve makes golangci-lint print `0 issues`
+      # and exit 0 — measured. Without this, losing `fetch-depth: 0` above
+      # would turn the lint below into a silent pass, which is the failure
+      # this whole change exists to end.
+      run: git rev-parse --verify origin/main >/dev/null
+    - name: Lint what this change introduces
+      # Same config, same pin, same hook — asked the narrower question:
+      # only what this change introduced, not the repository's backlog.
+      uses: ./
+      with:
+        extra_args: --hook-stage manual golangci-lint-new --all-files
 
   # Gating happens inside the jobs, never with a workflow-level `paths:`
   # filter: a required check that never runs reports as *pending forever*
