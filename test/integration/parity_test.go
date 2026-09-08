@@ -848,6 +848,57 @@ func TestRun(t *testing.T) {
 			fmt.Sprintf("py=%d go=%d", len(pyHooks), len(goHooks)))
 	})
 
+	// `--files a b c` is the ordinary way to scope a run, and upstream declares
+	// the flag with argparse's nargs='*' so one flag swallows every following
+	// path. This tool bound one value per occurrence, so the second path fell
+	// through as a stray positional and the run died with "expected at most 1
+	// argument" without touching a file. Nothing in this suite compared a
+	// multi-path invocation, so 78/78 stayed green while the most common
+	// non-trivial form of the flag was broken.
+	t.Run("--files takes several paths", func(t *testing.T) {
+		pyRepo := initTestRepo(t, standardCfg, "hello\n")
+		goRepo := initTestRepo(t, standardCfg, "hello\n")
+
+		for _, repo := range []string{pyRepo, goRepo} {
+			for _, name := range []string{"a.txt", "b.txt"} {
+				if err := os.WriteFile(filepath.Join(repo, name), []byte("x   \n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.Command("git", "add", ".")
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git add failed: %v\n%s", err, out)
+			}
+		}
+
+		pyOut, pyExit := runCmd(t, pyRepo, pyBin,
+			"run", "trailing-whitespace", "--color=never", "--files", "a.txt", "b.txt")
+		goOut, goExit := runCmd(t, goRepo, goBinary,
+			"run", "trailing-whitespace", "--color=never", "--files", "a.txt", "b.txt")
+
+		addExitResult("run", "--files with several paths exits alike", pyExit, goExit,
+			(pyExit != 0) == (goExit != 0),
+			fmt.Sprintf("py=%d go=%d", pyExit, goExit))
+
+		// The regression was a parse error, so assert the run actually happened
+		// rather than only that the exit codes agree.
+		addOutputResult("run", "--files with several paths does not fail to parse",
+			!strings.Contains(goOut, "expected at most"),
+			fmt.Sprintf("go output=%q", goOut))
+		_ = pyOut
+
+		// Both paths must be fixed. Fixing only the first is the exact shape of
+		// the bug this guards.
+		for _, name := range []string{"a.txt", "b.txt"} {
+			py := readFile(filepath.Join(pyRepo, name))
+			goC := readFile(filepath.Join(goRepo, name))
+			addFSResult("run", fmt.Sprintf("--files fixed %s", name),
+				py == goC && goC == "x\n",
+				fmt.Sprintf("py=%q go=%q", py, goC))
+		}
+	})
+
 	t.Run("verbose flag", func(t *testing.T) {
 		pyRepo := initTestRepo(t, standardCfg, "hello\n")
 		goRepo := initTestRepo(t, standardCfg, "hello\n")
