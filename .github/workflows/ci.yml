@@ -218,3 +218,122 @@ jobs:
         cache: true
     - run: make build
       if: needs.changes.outputs.code == 'true'
+
+  # The composite action is published to the Marketplace and its README offers
+  # it to Linux, macOS and Windows runners, but only Linux had ever run it: the
+  # `pre-commit` job above uses `./`, and nothing else did. The macOS and
+  # Windows halves of the install script -- `shasum` where there is no
+  # `sha256sum`, `7z` and the `.zip` archive, the Darwin/Windows names -- were
+  # shipped unexecuted. This runs them.
+  #
+  # Note what this measures: the action installs the *released* binary, so this
+  # job tests the install path and the current release, not the code in the
+  # pull request. That is the intended scope -- "does the thing we publish work
+  # where we say it does".
+  action:
+    name: Action (${{ matrix.os }})
+    needs: pre-commit
+    strategy:
+      # One runner's failure must not hide the other's; a Windows-only break is
+      # the most likely kind here and the least likely to be noticed.
+      fail-fast: false
+      matrix:
+        # Linux is deliberately absent: the `pre-commit` job already runs the
+        # action on ubuntu-latest for every commit, so repeating it here would
+        # buy a third runner and no coverage. macos-latest is arm64 and
+        # windows-latest is x64, which is every published archive these runners
+        # can ask for.
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install through the action
+      uses: ./
+      with:
+        # The run step is exercised separately below against a config small
+        # enough to reason about. This repo's own hook set needs a Go
+        # toolchain and would be testing something else.
+        install-only: 'true'
+        cache: 'false'
+
+    - name: The binary is on PATH and reports its version
+      shell: bash
+      run: |
+        set -euo pipefail
+        pre-commit --version
+        # A drop-in that answers to the name is the whole contract, so assert
+        # the name resolves rather than trusting the step above to have failed.
+        command -v pre-commit
+
+    - name: A hook with no environment runs, and changes a file
+      # pygrep needs no installed environment, so this is the part of the tool
+      # that works on every platform. It is the Windows leg's real assertion.
+      shell: bash
+      run: |
+        set -euo pipefail
+        tmp="$(mktemp -d)"
+        cd "$tmp"
+        git init -q .
+        git config user.email ci@example.com
+        git config user.name CI
+        cat > .pre-commit-config.yaml <<'YAML'
+        repos:
+        -   repo: local
+            hooks:
+            -   id: no-todo
+                name: no TODO markers
+                language: pygrep
+                entry: TODO
+        YAML
+        printf 'clean line\n' > ok.txt
+        printf 'TODO fix me\n' > bad.txt
+        git add -A
+
+        # pygrep fails when the pattern matches, so a pass means it did nothing.
+        if pre-commit run --all-files --color=never; then
+          echo "::error::pygrep passed on a file containing the pattern" >&2
+          exit 1
+        fi
+        echo "pygrep hook ran and matched"
+
+    - name: A hook that builds an environment runs, and changes a file
+      # Every language backend that installs an environment hardcodes a `bin`
+      # directory. A Windows virtualenv puts its executables in `Scripts`, so
+      # python, node, ruby and golang hooks all fail there with
+      # `py_env-default\bin\pip: executable file not found`. That is issue
+      # #53; until it is fixed this step would be a permanent red X on
+      # Windows rather than a signal, so it asserts where it can and the
+      # limitation is documented rather than hidden.
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        tmp="$(mktemp -d)"
+        cd "$tmp"
+        git init -q .
+        git config user.email ci@example.com
+        git config user.name CI
+        cat > .pre-commit-config.yaml <<'YAML'
+        repos:
+        -   repo: https://github.com/pre-commit/pre-commit-hooks
+            rev: v5.0.0
+            hooks:
+            -   id: trailing-whitespace
+        YAML
+        printf 'x   \n' > f.txt
+        git add -A
+
+        # The hook fixes the file, so a passing run means it did nothing.
+        if pre-commit run --all-files --color=never; then
+          echo "::error::trailing-whitespace passed on a file that needed fixing" >&2
+          exit 1
+        fi
+
+        # Exit codes are cheap to get right by accident. The file is not.
+        got="$(cat f.txt)"
+        if [ "$got" != "x" ]; then
+          echo "::error::whitespace was not fixed; f.txt is $(od -c f.txt | head -1)" >&2
+          exit 1
+        fi
+        echo "hook environment built, hook ran, file fixed"

@@ -86,9 +86,33 @@ claim than "supported".
 
 ## Platform support
 
-CI is `ubuntu-latest` only. Releases ship macOS and Windows archives, and macOS
-is used daily by the maintainer. **Windows has never been exercised by anyone**;
-it builds, and that is the extent of what is known.
+| Platform | State |
+|---|---|
+| Linux | Every check on this page runs here on every pull request. |
+| macOS | The composite action is exercised on `macos-latest` (arm64) each run, installing and running a real `python` hook. Used daily by the maintainer. |
+| Windows | **Hooks that need an installed environment do not work.** See below. |
+
+**Windows is not merely untested — it is known broken for most hooks.** Every
+language backend that installs an environment hardcodes a `bin` directory, and
+a Windows virtualenv puts its executables in `Scripts`. So a `python` hook fails
+during install:
+
+```
+failed to install environment for hook "trailing-whitespace":
+  pip install failed: exec: "...\py_env-default\bin\pip":
+  executable file not found in %PATH%
+```
+
+`node`, `ruby` and `golang` share the same assumption and fail the same way.
+
+What *does* work on Windows, and is asserted in CI on every run: installing the
+binary through the composite action, `pre-commit --version`, and hooks whose
+language needs no environment — `pygrep`, `fail`, `system` and `script`. If your
+hooks are all `system` or `script`, Windows is usable today. If any of them is
+`python` or `node`, it is not.
+
+This is tracked in [#53](https://github.com/blairham/go-pre-commit/issues/53) and is not a parity decision — upstream works on Windows and
+this does not, which makes it a bug rather than a difference.
 
 ## Deliberate behaviors that surprise people
 

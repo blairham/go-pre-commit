@@ -59,6 +59,11 @@ brew install blairham/tap/pre-commit
 
 Download the latest release from the [Releases page](https://github.com/blairham/go-pre-commit/releases). Archives are available for Linux, macOS, and Windows (amd64/arm64).
 
+> **On Windows, hooks that install an environment do not work yet** (`python`,
+> `node`, `ruby`, `golang`). The binary installs and runs, and `system`,
+> `script`, `pygrep` and `fail` hooks work. See
+> [platform support](docs/parity.md#platform-support).
+
 ```bash
 # Example: macOS arm64
 curl -Lo pre-commit.tar.gz https://github.com/blairham/go-pre-commit/releases/latest/download/pre-commit_Darwin_arm64.tar.gz
