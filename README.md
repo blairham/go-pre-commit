@@ -248,6 +248,8 @@ CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub rele
 | [Should you use this?](docs/comparison.md) | The case for staying on Python pre-commit, and the narrow case against it |
 | [Parity](docs/parity.md) | What is measured, what is not, and which languages are actually proven |
 | [Stability](docs/stability.md) | What the version number means, and what is frozen |
+| [Contributing](CONTRIBUTING.md) | How to report a divergence — the most useful thing you can send |
+| [Security](SECURITY.md) | What is in scope, and how to report privately |
 
 ## Attribution
 
@@ -268,6 +270,17 @@ projects, and the file-type tag tables in `internal/identify` follow upstream
 Their MIT license is reproduced in [NOTICE](NOTICE). Bugs you find here are
 this project's bugs, not theirs — please report them
 [here](https://github.com/blairham/go-pre-commit/issues) rather than upstream.
+
+## Contributing
+
+The most valuable contribution is a **divergence report**: upstream does X,
+this does Y, with both commands and both outputs. That is the one thing this
+project cannot generate for itself — see
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+Divergence is a bug here, never a feature. If you want behavior Python
+pre-commit does not have, [upstream](https://github.com/pre-commit/pre-commit)
+is the place to ask; if they ship it, it arrives here as parity work.
 
 ## License
 
