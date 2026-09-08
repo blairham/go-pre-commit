@@ -255,6 +255,7 @@ CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub rele
 | [Stability](docs/stability.md) | What the version number means, and what is frozen |
 | [Contributing](CONTRIBUTING.md) | How to report a divergence — the most useful thing you can send |
 | [Security](SECURITY.md) | What is in scope, and how to report privately |
+| [Launch playbook](docs/announcement.md) | What is claimed, what is not, and the weak points stated up front |
 
 ## Attribution
 
