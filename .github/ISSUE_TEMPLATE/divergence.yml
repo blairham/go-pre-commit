@@ -1,0 +1,83 @@
+name: Divergence from Python pre-commit
+description: This tool behaves differently from upstream pre-commit. The most useful report you can file.
+title: "divergence: "
+labels: ["divergence"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project has one job: behave like Python pre-commit. A difference
+        between the two is a bug here, even when the difference looks like an
+        improvement.
+
+        The most useful report is **two commands and their two outputs.**
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What upstream pre-commit does
+      description: The command you ran against Python pre-commit, and its output.
+      render: console
+      placeholder: |
+        $ python -m pre_commit run trailing-whitespace --all-files
+        Trim Trailing Whitespace.................................................Passed
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What this tool does
+      description: The same command against this tool, and its output.
+      render: console
+      placeholder: |
+        $ pre-commit run trailing-whitespace --all-files
+        Trim Trailing Whitespace.................................................Failed
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: .pre-commit-config.yaml
+      description: The config, if the behavior depends on it. Trim it to the smallest version that still shows the difference.
+      render: yaml
+    validations:
+      required: false
+
+  - type: input
+    id: version-ours
+    attributes:
+      label: This tool's version
+      description: Output of `pre-commit --version` — it prints a `(build …)` suffix, which is how you know you ran this one.
+      placeholder: "pre-commit 4.6.6 (build ...)"
+    validations:
+      required: true
+
+  - type: input
+    id: version-upstream
+    attributes:
+      label: Upstream version compared against
+      placeholder: "4.6.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Note on platforms:** Linux and macOS are exercised in CI. Windows
+        builds and is smoke-tested, but is far less trodden — a Windows-only
+        report is still welcome and useful.

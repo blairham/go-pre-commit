@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Feature request for pre-commit itself
+    url: https://github.com/pre-commit/pre-commit/issues
+    about: This project deliberately has no features upstream lacks. Divergence is a bug here, so a new capability has to land upstream first — asking there helps everyone, and it arrives here as parity work.
+  - name: Question or idea
+    url: https://github.com/blairham/go-pre-commit/discussions
+    about: Not sure it is a bug, or want to talk something through first? Discussions is the better room.
+  - name: Should I use this at all?
+    url: https://github.com/blairham/go-pre-commit/blob/main/docs/comparison.md
+    about: An honest comparison that leads with the case for staying on Python pre-commit.
+  - name: Report a security vulnerability
+    url: https://github.com/blairham/go-pre-commit/security/advisories/new
+    about: Please report privately rather than in a public issue.

@@ -1,0 +1,75 @@
+name: Bug report
+description: Something is broken in a way that is not a difference from upstream (a crash, a wrong exit code, a packaging problem).
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the problem is that this tool behaves *differently from Python
+        pre-commit*, please use the **Divergence** template instead — it asks
+        for the comparison that makes the report actionable.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include the full output, and the command that produced it.
+      render: console
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A scratch repo and the exact commands beats a description. If you cannot reproduce it reliably, say so — that is useful information rather than a reason not to file.
+      placeholder: |
+        1. git init scratch && cd scratch
+        2. cat > .pre-commit-config.yaml <<'YAML'
+           ...
+           YAML
+        3. pre-commit run --all-files
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `pre-commit --version`.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - Homebrew (blairham/tap)
+        - Release archive
+        - go install
+        - Built from source
+        - GitHub Action (blairham/go-pre-commit@v4)
+    validations:
+      required: true

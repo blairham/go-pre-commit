@@ -1,0 +1,64 @@
+name: Language backend report
+description: A language backend is broken, or you want to help move one from "untested" to "proven".
+title: "language: "
+labels: ["language-backend"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ten of the 22 language backends are implemented but effectively
+        unexercised — see the
+        [grading table](https://github.com/blairham/go-pre-commit/blob/main/docs/parity.md#language-support-graded).
+
+        If you are the first person to try one of those, you are doing the
+        project a favor either way: it working is worth knowing, and it not
+        working is worth knowing sooner.
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Which language backend
+      options:
+        - conda
+        - coursier
+        - dart
+        - docker
+        - docker_image
+        - dotnet
+        - fail
+        - golang
+        - haskell
+        - julia
+        - lua
+        - node
+        - perl
+        - pygrep
+        - python
+        - r
+        - ruby
+        - rust
+        - script
+        - swift
+        - system
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of report is this
+      options:
+        - It is broken
+        - It works (confirming an untested backend)
+        - I want to add test coverage for it
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: Details
+      description: The hook config you used, and what happened. If it works, saying so plainly is enough.
+    validations:
+      required: true
