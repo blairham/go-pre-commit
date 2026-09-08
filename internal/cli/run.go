@@ -61,7 +61,7 @@ func (c *RunCommand) Run(args []string) int {
 	opts.Jobs = runtime.NumCPU()
 
 	p := flags.NewParser(&opts, flags.HelpFlag|flags.PassDoubleDash)
-	remaining, err := p.ParseArgs(args)
+	remaining, err := p.ParseArgs(expandFilesFlag(args))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
@@ -244,7 +244,7 @@ Usage: pre-commit run [options] [hook-id]
 Options:
 
   -a, --all-files              Run on all files in the repo.
-      --files=FILE             Specific filenames to run hooks on.
+      --files [FILES ...]      Specific filenames to run hooks on.
       --show-diff-on-failure   When hooks fail, show the diff of changes.
       --hook-stage=STAGE       The stage during which the hook is fired.
       --from-ref=REF           Ref to check revision changes.

@@ -56,7 +56,7 @@ type tryRepoFlags struct {
 
 func (c *TryRepoCommand) Run(args []string) int {
 	var opts tryRepoFlags
-	remaining, err := flags.ParseArgs(&opts, args)
+	remaining, err := flags.ParseArgs(&opts, expandFilesFlag(args))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
@@ -227,7 +227,7 @@ Options:
 
       --ref=REF                  Manually select a ref to run against (default: HEAD).
   -a, --all-files                Run on all files in the repo.
-      --files=FILE               Specific filenames to run hooks on.
+      --files [FILES ...]        Specific filenames to run hooks on.
   -v, --verbose                  Produce hook output regardless of success.
       --hook-stage=STAGE         The stage during which the hook runs.
       --show-diff-on-failure     When hooks fail, show the diff of changes.
