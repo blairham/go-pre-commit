@@ -111,7 +111,7 @@ language needs no environment — `pygrep`, `fail`, `system` and `script`. If yo
 hooks are all `system` or `script`, Windows is usable today. If any of them is
 `python` or `node`, it is not.
 
-This is tracked and is not a parity decision — upstream works on Windows and
+This is tracked in [#53](https://github.com/blairham/go-pre-commit/issues/53) and is not a parity decision — upstream works on Windows and
 this does not, which makes it a bug rather than a difference.
 
 ## Deliberate behaviors that surprise people

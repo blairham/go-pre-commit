@@ -301,8 +301,8 @@ jobs:
       # Every language backend that installs an environment hardcodes a `bin`
       # directory. A Windows virtualenv puts its executables in `Scripts`, so
       # python, node, ruby and golang hooks all fail there with
-      # `py_env-default\bin\pip: executable file not found`. That is tracked
-      # separately; until it is fixed this step would be a permanent red X on
+      # `py_env-default\bin\pip: executable file not found`. That is issue
+      # #53; until it is fixed this step would be a permanent red X on
       # Windows rather than a signal, so it asserts where it can and the
       # limitation is documented rather than hidden.
       if: runner.os != 'Windows'
