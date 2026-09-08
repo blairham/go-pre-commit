@@ -23,6 +23,12 @@ The report records the version it measured against, because a parity percentage
 without that version is not a claim anyone can check. If it reads
 `Measured against: NOTHING`, no comparison happened and the number is void.
 
+A check that does not match **fails the run**, so a change that introduces a
+divergence is rejected before review rather than quietly lowering this number.
+That is worth stating because it was not always true: the comparisons used to be
+printed and counted but never asserted, which meant a regression could land
+under a green job and a 100% headline.
+
 Run it yourself:
 
 ```bash

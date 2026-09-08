@@ -95,8 +95,19 @@ func TestMain(m *testing.M) {
 	}
 
 	exitCode := m.Run()
-	printParityReport()
+	failed := printParityReport()
 	os.RemoveAll(tmp)
+
+	// A recorded mismatch is a divergence from upstream, which is the one bug
+	// class this project exists to prevent -- so it fails the run. Until this
+	// existed the checks were only ever printed: every Go assertion passed
+	// whatever the comparison said, so a regression lowered the number in the
+	// report and left the job green. That is how `--files a b` shipped broken
+	// under a 78/78 headline.
+	if exitCode == 0 && failed > 0 {
+		fmt.Fprintf(os.Stderr, "\n%d parity check(s) diverged from Python pre-commit; see the report above\n", failed)
+		exitCode = 1
+	}
 
 	// A run that measured nothing passed every check it ran, which is how a
 	// suite of skips renders as a green job. Under PARITY_REQUIRE that is the
@@ -108,7 +119,9 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-func printParityReport() {
+// printParityReport writes the human-readable report and the JSON artifact,
+// and returns the number of checks that did not match.
+func printParityReport() int {
 	parityReport.mu.Lock()
 	defer parityReport.mu.Unlock()
 
@@ -194,6 +207,8 @@ func printParityReport() {
 	data, _ := json.MarshalIndent(report, "", "  ")
 	os.WriteFile(reportPath, data, 0o644)
 	fmt.Fprintf(w, "\n  JSON report: %s\n", reportPath)
+
+	return fail
 }
 
 // ---------------------------------------------------------------------------
