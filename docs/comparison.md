@@ -14,7 +14,11 @@ reimplementation that oversells itself wastes your afternoon and earns nothing.
   system, script, pygrep and fail are proven here. Julia, Swift, R, Haskell and
   friends are implemented but effectively unexercised — see
   [parity.md](parity.md) for the grading.
-- **You need Windows.** It builds. Nobody has run it there.
+- **You need Windows.** Hooks that install an environment -- `python`, `node`,
+  `ruby`, `golang` -- are known broken there; the backends look for `bin`
+  where Windows puts `Scripts`. Only `system`, `script`, `pygrep` and `fail`
+  hooks work. Upstream works on Windows, so this is a bug and not a
+  difference of opinion -- but it is a bug you would hit on day one.
 - **You want the guarantee that the tool matches the docs at pre-commit.com.**
   Only one implementation can promise that, and it is not this one.
 
