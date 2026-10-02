@@ -58,9 +58,10 @@ func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs []str
 
 	cmd := exec.CommandContext(ctx, resolvedBin, cmdArgs...)
 	cmd.Dir = dir
-	// Put custom env vars first so our PATH takes precedence (mirrors Python's
-	// envcontext behavior of replacing os.environ entries).
-	cmd.Env = append(append([]string{}, env...), os.Environ()...)
+	// Custom env vars go last: exec keeps the last value of a repeated key
+	// (case-insensitively on Windows), so this is what replaces os.environ's
+	// PATH for the child, as Python's envcontext does. First, they lost.
+	cmd.Env = append(os.Environ(), env...)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
@@ -131,8 +132,7 @@ func lookPathInEnv(name string, env []string) (string, error) {
 		if strings.HasPrefix(e, "PATH=") {
 			pathVal := strings.TrimPrefix(e, "PATH=")
 			for _, dir := range filepath.SplitList(pathVal) {
-				full := filepath.Join(dir, name)
-				if info, err := os.Stat(full); err == nil && !info.IsDir() {
+				if full, ok := findInDir(dir, name); ok {
 					return full, nil
 				}
 			}
@@ -145,8 +145,7 @@ func lookPathInEnv(name string, env []string) (string, error) {
 // FindExecutable looks for an executable in the given paths.
 func FindExecutable(name string, paths ...string) (string, error) {
 	for _, dir := range paths {
-		full := filepath.Join(dir, name)
-		if info, err := os.Stat(full); err == nil && !info.IsDir() {
+		if full, ok := findInDir(dir, name); ok {
 			return full, nil
 		}
 	}
@@ -172,4 +171,38 @@ func venvBinDirFor(goos, envDir string) string {
 		return filepath.Join(envDir, "Scripts")
 	}
 	return filepath.Join(envDir, "bin")
+}
+
+// findInDir reports the file dir/name would run as. On Windows a bare name
+// runs as name plus one of PATHEXT's extensions — a pip console script is
+// trailing-whitespace-fixer.exe — so each is tried, as exec.LookPath does.
+func findInDir(dir, name string) (string, bool) {
+	for _, candidate := range executableNames(runtime.GOOS, name, os.Getenv("PATHEXT")) {
+		full := filepath.Join(dir, candidate)
+		if info, err := os.Stat(full); err == nil && !info.IsDir() {
+			return full, true
+		}
+	}
+	return "", false
+}
+
+// executableNames lists the file names a command name can resolve to. A name
+// that already has an extension is tried as is first, as Windows does.
+func executableNames(goos, name, pathext string) []string {
+	if goos != "windows" {
+		return []string{name}
+	}
+	if pathext == "" {
+		pathext = ".COM;.EXE;.BAT;.CMD"
+	}
+	var names []string
+	if filepath.Ext(name) != "" {
+		names = append(names, name)
+	}
+	for _, ext := range strings.Split(pathext, ";") {
+		if ext = strings.ToLower(strings.TrimSpace(ext)); ext != "" {
+			names = append(names, name+ext)
+		}
+	}
+	return names
 }

@@ -405,9 +405,18 @@ jobs:
           printf '{"a":1,\n  "b":2}\n' > ugly.json
           git add -A
 
+          # A hook that cannot start also exits non-zero, so the exit code
+          # alone cannot tell "rejected the input" from "never ran". The
+          # status line can: Failed is a verdict, Error is a hook that broke.
           fails() {
-            if pre-commit run "$1" --all-files --color=never; then
+            if out="$(pre-commit run "$1" --all-files --color=never 2>&1)"; then
+              echo "$out"
               echo "::error::$1 passed on input it must reject" >&2
+              exit 1
+            fi
+            echo "$out"
+            if ! grep -qE '\.Failed$' <<<"$out" || grep -q '\[ERROR\]' <<<"$out"; then
+              echo "::error::$1 did not run to a verdict" >&2
               exit 1
             fi
             echo "$1 ran and rejected its input"

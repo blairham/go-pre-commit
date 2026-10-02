@@ -51,3 +51,19 @@ func TestNodeEnvVarsFor(t *testing.T) {
 		}
 	}
 }
+
+func TestExecutableNames(t *testing.T) {
+	for _, tc := range []struct {
+		goos, name, pathext string
+		want                []string
+	}{
+		{"linux", "pip", ".EXE", []string{"pip"}},
+		{"windows", "pip", ".COM;.EXE;.CMD", []string{"pip.com", "pip.exe", "pip.cmd"}},
+		{"windows", "prettier.cmd", ".EXE", []string{"prettier.cmd", "prettier.cmd.exe"}},
+		{"windows", "node", "", []string{"node.com", "node.exe", "node.bat", "node.cmd"}},
+	} {
+		if got := executableNames(tc.goos, tc.name, tc.pathext); !slices.Equal(got, tc.want) {
+			t.Errorf("executableNames(%q, %q, %q) = %q, want %q", tc.goos, tc.name, tc.pathext, got, tc.want)
+		}
+	}
+}
