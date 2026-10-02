@@ -14,9 +14,6 @@ import (
 	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
 
-// Version is the current version of go-pre-commit, set via ldflags at build time.
-var Version = "4.6.0"
-
 // Default file names.
 const (
 	ConfigFile   = ".pre-commit-config.yaml"
