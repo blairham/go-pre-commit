@@ -1,7 +1,9 @@
 name: go-pre-commit
+# The Marketplace listing shows this verbatim and rejects one over 125
+# characters. It opens with the README's first line; keep the two in step.
 description: >-
-  Install go-pre-commit (a fast Go reimplementation of pre-commit) and run
-  hooks. Drop-in replacement for pre-commit/action with no Python setup.
+  Run your existing pre-commit hooks without installing Python. A drop-in for
+  pre-commit/action.
 author: blairham
 branding:
   icon: check-circle
