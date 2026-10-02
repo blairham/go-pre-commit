@@ -298,14 +298,9 @@ jobs:
           echo "pygrep hook ran and matched"
 
       - name: A hook that builds an environment runs, and changes a file
-        # Every language backend that installs an environment hardcodes a `bin`
-        # directory. A Windows virtualenv puts its executables in `Scripts`, so
-        # python, node, ruby and golang hooks all fail there with
-        # `py_env-default\bin\pip: executable file not found`. That is issue
-        # #53; until it is fixed this step would be a permanent red X on
-        # Windows rather than a signal, so it asserts where it can and the
-        # limitation is documented rather than hidden.
-        if: runner.os != 'Windows'
+        # Runs on Windows too since v4.6.10 (#53). The released binary is what
+        # this job installs, so a regression there shows up here even if the
+        # from-source Windows job is green.
         shell: bash
         run: |
           set -euo pipefail
