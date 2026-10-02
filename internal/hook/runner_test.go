@@ -288,48 +288,6 @@ func TestCheckMinVersion(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// fingerprintFiles
-// ---------------------------------------------------------------------------
-
-func TestFingerprintFiles(t *testing.T) {
-	dir := t.TempDir()
-
-	f1 := filepath.Join(dir, "a.txt")
-	f2 := filepath.Join(dir, "b.txt")
-	os.WriteFile(f1, []byte("hello"), 0o644)
-	os.WriteFile(f2, []byte("world"), 0o644)
-
-	t.Run("returns fingerprints for existing files", func(t *testing.T) {
-		fps := fingerprintFiles([]string{f1, f2})
-		if len(fps) != 2 {
-			t.Fatalf("expected 2 fingerprints, got %d", len(fps))
-		}
-		if fps[f1].size != 5 {
-			t.Errorf("f1 size = %d, want 5", fps[f1].size)
-		}
-	})
-
-	t.Run("skips non-existent files", func(t *testing.T) {
-		fps := fingerprintFiles([]string{f1, filepath.Join(dir, "ghost.txt")})
-		if len(fps) != 1 {
-			t.Fatalf("expected 1 fingerprint, got %d", len(fps))
-		}
-	})
-
-	t.Run("detects modification", func(t *testing.T) {
-		before := fingerprintFiles([]string{f1})
-		os.WriteFile(f1, []byte("changed content"), 0o644)
-		after := fingerprintFiles([]string{f1})
-
-		b := before[f1]
-		a := after[f1]
-		if b.size == a.size && b.modTime == a.modTime {
-			t.Error("expected fingerprint to change after modification")
-		}
-	})
-}
-
-// ---------------------------------------------------------------------------
 // Runner.Run — integration tests with system language hooks
 // ---------------------------------------------------------------------------
 
@@ -570,29 +528,90 @@ func TestRunnerRun_AlwaysRunIgnoresEmptyFiles(t *testing.T) {
 	}
 }
 
+// initModRepo creates a git repo with fix.txt committed.
+func initModRepo(t *testing.T) (dir, file string) {
+	t.Helper()
+	dir = t.TempDir()
+	file = filepath.Join(dir, "fix.txt")
+	if err := os.WriteFile(file, []byte("bad content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"add", "fix.txt"},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir, file
+}
+
+// A hook that exits 0 but changes the working tree fails, as upstream decides
+// it from `git diff` around the hook — so it must fire whether or not the hook
+// was handed the files (golangci-lint-fmt has pass_filenames: false), and
+// under --all-files too.
 func TestRunnerRun_FileModificationDetected(t *testing.T) {
-	dir := t.TempDir()
-	f := filepath.Join(dir, "fix.txt")
-	os.WriteFile(f, []byte("bad content"), 0o644)
+	for _, tc := range []struct {
+		name          string
+		passFilenames bool
+		allFiles      bool
+	}{
+		{name: "pass_filenames", passFilenames: true},
+		{name: "no pass_filenames", passFilenames: false},
+		{name: "all-files", passFilenames: false, allFiles: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, f := initModRepo(t)
+
+			cfg := &config.Config{}
+			hooks := []*Hook{{
+				ID: "fixer", Name: "Fixer", Language: "system",
+				Entry:         "sh -c 'echo fixed > fix.txt' --",
+				Types:         []string{"file"},
+				PassFilenames: tc.passFilenames,
+				Stages:        []config.Stage{config.HookTypePreCommit},
+			}}
+
+			runner := NewRunner(cfg, hooks, dir)
+			result := runner.Run(context.Background(), RunOptions{
+				Files:     []string{f},
+				AllFiles:  tc.allFiles,
+				HookStage: config.HookTypePreCommit,
+			})
+
+			if result.Failed != 1 {
+				t.Errorf("Failed = %d, want 1 (file was modified)", result.Failed)
+			}
+		})
+	}
+}
+
+// A hook that leaves the working tree alone passes even when the tree already
+// had unstaged changes before it ran.
+func TestRunnerRun_PreexistingChangesNotBlamed(t *testing.T) {
+	dir, f := initModRepo(t)
+	if err := os.WriteFile(f, []byte("already dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{}
 	hooks := []*Hook{{
-		ID: "fixer", Name: "Fixer", Language: "system",
-		Entry:         "sh -c 'echo fixed > \"$1\"' --",
-		Types:         []string{"file"},
-		PassFilenames: true,
-		Stages:        []config.Stage{config.HookTypePreCommit},
+		ID: "noop", Name: "Noop", Language: "system", Entry: "true",
+		Types: []string{"file"}, Stages: []config.Stage{config.HookTypePreCommit},
 	}}
 
 	runner := NewRunner(cfg, hooks, dir)
 	result := runner.Run(context.Background(), RunOptions{
 		Files:     []string{f},
+		AllFiles:  true,
 		HookStage: config.HookTypePreCommit,
 	})
-
-	// Hook exits 0 but modifies the file, so it should be marked as failed.
-	if result.Failed != 1 {
-		t.Errorf("Failed = %d, want 1 (file was modified)", result.Failed)
+	if result.Passed != 1 || result.Failed != 0 {
+		t.Errorf("Passed = %d, Failed = %d; want 1, 0", result.Passed, result.Failed)
 	}
 }
 

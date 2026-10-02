@@ -94,6 +94,7 @@ func TestScrubProcessEnv(t *testing.T) {
 	t.Setenv("GIT_INDEX_FILE", "/host/.git/index")
 	t.Setenv("GIT_WORK_TREE", "/host")
 	t.Setenv("GIT_AUTHOR_NAME", "keep-me") // not host-scoped; must survive
+	t.Cleanup(func() { SetHostIndexFile("") })
 
 	ScrubProcessEnv()
 
@@ -104,6 +105,42 @@ func TestScrubProcessEnv(t *testing.T) {
 	}
 	if os.Getenv("GIT_AUTHOR_NAME") != "keep-me" {
 		t.Error("ScrubProcessEnv should not touch non-host-scoped GIT_ vars")
+	}
+}
+
+// ScrubProcessEnv must remember the index git handed the hook, made absolute,
+// so HostIndexEnv can give it back to the commands that read the staged state:
+// under `git commit -a` it is index.lock, not the default index.
+func TestScrubProcessEnv_RecordsHostIndex(t *testing.T) {
+	t.Cleanup(func() { SetHostIndexFile("") })
+	t.Setenv("GIT_INDEX_FILE", ".git/index.lock")
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ScrubProcessEnv()
+
+	want := "GIT_INDEX_FILE=" + filepath.Join(wd, ".git", "index.lock")
+	var got []string
+	for _, e := range HostIndexEnv() {
+		if strings.HasPrefix(e, "GIT_INDEX_FILE=") {
+			got = append(got, e)
+		}
+	}
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("HostIndexEnv GIT_INDEX_FILE = %v, want [%s]", got, want)
+	}
+	for _, e := range NoGitEnv() {
+		if strings.HasPrefix(e, "GIT_INDEX_FILE=") {
+			t.Errorf("NoGitEnv must still drop GIT_INDEX_FILE, got %s", e)
+		}
+	}
+
+	// A second scrub (run reached from hook-impl) must not forget it.
+	ScrubProcessEnv()
+	if env := HostIndexEnv(); env[len(env)-1] != want {
+		t.Errorf("second ScrubProcessEnv lost the host index: last = %s", env[len(env)-1])
 	}
 }
 

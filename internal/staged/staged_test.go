@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/blairham/go-pre-commit/v4/internal/git"
 )
 
 // initTestRepo creates a temp git repo with an initial commit.
@@ -239,5 +241,121 @@ func TestRestore_CleansPatchFile(t *testing.T) {
 	// Verify patch file is cleaned up.
 	if _, err := os.Stat(patchPath); !os.IsNotExist(err) {
 		t.Error("expected patch file to be cleaned up after restore")
+	}
+}
+
+// stageAndDirty stages "staged\n" in file.txt and leaves "unstaged\n" on top.
+func stageAndDirty(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("staged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "add", "file.txt")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("unstaged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// Under `git commit -a` / `git commit <paths>` git holds index.lock for the
+// whole hook and points GIT_INDEX_FILE at the index being committed. The stash
+// must work against that index; against the default one, write-tree dies on
+// the held lock ("Unable to create .../index.lock: File exists").
+func TestStashUnstaged_HostIndexWhileIndexLocked(t *testing.T) {
+	dir := initTestRepo(t)
+	stageAndDirty(t, dir)
+
+	// Hold the lock the way git commit does, with the commit's index in it.
+	gitDir := filepath.Join(dir, ".git")
+	index, err := os.ReadFile(filepath.Join(gitDir, "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(gitDir, "index.lock")
+	if err := os.WriteFile(lock, index, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git.SetHostIndexFile(lock)
+	t.Cleanup(func() { git.SetHostIndexFile("") })
+
+	m := NewManager(dir)
+	stashed, err := m.StashUnstaged()
+	if err != nil {
+		t.Fatalf("StashUnstaged with index.lock held: %v", err)
+	}
+	if !stashed {
+		t.Fatal("expected the unstaged change to be stashed")
+	}
+	if got := readFile(t, filepath.Join(dir, "file.txt")); got != "staged\n" {
+		t.Errorf("during the run file.txt = %q, want the staged content", got)
+	}
+	if err := m.Restore(); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if got := readFile(t, filepath.Join(dir, "file.txt")); got != "unstaged\n" {
+		t.Errorf("after restore file.txt = %q, want the unstaged content back", got)
+	}
+}
+
+// When a hook's fix conflicts with the stashed changes, the fix is rolled back
+// and the stashed changes win, as upstream does.
+func TestRestore_ConflictWithHookFixRollsBack(t *testing.T) {
+	dir := initTestRepo(t)
+	stageAndDirty(t, dir)
+
+	m := NewManager(dir)
+	if stashed, err := m.StashUnstaged(); err != nil || !stashed {
+		t.Fatalf("StashUnstaged = %v, %v", stashed, err)
+	}
+	// The "hook" rewrites the same line the stashed patch changes.
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("fixed by hook\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Restore(); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if got := readFile(t, filepath.Join(dir, "file.txt")); got != "unstaged\n" {
+		t.Errorf("after restore file.txt = %q, want the unstaged content", got)
+	}
+}
+
+// Intent-to-add entries are dropped for the run and put back afterwards.
+func TestRestore_ReaddsIntentToAdd(t *testing.T) {
+	dir := initTestRepo(t)
+	stageAndDirty(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "add", "--intent-to-add", "new.txt")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add -N: %v\n%s", err, out)
+	}
+
+	m := NewManager(dir)
+	if stashed, err := m.StashUnstaged(); err != nil || !stashed {
+		t.Fatalf("StashUnstaged = %v, %v", stashed, err)
+	}
+	if err := m.Restore(); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	ita, err := git.IntentToAddFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ita) != 1 || ita[0] != "new.txt" {
+		t.Errorf("intent-to-add files after restore = %v, want [new.txt]", ita)
 	}
 }

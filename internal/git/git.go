@@ -44,6 +44,11 @@ func NoGitEnv() []string {
 	return env
 }
 
+// hostIndexFile is the GIT_INDEX_FILE git exported when it invoked this hook,
+// made absolute, or "" when there was none. ScrubProcessEnv records it before
+// clearing the variable.
+var hostIndexFile string
+
 // ScrubProcessEnv clears the git-managed environment variables that git exports
 // when it invokes a hook (GIT_DIR, GIT_INDEX_FILE, GIT_WORK_TREE). They point at
 // the *host* repo. If any child git process inherits them — a clone, a checkout,
@@ -55,13 +60,72 @@ func NoGitEnv() []string {
 // NoGitEnv() scrubs these per command, but call this once at hook entry as a
 // belt-and-suspenders backstop so the leak is impossible regardless of the exec
 // path. This only affects this hook process and its children; the parent
-// `git commit` retains its own copy and completes normally. The stash and
-// staged-file commands keep working because they discover the worktree's index
-// from the working directory once GIT_INDEX_FILE is gone.
+// `git commit` retains its own copy and completes normally.
+//
+// GIT_INDEX_FILE is recorded first (see HostIndexEnv), because it is not
+// always the default index: `git commit -a` and `git commit <paths>` hold the
+// default index's lock for the whole hook and point GIT_INDEX_FILE at the index
+// the commit will record. Commands that read or stash the host's staged state
+// must use that index — against the default one they see the wrong staged
+// files, and anything that writes it (write-tree, checkout) dies on the held
+// index.lock.
 func ScrubProcessEnv() {
+	if v := os.Getenv("GIT_INDEX_FILE"); v != "" {
+		// git runs hooks from the top of the working tree and may export a
+		// path relative to it; pin it before anything changes directory.
+		if abs, err := filepath.Abs(v); err == nil {
+			v = abs
+		}
+		hostIndexFile = v
+	}
 	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"} {
 		_ = os.Unsetenv(k)
 	}
+}
+
+// SetHostIndexFile sets the index HostIndexEnv points at; "" means the
+// repository's default index. ScrubProcessEnv sets it from the hook's
+// environment; tests use this to set or reset it.
+func SetHostIndexFile(path string) { hostIndexFile = path }
+
+// HostIndexEnv is NoGitEnv plus the GIT_INDEX_FILE git handed the hook, if
+// any. Use it for commands that read or stash the host repo's staged state —
+// listing staged files, diffing the working tree, write-tree, checkout — and
+// never for commands aimed at another repository (hook-repo clones), which is
+// what NoGitEnv protects. Upstream pre-commit draws the same line: it strips
+// GIT_INDEX_FILE only for commands that touch other repos.
+func HostIndexEnv() []string {
+	env := NoGitEnv()
+	if hostIndexFile != "" {
+		env = append(env, "GIT_INDEX_FILE="+hostIndexFile)
+	}
+	return env
+}
+
+// hostOutput runs a git command against the host repo's index (HostIndexEnv)
+// in dir ("" for the current directory) and returns its untrimmed stdout.
+func hostOutput(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = HostIndexEnv()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s failed: %w\nstderr: %s", strings.Join(args, " "), err, stderr.String())
+	}
+	return stdout.String(), nil
+}
+
+// splitNul splits -z output into its non-empty entries.
+func splitNul(out string) []string {
+	var result []string
+	for _, f := range strings.Split(out, "\x00") {
+		if f != "" {
+			result = append(result, f)
+		}
+	}
+	return result
 }
 
 // CmdOutput runs a git command and returns its stdout.
@@ -137,42 +201,20 @@ func GetGitCommonDir(root string) (string, error) {
 
 // GetStagedFiles returns a list of staged file paths.
 func GetStagedFiles() ([]string, error) {
-	out, err := CmdOutput("diff", "--staged", "--name-only", "--diff-filter=ACMRT", "--no-ext-diff", "-z")
+	out, err := hostOutput("", "diff", "--staged", "--name-only", "--diff-filter=ACMRT", "--no-ext-diff", "-z")
 	if err != nil {
 		return nil, err
 	}
-	if out == "" {
-		return nil, nil
-	}
-	// Split by null byte (from -z flag).
-	files := strings.Split(out, "\x00")
-	// Remove empty entries.
-	var result []string
-	for _, f := range files {
-		if f != "" {
-			result = append(result, f)
-		}
-	}
-	return result, nil
+	return splitNul(out), nil
 }
 
 // GetAllFiles returns all tracked files in the repository.
 func GetAllFiles() ([]string, error) {
-	out, err := CmdOutput("ls-files", "-z")
+	out, err := hostOutput("", "ls-files", "-z")
 	if err != nil {
 		return nil, err
 	}
-	if out == "" {
-		return nil, nil
-	}
-	files := strings.Split(out, "\x00")
-	var result []string
-	for _, f := range files {
-		if f != "" {
-			result = append(result, f)
-		}
-	}
-	return result, nil
+	return splitNul(out), nil
 }
 
 // GetChangedFiles returns files changed between two refs.
@@ -372,40 +414,23 @@ func GetHooksDir(root ...string) (string, error) {
 	return filepath.Join(commonDir, "hooks"), nil
 }
 
-// IntentToAddFiles returns files that were added with --intent-to-add.
-func IntentToAddFiles() ([]string, error) {
-	out, err := CmdOutput("diff", "--no-ext-diff", "--diff-filter=A", "--name-only", "-z")
+// IntentToAddFiles returns files in the host index that were added with
+// --intent-to-add.
+func IntentToAddFiles(dir string) ([]string, error) {
+	out, err := hostOutput(dir, "diff", "--no-ext-diff", "--ignore-submodules", "--diff-filter=A", "--name-only", "-z")
 	if err != nil {
 		return nil, err
 	}
-	if out == "" {
-		return nil, nil
-	}
-	var result []string
-	for _, f := range strings.Split(out, "\x00") {
-		if f != "" {
-			result = append(result, f)
-		}
-	}
-	return result, nil
+	return splitNul(out), nil
 }
 
 // GetConflictedFiles returns files with merge conflicts.
 func GetConflictedFiles() ([]string, error) {
-	out, err := CmdOutput("diff", "--name-only", "--diff-filter=U", "-z")
+	out, err := hostOutput("", "diff", "--name-only", "--diff-filter=U", "-z")
 	if err != nil {
 		return nil, err
 	}
-	if out == "" {
-		return nil, nil
-	}
-	var result []string
-	for _, f := range strings.Split(out, "\x00") {
-		if f != "" {
-			result = append(result, f)
-		}
-	}
-	return result, nil
+	return splitNul(out), nil
 }
 
 // IsInMergeConflict checks if the repository is in a merge conflict state.
@@ -436,9 +461,10 @@ func GetBestCandidateTag(dir string) (string, error) {
 	return out, nil
 }
 
-// WriteTree writes the current index as a tree object.
+// WriteTree writes the host index as a tree object.
 func WriteTree(dir string) (string, error) {
-	return CmdOutputInDir(dir, "write-tree")
+	out, err := hostOutput(dir, "write-tree")
+	return strings.TrimSpace(out), err
 }
 
 // DiffIndex shows changes between a tree-ish and the working tree.
@@ -455,7 +481,8 @@ func CheckoutIndexToDir(dir, dest string) error {
 	return cmd.Run()
 }
 
-// ReadTree reads a tree object into the index.
+// ReadTree reads a tree object into the host index.
 func ReadTree(dir, treeish string) error {
-	return RunInDir(dir, "read-tree", treeish)
+	_, err := hostOutput(dir, "read-tree", treeish)
+	return err
 }
