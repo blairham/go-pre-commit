@@ -88,7 +88,7 @@ want it mentioned somewhere, that is their call to make, not ours to ask for.
 - [x] A release exists whose notes name the upstream version it targets
 - [ ] `brew install blairham/tap/pre-commit` on a clean machine
 - [x] `uses: blairham/go-pre-commit@v4` resolves and runs
-- [ ] Every command in the README quick start, in order, in a scratch repo
+- [x] Every command in the README quick start, in order, in a scratch repo
 - [ ] Issue templates render (open one, cancel it)
 - [x] The Marketplace listing exists and its description matches the README's
       first line
