@@ -77,6 +77,21 @@ notarize:
 checksum:
   name_template: 'checksums.txt'
 
+# Keyless cosign signature over checksums.txt, from the release workflow's own
+# GitHub OIDC identity: no key to store or leak, and the certificate names the
+# exact workflow and tag that produced the release. Signing checksums.txt
+# covers every archive, since it lists each one's digest. See SECURITY.md for
+# how to verify.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 

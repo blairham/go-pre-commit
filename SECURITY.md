@@ -25,6 +25,29 @@ Expect an acknowledgement within a week. This is a side project, so that is a
 best effort and not a commitment. If a fix is warranted it ships in the next
 release with an advisory; you will be credited unless you ask not to be.
 
+## Verifying what you downloaded
+
+Releases after `v4.6.7` sign `checksums.txt` with cosign keyless signing
+(GitHub OIDC). The signature is tied to the workflow that built the release,
+not to a key someone could leak, so verify against that workflow — not just
+"anything in this repository". `checksums.txt` lists the digest of every
+archive, so verify the signature, then the archives against it:
+
+```sh
+VERSION=v4.6.8
+cosign verify-blob \
+  --certificate-identity "https://github.com/blairham/go-pre-commit/.github/workflows/goreleaser.yml@refs/tags/$VERSION" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --bundle checksums.txt.sigstore.json checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+```
+
+A release re-run by hand (the workflow's `workflow_dispatch` input) is signed
+by the ref it was dispatched from, usually `refs/heads/main`, rather than by
+the tag, so use `@refs/heads/main` in `--certificate-identity` for that release.
+
+The macOS builds are additionally Developer ID signed and notarized.
+
 ## What is in scope
 
 This tool downloads and executes code by design — that is what a hook framework
