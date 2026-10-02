@@ -20,15 +20,14 @@ make build       # Build to build/pre-commit
 make install     # go install with version ldflags
 make test        # go test -v -race ./...
 make test-cover  # tests + HTML coverage report
-make lint        # go tool golangci-lint run ./...
 make fmt         # go tool gofumpt -w .
 make vet         # go vet ./...
 make tidy        # go mod tidy
-make check       # fmt + vet + test
+make check       # vet + test + build
 make clean       # remove build/, coverage artifacts
 ```
 
-**`make check` does not run `lint`** — it is `fmt vet test`. Run `make check` *and* `make lint` before opening a PR.
+**There is no `lint` target, and agents never run golangci-lint by hand.** It runs as a pre-commit hook on every commit and in CI's `Pre-commit` job; fix what the hook reports and commit again.
 
 ## Project Structure
 
@@ -75,25 +74,28 @@ test/integration/        # Parity tests against real Python pre-commit (build ta
 
 ## CI/CD
 
-`.github/workflows/ci.yml` — `GO_VERSION: "1.26"` (minor line; setup-go resolves the latest patch):
+`.github/workflows/ci.yml` is the one workflow that gates a merge; Go comes from `go.mod` (`go-version-file`). Every action, in the workflows and in `action.yml`, is pinned to a commit SHA with a `# vX.Y.Z` comment — Dependabot moves them.
 
 | Job | What it does |
 |---|---|
-| `test` | `make test` |
-| `lint` | `golangci-lint-action@v9`, `--timeout=10m` |
-| `pre-commit` | Dogfoods the repo's own `action.yml` via `uses: ./` |
-| `build` | `make build`, gated on `test` + `lint` |
-| `language-integration` | Parity tests with real Python pre-commit, Python 3.13 + Node 22 |
+| `Pre-commit` | Dogfoods the repo's own `action.yml` via `uses: ./` over the change's diff, then the `golangci-lint-new` manual hook (issues the change introduces) |
+| `Detect changed files` | Skips the code jobs for prose-only PRs (inside the jobs, never a `paths:` filter) |
+| `Build and test` | `make test` |
+| `Parity with Python pre-commit` | Differential suite against real Python pre-commit 4.6.2 |
+| `Build` | `make build` |
+| `Action (macos/windows)` | Installs through the action on the other runner OSes |
+
+`codeql.yml` (security-extended) and `scorecard.yml` (OpenSSF Scorecard) run on pushes to `main` and on a schedule; CodeQL also runs on PRs.
 
 **The repo-root `action.yml` is a public composite action.** It downloads the release binary and runs hooks — a drop-in for `pre-commit/action` with no Python setup. `aws-sso-config`, `aws-config-management`, and `ghorg` consume it in their own CI, so a breaking change to its inputs (`version`, `extra_args`, `cache`, `install-only`) breaks those repos. The `pre-commit` CI job dogfoods it against this repo.
 
-Releases: push a `v*` tag → GoReleaser (`.goreleaser.yaml`) builds, signs, and notarizes, and updates `blairham/homebrew-tap`.
+Releases: push a `v*` tag → `goreleaser.yml` runs the tests, then GoReleaser (`.goreleaser.yaml`) builds, signs, and notarizes, updates `blairham/homebrew-tap`, and the moving `v4` alias tag follows.
 
 ## Toolchain
 
 - `go.mod`'s `go` directive is authoritative and must match `.tool-versions`' `golang` pin **exactly** — enforced by the `check-go-version-sync` hook from [blairham/pre-commit-hooks](https://github.com/blairham/pre-commit-hooks), pinned by `rev` in `.pre-commit-config.yaml`
 - golangci-lint and gofumpt are pinned in `go.mod`'s `tool` block — invoke as `go tool <name>`, never a separately installed binary
-- Keep the `golangci-lint` pre-commit `rev`, the `go.mod` tool pin, and the CI action version in lockstep
+- Keep the `golangci-lint` pre-commit `rev` and the `go.mod` tool pin in lockstep
 - goreleaser is pinned in `.tool-versions`, not `go.mod`
 
 ## Key Dependencies

@@ -5,74 +5,74 @@ version: 2
 project_name: pre-commit
 
 builds:
-- id: pre-commit
-  binary: pre-commit
-  main: .
-  env:
-  - CGO_ENABLED=0
-  goos:
-  - linux
-  - darwin
-  - windows
-  - freebsd
-  goarch:
-  - amd64
-  - arm64
-  - "386"
-  - arm
-  goarm:
-  - "6"
-  - "7"
-  ignore:
-  - goos: darwin
-    goarch: "386"
-  - goos: darwin
-    goarch: arm
-  - goos: windows
-    goarch: arm
-  - goos: freebsd
-    goarch: "386"
-  - goos: freebsd
-    goarch: arm
-  ldflags:
-  - -s -w
-  - -X github.com/blairham/go-pre-commit/v4/internal/config.Version={{.Version}}
-  - -X main.commit={{.Commit}}
-  - -X main.date={{.Date}}
+  - id: pre-commit
+    binary: pre-commit
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+      - arm
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+      - goos: freebsd
+        goarch: "386"
+      - goos: freebsd
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X github.com/blairham/go-pre-commit/v4/internal/config.Version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
 
 archives:
-- id: default
-  formats:
-  - tar.gz
-  # this name template makes the OS and Arch compatible with the results of uname.
-  name_template: >-
-    {{ .ProjectName }}_ {{- title .Os }}_ {{- if eq .Arch "amd64" }}x86_64 {{- else if eq .Arch "386" }}i386 {{- else }}{{ .Arch }}{{ end }} {{- if .Arm }}v{{ .Arm }}{{ end }}
-  format_overrides:
-  - goos: windows
+  - id: default
     formats:
-    - zip
-  # Listing files at all replaces GoReleaser's defaults, so LICENSE and README
-  # have to be repeated here. NOTICE is the reason: Apache-2.0 section 4(d)
-  # requires it to travel with every distributed copy, and it carries the
-  # upstream MIT notices this reimplementation is built on.
-  files:
-  - LICENSE
-  - NOTICE
-  - README.md
+      - tar.gz
+    # this name template makes the OS and Arch compatible with the results of uname.
+    name_template: >-
+      {{ .ProjectName }}_ {{- title .Os }}_ {{- if eq .Arch "amd64" }}x86_64 {{- else if eq .Arch "386" }}i386 {{- else }}{{ .Arch }}{{ end }} {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    # Listing files at all replaces GoReleaser's defaults, so LICENSE and README
+    # have to be repeated here. NOTICE is the reason: Apache-2.0 section 4(d)
+    # requires it to travel with every distributed copy, and it carries the
+    # upstream MIT notices this reimplementation is built on.
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
 
 notarize:
   macos:
-  - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
-    ids:
-    - pre-commit
-    sign:
-      certificate: "{{.Env.MACOS_SIGN_P12}}"
-      password: "{{.Env.MACOS_SIGN_PASSWORD}}"
-    notarize:
-      issuer_id: "{{.Env.MACOS_NOTARY_ISSUER_ID}}"
-      key_id: "{{.Env.MACOS_NOTARY_KEY_ID}}"
-      key: "{{.Env.MACOS_NOTARY_KEY}}"
-      wait: true
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - pre-commit
+      sign:
+        certificate: "{{.Env.MACOS_SIGN_P12}}"
+        password: "{{.Env.MACOS_SIGN_PASSWORD}}"
+      notarize:
+        issuer_id: "{{.Env.MACOS_NOTARY_ISSUER_ID}}"
+        key_id: "{{.Env.MACOS_NOTARY_KEY_ID}}"
+        key: "{{.Env.MACOS_NOTARY_KEY}}"
+        wait: true
 
 checksum:
   name_template: 'checksums.txt'
@@ -84,19 +84,19 @@ changelog:
   sort: asc
   use: github
   groups:
-  - title: Features
-    regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
-    order: 0
-  - title: Bug Fixes
-    regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
-    order: 1
-  - title: Other
-    order: 999
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
   filters:
     exclude:
-    - '^docs:'
-    - '^test:'
-    - '^chore:'
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
 
 # A formula, not a cask. This is a CLI binary with no bundle, no installer and
 # no service; `brew test` is worth keeping, and formulae work on Homebrew for
@@ -112,19 +112,19 @@ changelog:
 # Note there is no quarantine hook here: casks flag their downloads with
 # com.apple.quarantine and need it stripped, formulae do not.
 brews:
-- name: pre-commit
-  repository:
-    owner: blairham
-    name: homebrew-tap
-    token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-  directory: Formula
-  homepage: https://github.com/blairham/go-pre-commit
-  description: A fast Go reimplementation of pre-commit
-  license: Apache-2.0
-  install: |
-    bin.install "pre-commit"
-  test: |
-    system "#{bin}/pre-commit", "--version"
+  - name: pre-commit
+    repository:
+      owner: blairham
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/blairham/go-pre-commit
+    description: A fast Go reimplementation of pre-commit
+    license: Apache-2.0
+    install: |
+      bin.install "pre-commit"
+    test: |
+      system "#{bin}/pre-commit", "--version"
 
 release:
   draft: false
@@ -141,4 +141,4 @@ release:
     **Full Changelog**: https://github.com/blairham/go-pre-commit/compare/{{ .PreviousTag }}...{{ .Tag }}
 
   extra_files:
-  - glob: ./README.md
+    - glob: ./README.md

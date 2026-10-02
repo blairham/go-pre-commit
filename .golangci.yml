@@ -1,5 +1,8 @@
 # golangci-lint v2 configuration for go-pre-commit
 # See: https://golangci-lint.run/usage/configuration/
+#
+# golangci-lint is pinned twice and the two must move together: go.mod's `tool`
+# block (`go tool golangci-lint`) and the hook `rev` in .pre-commit-config.yaml.
 
 version: "2"
 
@@ -7,6 +10,9 @@ run:
   timeout: 10m
   tests: true
   modules-download-mode: readonly
+  allow-parallel-runners: true
+  # Bounds the footprint: golangci-lint defaults to NumCPU.
+  concurrency: 4
 
 output:
   formats:
@@ -17,27 +23,27 @@ output:
 
 linters:
   enable:
-  - errcheck
-  - govet
-  - ineffassign
-  - staticcheck
-  - unused
-  - misspell
-  - unconvert
-  - gocritic
-  - revive
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - gocritic
+    - revive
 
   exclusions:
     rules:
-    - path: _test\.go
-      linters:
-      - errcheck
-      - gocritic
-      - revive
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+          - revive
 
-    - path: cmd/
-      linters:
-      - errcheck
+      - path: cmd/
+        linters:
+          - errcheck
 
   settings:
     misspell:
@@ -47,63 +53,63 @@ linters:
       check-type-assertions: false
       check-blank: false
       exclude-functions:
-      - os.Setenv
-      - os.Unsetenv
-      - os.Remove
-      - os.RemoveAll
-      - os.MkdirAll
-      - os.WriteFile
-      - (os.File).Close
-      - (*os.File).Close
-      - (*os/exec.Cmd).Run
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - syscall.Flock
+        - os.Setenv
+        - os.Unsetenv
+        - os.Remove
+        - os.RemoveAll
+        - os.MkdirAll
+        - os.WriteFile
+        - (os.File).Close
+        - (*os.File).Close
+        - (*os/exec.Cmd).Run
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - syscall.Flock
 
     govet:
       disable:
-      - shadow
+        - shadow
 
     gocritic:
       enabled-tags:
-      - diagnostic
-      - performance
+        - diagnostic
+        - performance
       disabled-checks:
-      - hugeParam
-      - rangeValCopy
-      - ifElseChain
-      - commentedOutCode
-      - appendCombine
+        - hugeParam
+        - rangeValCopy
+        - ifElseChain
+        - commentedOutCode
+        - appendCombine
 
     revive:
       severity: warning
       rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: if-return
-      - name: increment-decrement
-      - name: var-naming
-      - name: var-declaration
-      - name: range
-      - name: receiver-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
-      - name: superfluous-else
-      - name: unreachable-code
+        - name: blank-imports
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: range
+        - name: receiver-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: superfluous-else
+        - name: unreachable-code
 
 formatters:
   enable:
-  - gofumpt
-  - goimports
+    - gofumpt
+    - goimports
 
   settings:
     goimports:
       local-prefixes:
-      - github.com/blairham/go-pre-commit
+        - github.com/blairham/go-pre-commit
 
 issues:
   max-issues-per-linter: 0

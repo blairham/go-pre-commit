@@ -1,0 +1,9 @@
+# Every change needs the maintainer's review. The paths called out are where
+# SECURITY.md draws the boundary: what gets cloned and where it lands
+# (repository/, store/), what gets written into .git/hooks (git/), and the
+# composite action that installs a binary in other people's pipelines.
+*                      @blairham
+/internal/repository/  @blairham
+/internal/store/       @blairham
+/internal/git/         @blairham
+/action.yml            @blairham

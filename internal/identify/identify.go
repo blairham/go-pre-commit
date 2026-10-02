@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Blair Hamilton
+// SPDX-License-Identifier: Apache-2.0
+
 // Package identify provides file type identification by extension, filename, and shebang.
 //
 // The tag tables below follow the data in the MIT-licensed identify project

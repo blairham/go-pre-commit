@@ -47,16 +47,16 @@ pre-commit install    # or: go run . install
 
 make build            # build/pre-commit
 make test             # go test -race ./...
-make check            # fmt + vet + test
-make lint             # go tool golangci-lint run ./...
+make check            # vet + test + build
 ```
 
-**`make check` does not run `lint`.** It is `fmt + vet + test`. Run `make lint`
-as well before pushing, or let CI tell you.
+**There is no `lint` target.** golangci-lint runs as a pre-commit hook on every
+commit (reporting what that commit introduces), and CI runs it against the
+whole change. `pre-commit install` once and the feedback finds you.
 
 Formatting and linting are pinned as Go tools in `go.mod` — `go tool gofumpt`
 and `go tool golangci-lint`, not separately installed binaries — so the version
-you run is the version CI runs.
+the hook runs is the version CI runs.
 
 ### The parity harness
 
@@ -86,6 +86,9 @@ config. Redirect with `t.TempDir()` and `t.Setenv` — including `PRE_COMMIT_HOM
 - Never bypass hooks with `--no-verify`.
 - Put `Closes #N` in the PR body for the issues it resolves.
 - No AI-attribution trailers in commit messages or PR bodies.
+- Commits must be signed.
+- Every `.go` file carries the two-line SPDX header (`Apache-2.0`); the
+  pre-commit hook fails without it.
 
 ## Adding a language backend
 
@@ -103,7 +106,19 @@ differential suite and seeing what breaks.
   format, and anything that would make a `.pre-commit-config.yaml` written for
   this tool fail on the Python one.
 
+## The Contributor License Agreement
+
+Contributions require a signed CLA; the text is in [`CLA.md`](CLA.md).
+
+**Why.** The project may need to offer different licensing terms in future.
+That is only possible if one party can license the whole work, and copyright
+in a contribution stays with its author unless licensed onward.
+
+The CLA does **not** take your copyright. You keep it; you grant a license
+broad enough to include sublicensing, and you affirm the work is your own —
+including that no employer holds rights to it.
+
 ## License
 
-By contributing you agree that your contributions are licensed under the
-[Apache License 2.0](LICENSE), and that you have the right to submit them.
+The project is licensed under the [Apache License 2.0](LICENSE); contributions
+come in under it and the CLA above.

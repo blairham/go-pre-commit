@@ -15,7 +15,6 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
         args: ['--maxkb=500']
-      - id: check-merge-conflict
       - id: detect-private-key
 
   # Go housekeeping
@@ -24,11 +23,21 @@ repos:
     hooks:
       - id: go-mod-tidy-repo
 
-  # Toolchain pin invariant
+  # One golang pin per repo, at the root, that every go.mod must match: CI reads
+  # go-version-file: go.mod, so without this the two could build different Go
+  # with nothing noticing. check-conflict-markers replaces upstream's
+  # check-merge-conflict, which misses a committed diff3 base marker.
   - repo: https://github.com/blairham/pre-commit-hooks
-    rev: v0.1.0
+    rev: v0.4.0
     hooks:
+      # Every .go file carries the two-line SPDX header; a file without one
+      # has no stated license once it is copied out of the repo.
+      - id: check-license-headers
+        args: [--license, Apache-2.0]
       - id: check-go-version-sync
+      - id: check-conflict-markers
+      # Known-vulnerable dependencies fail the commit, not the release.
+      - id: go-vulncheck
 
   # golangci-lint at commit time, via the upstream hooks (no local scripts).
   # `golangci-lint-fmt` applies every formatter configured in .golangci.yml
@@ -38,7 +47,7 @@ repos:
   # linters like `unused`. Keep `rev` in lockstep with go.mod's tool pin and
   # the CI action version.
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.12.2
+    rev: v2.14.0
     hooks:
       - id: golangci-lint-fmt
       # The diff-scoped hook (`--new-from-rev HEAD`), deliberately: this runs on
@@ -87,6 +96,13 @@ repos:
     hooks:
       - id: gitleaks
         exclude: ^build/
+
+  # YAML style (sequence indentation etc.; config in .yamllint.yml)
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args: ['-c', '.yamllint.yml']
 
 # Note: CI runs the `golangci-lint-new` alias above at the manual stage, so a
 # pull request is gated on the issues it introduces. Nothing runs the whole

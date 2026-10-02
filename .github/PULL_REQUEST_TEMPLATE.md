@@ -18,10 +18,10 @@ This project's contract is "behaves like Python pre-commit". Pick one:
 
 ## Checklist
 
-- [ ] `make check` passes (`fmt` + `vet` + `test` — note this does **not** run lint)
-- [ ] `make lint` passes
+- [ ] `pre-commit install` is set up, so the commit hook (which lints) ran
 - [ ] Tests do not touch real user state (`t.TempDir()` + `t.Setenv` for `HOME`, `PRE_COMMIT_HOME`, `XDG_CACHE_HOME`)
 - [ ] If behavior changed, the differential parity suite still passes
 - [ ] Docs updated if this changes something a user can observe
+- [ ] I have signed the CLA (see CLA.md)
 
 Closes #

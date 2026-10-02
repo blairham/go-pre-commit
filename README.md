@@ -1,7 +1,9 @@
 # go-pre-commit
 
 [![CI](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml/badge.svg)](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/blairham/go-pre-commit/v4)](https://goreportcard.com/report/github.com/blairham/go-pre-commit/v4)
+[![CodeQL](https://github.com/blairham/go-pre-commit/actions/workflows/codeql.yml/badge.svg)](https://github.com/blairham/go-pre-commit/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/blairham/go-pre-commit/badge)](https://scorecard.dev/viewer/?uri=github.com/blairham/go-pre-commit)
+[![Go version](https://img.shields.io/github/go-mod/go-version/blairham/go-pre-commit)](go.mod)
 [![GoDoc](https://pkg.go.dev/badge/github.com/blairham/go-pre-commit/v4)](https://pkg.go.dev/github.com/blairham/go-pre-commit/v4)
 [![License](https://img.shields.io/github/license/blairham/go-pre-commit)](https://github.com/blairham/go-pre-commit/blob/main/LICENSE)
 
@@ -222,14 +224,13 @@ Run the benchmark yourself: `bash .github/bench.sh`
 make build       # Build binary to build/pre-commit
 make test        # Run tests (with -race)
 make test-cover  # Tests + HTML coverage report
-make lint        # Run golangci-lint
 make fmt         # Format code (gofumpt)
 make vet         # Run go vet
 make tidy        # go mod tidy
-make check       # Format + vet + test
+make check       # vet + test + build
 ```
 
-Note that `make check` does not run the linter — run `make lint` separately before opening a PR.
+There is no `lint` target: golangci-lint runs as a pre-commit hook (`pre-commit install`) and in CI.
 
 ## Releasing
 

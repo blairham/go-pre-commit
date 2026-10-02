@@ -5,7 +5,7 @@ COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo "none")
 DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -ldflags "-X github.com/blairham/go-pre-commit/v4/internal/config.Version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: all build clean test lint fmt vet install
+.PHONY: all build clean test test-cover fmt vet tidy check install
 
 all: build
 
@@ -27,9 +27,6 @@ test-cover:
 	go test -v -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
-lint:
-	go tool golangci-lint run ./...
-
 vet:
 	go vet ./...
 
@@ -39,4 +36,6 @@ fmt:
 tidy:
 	go mod tidy
 
-check: fmt vet test
+# There is no lint target: golangci-lint runs as a pre-commit hook and in CI.
+check: vet test ## What CI runs (minus lint, which is the commit hook's job)
+	go build ./...

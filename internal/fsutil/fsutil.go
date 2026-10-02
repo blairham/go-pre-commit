@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Blair Hamilton
+// SPDX-License-Identifier: Apache-2.0
+
 // Package fsutil provides filesystem helpers that tolerate the read-only trees
 // language backends leave behind.
 package fsutil
