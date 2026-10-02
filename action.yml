@@ -60,14 +60,25 @@ runs:
         archive="pre-commit_${os}_${arch}.${ext}"
 
         if [ "$VERSION" = latest ]; then
-          base="https://github.com/blairham/go-pre-commit/releases/latest/download"
+          # Resolve "latest" to one tag, once. Fetching the archive and
+          # checksums.txt through two separate latest/download redirects lets
+          # them come from different releases while one is being published,
+          # and the checksum check then fails a correct release (#69).
+          url="$(curl -fsSLI --retry 5 --retry-all-errors -o /dev/null -w '%{url_effective}' \
+            https://github.com/blairham/go-pre-commit/releases/latest)"
+          tag="${url##*/}"
+          case "$tag" in
+            v[0-9]*) ;;
+            *) echo "Could not resolve the latest release (got '$url')" >&2; exit 1 ;;
+          esac
         else
           case "$VERSION" in
             v*) tag="$VERSION" ;;
             *)  tag="v$VERSION" ;;
           esac
-          base="https://github.com/blairham/go-pre-commit/releases/download/${tag}"
         fi
+        echo "Installing go-pre-commit ${tag}"
+        base="https://github.com/blairham/go-pre-commit/releases/download/${tag}"
 
         dir="${RUNNER_TEMP}/go-pre-commit"
         mkdir -p "$dir"
