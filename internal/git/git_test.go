@@ -711,3 +711,18 @@ func TestCheckoutIndex(t *testing.T) {
 		t.Errorf("unexpected content: %q", string(content))
 	}
 }
+
+func TestHeadRev(t *testing.T) {
+	dir := initTestRepo(t)
+	want, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := HeadRev(dir)
+	if err != nil {
+		t.Fatalf("HeadRev: %v", err)
+	}
+	if got != strings.TrimSpace(string(want)) {
+		t.Errorf("HeadRev = %q, want %q", got, strings.TrimSpace(string(want)))
+	}
+}

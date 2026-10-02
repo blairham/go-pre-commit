@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	flags "github.com/jessevdk/go-flags"
@@ -135,6 +136,48 @@ func (c *TryRepoCommand) Run(args []string) int {
 			hooks = append(hooks, h)
 		}
 	} else {
+		// As upstream: an unspecified ref is the remote's HEAD commit, the
+		// store is a throwaway one rather than ~/.cache/pre-commit, and the
+		// config names the hook asked for or every hook in the manifest.
+		rev := opts.Ref
+		if rev == "" {
+			rev, err = git.HeadRev(repoURL)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: failed to resolve HEAD of %s: %v\n", repoURL, err)
+				return 1
+			}
+		}
+		tmpStore, err := os.MkdirTemp("", "pre-commit-try-repo-")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+		defer func() { _ = fsutil.RemoveAll(tmpStore) }()
+		s = store.New(tmpStore)
+
+		var hookCfgs []config.HookConfig
+		if hookID != "" {
+			hookCfgs = []config.HookConfig{{ID: hookID}}
+		} else {
+			repoPath, cloneErr := s.Clone(repoURL, rev)
+			if cloneErr != nil {
+				fmt.Fprintf(os.Stderr, "Error: failed to clone %s: %v\n", repoURL, cloneErr)
+				return 1
+			}
+			manifest, loadErr := config.LoadManifest(filepath.Join(repoPath, config.ManifestFile))
+			if loadErr != nil {
+				fmt.Fprintf(os.Stderr, "Error: failed to load manifest from %s: %v\n", repoURL, loadErr)
+				return 1
+			}
+			for _, m := range manifest {
+				hookCfgs = append(hookCfgs, config.HookConfig{ID: m.ID})
+			}
+			sort.Slice(hookCfgs, func(i, j int) bool { return hookCfgs[i].ID < hookCfgs[j].ID })
+		}
+		tryConfig.Repos[0].Rev = rev
+		tryConfig.Repos[0].Hooks = hookCfgs
+		printTryConfig(repoURL, rev, hookCfgs)
+
 		resolver := repository.NewResolver(s, tryConfig)
 		hooks, err = resolver.ResolveAll(context.Background(), tryConfig)
 		if err != nil {
@@ -178,6 +221,14 @@ func (c *TryRepoCommand) Run(args []string) int {
 		runCfg.FailFast = true
 	}
 
+	// Upstream's try_repo hands off to run, which installs each hook's
+	// environment first; without this every python, node or golang hook
+	// errors with its executable not found.
+	if err := hook.InstallEnvironments(context.Background(), hooks); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to install environments: %v\n", err)
+		return 1
+	}
+
 	root, _ := git.GetRoot()
 	runner := hook.NewRunner(runCfg, hooks, root)
 	result := runner.Run(context.Background(), hook.RunOptions{
@@ -216,6 +267,20 @@ func (c *TryRepoCommand) Run(args []string) int {
 	}
 
 	return 0
+}
+
+// printTryConfig writes the generated config the way upstream does: a rule of
+// 79 '=' around "Using config:" and its yaml_dump (four-space indent).
+func printTryConfig(repo, rev string, hooks []config.HookConfig) {
+	rule := strings.Repeat("=", 79)
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\nUsing config:\n%s\n", rule, rule)
+	fmt.Fprintf(&b, "repos:\n-   repo: %s\n    rev: %s\n    hooks:\n", repo, rev)
+	for _, h := range hooks {
+		fmt.Fprintf(&b, "    -   id: %s\n", h.ID)
+	}
+	fmt.Fprintf(&b, "%s\n", rule)
+	fmt.Print(b.String())
 }
 
 func (c *TryRepoCommand) Help() string {

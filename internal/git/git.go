@@ -187,6 +187,20 @@ func GetGitDir(root string) (string, error) {
 	return filepath.Join(root, out), nil
 }
 
+// HeadRev returns the commit a remote's HEAD points at, as upstream's
+// git.head_rev does with `git ls-remote <remote> HEAD`.
+func HeadRev(remote string) (string, error) {
+	out, err := CmdOutput("ls-remote", "--", remote, "HEAD")
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return "", fmt.Errorf("git ls-remote %s HEAD returned nothing", remote)
+	}
+	return fields[0], nil
+}
+
 // GetGitCommonDir returns the git common directory (for worktrees).
 func GetGitCommonDir(root string) (string, error) {
 	out, err := CmdOutputInDir(root, "rev-parse", "--git-common-dir")
