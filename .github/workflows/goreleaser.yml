@@ -72,6 +72,16 @@ jobs:
           restore-keys: |
             go-release-${{ runner.os }}-
 
+      # The release notes name the upstream version this targets. CI's parity
+      # pin is the one source of that number, so read it rather than keep a
+      # second copy that can drift; fail rather than publish notes without it.
+      - name: Read the upstream version the parity suite targets
+        run: |
+          set -euo pipefail
+          v="$(grep -oE "pre-commit==[0-9][0-9.]*" .github/workflows/ci.yml | head -1 | cut -d= -f3)"
+          [ -n "$v" ] || { echo "::error::no pre-commit==X pin found in ci.yml" >&2; exit 1; }
+          echo "UPSTREAM_VERSION=$v" >> "$GITHUB_ENV"
+          echo "Targets Python pre-commit $v"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
