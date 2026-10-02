@@ -245,6 +245,40 @@ func TestGetHooksDir(t *testing.T) {
 	}
 }
 
+// A linked worktree has its own git dir (.git/worktrees/<name>), but git reads
+// hooks from the common dir, and upstream installs them there. A hook written
+// into the worktree's own git dir is reported as installed and never runs.
+func TestGetHooksDir_LinkedWorktree(t *testing.T) {
+	dir := initTestRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	if out, err := exec.Command("git", "-C", dir, "worktree", "add", "-q", wt).CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add failed: %v\n%s", err, out)
+	}
+
+	hooksDir, err := GetHooksDir(wt)
+	if err != nil {
+		t.Fatalf("GetHooksDir failed: %v", err)
+	}
+	// What git itself answers is the reference, not a path built here.
+	want, err := exec.Command("git", "-C", wt, "rev-parse", "--path-format=absolute", "--git-path", "hooks").Output()
+	if err != nil {
+		t.Fatalf("git rev-parse --git-path hooks failed: %v", err)
+	}
+	expected, _ := filepath.EvalSymlinks(strings.TrimSpace(string(want)))
+	// The wrong directory may not exist, and EvalSymlinks would then hide it.
+	actual := hooksDir
+	if resolved, err := filepath.EvalSymlinks(hooksDir); err == nil {
+		actual = resolved
+	}
+	if actual != expected {
+		t.Errorf("expected %q (where git reads hooks), got %q", expected, actual)
+	}
+	mainHooks, _ := filepath.EvalSymlinks(filepath.Join(dir, ".git", "hooks"))
+	if expected != mainHooks {
+		t.Fatalf("reference is wrong: git reads %q, not the main checkout's %q", expected, mainHooks)
+	}
+}
+
 // --- GetHeadSHA tests ---
 
 func TestGetHeadSHA(t *testing.T) {
