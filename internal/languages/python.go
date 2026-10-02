@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 )
 
 // Python implements the Language interface for Python hooks.
@@ -19,8 +20,7 @@ func (p *Python) GetDefaultVersion() string { return "python3" }
 
 func (p *Python) HealthCheck(prefix, version string) error {
 	envDir := filepath.Join(prefix, p.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	pythonPath := filepath.Join(binDir, "python")
+	pythonPath := filepath.Join(venvBinDir(envDir), "python")
 	cmd := exec.Command(pythonPath, "--version")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("python environment unhealthy: %w", err)
@@ -34,6 +34,11 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 	python := version
 	if python == "default" {
 		python = p.GetDefaultVersion()
+		// A Windows Python installs `python.exe` and no `python3`; the name
+		// usually resolves to the Microsoft Store stub, which exits 9009.
+		if runtime.GOOS == "windows" {
+			python = "python"
+		}
 	}
 
 	// Create virtualenv.
@@ -49,7 +54,7 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 	}
 
 	// Install the hook package.
-	pip := filepath.Join(envDir, "bin", "pip")
+	pip := filepath.Join(venvBinDir(envDir), "pip")
 	args := []string{"install", "."}
 	args = append(args, additionalDeps...)
 	cmd = exec.Command(pip, args...)
@@ -63,9 +68,8 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 
 func (p *Python) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
 	envDir := filepath.Join(prefix, p.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
 	env := []string{
-		PrependPath(binDir),
+		PrependPath(venvBinDir(envDir)),
 		fmt.Sprintf("VIRTUAL_ENV=%s", envDir),
 	}
 	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)

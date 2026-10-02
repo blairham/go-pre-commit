@@ -337,3 +337,87 @@ jobs:
             exit 1
           fi
           echo "hook environment built, hook ran, file fixed"
+
+  # The `action` job above installs the *released* binary, so it cannot test a
+  # fix before it ships. This builds the pull request's code on Windows and
+  # runs one hook per backend that installs an environment there. Each input
+  # is one the hook must reject, so a pass means the hook did nothing.
+  windows-hooks:
+    name: Hooks from source (windows-latest)
+    needs: changes
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          python-version: '3.13'
+      - name: Build from this checkout
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+          go build -o "$RUNNER_TEMP/bin/pre-commit.exe" .
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          # nodeenv is what the node backend drives, as upstream's does.
+          python -m pip install --disable-pip-version-check nodeenv
+      - name: python, node and golang hooks build an environment and run
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          set -euo pipefail
+          pre-commit --version
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          git init -q .
+          git config user.email ci@example.com
+          git config user.name CI
+          cat > .pre-commit-config.yaml <<'YAML'
+          repos:
+          -   repo: https://github.com/pre-commit/pre-commit-hooks
+              rev: v5.0.0
+              hooks:
+              -   id: trailing-whitespace
+          -   repo: https://github.com/blairham/pre-commit-hooks
+              rev: v0.4.0
+              hooks:
+              -   id: check-conflict-markers
+          -   repo: local
+              hooks:
+              -   id: prettier
+                  name: prettier
+                  language: node
+                  entry: prettier --check
+                  additional_dependencies: ['prettier@3.3.3']
+                  files: \.json$
+          YAML
+          printf 'x   \n' > f.txt
+          printf '<<<<<<< ours\na\n=======\nb\n>>>>>>> theirs\n' > conflict.txt
+          printf '{"a":1,\n  "b":2}\n' > ugly.json
+          git add -A
+
+          fails() {
+            if pre-commit run "$1" --all-files --color=never; then
+              echo "::error::$1 passed on input it must reject" >&2
+              exit 1
+            fi
+            echo "$1 ran and rejected its input"
+          }
+          fails trailing-whitespace
+          fails check-conflict-markers
+          fails prettier
+
+          # Exit codes are cheap to get right by accident. The fixed file is not.
+          if [ "$(cat f.txt)" != "x" ]; then
+            echo "::error::trailing-whitespace did not fix f.txt" >&2
+            exit 1
+          fi

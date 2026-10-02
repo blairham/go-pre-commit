@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -156,4 +157,19 @@ func FindExecutable(name string, paths ...string) (string, error) {
 // PrependPath prepends a directory to the PATH env var.
 func PrependPath(dir string) string {
 	return fmt.Sprintf("PATH=%s%c%s", dir, os.PathListSeparator, os.Getenv("PATH"))
+}
+
+// venvBinDir is where a virtualenv or nodeenv puts its executables: Scripts
+// on Windows, bin everywhere else. It is Python pre-commit's python.bin_dir,
+// which its node backend reuses. Only these two backends differ: go, cargo,
+// gem and the others install into bin on Windows too, as upstream expects.
+func venvBinDir(envDir string) string {
+	return venvBinDirFor(runtime.GOOS, envDir)
+}
+
+func venvBinDirFor(goos, envDir string) string {
+	if goos == "windows" {
+		return filepath.Join(envDir, "Scripts")
+	}
+	return filepath.Join(envDir, "bin")
 }

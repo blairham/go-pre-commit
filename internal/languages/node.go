@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -21,7 +22,7 @@ func (n *Node) GetDefaultVersion() string { return "default" }
 
 func (n *Node) HealthCheck(prefix, version string) error {
 	envDir := filepath.Join(prefix, n.EnvironmentDir()+"-"+version)
-	nodePath := filepath.Join(envDir, "bin", "node")
+	nodePath := filepath.Join(venvBinDir(envDir), "node")
 	cmd := exec.Command(nodePath, "--version")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("node environment unhealthy: %w", err)
@@ -30,28 +31,44 @@ func (n *Node) HealthCheck(prefix, version string) error {
 }
 
 // nodeEnvVars mirrors Python pre-commit's get_env_patch: npm's prefix is
-// pointed at the env so `npm install -g` lands the hook's executables in
-// envDir/bin, which Run then puts on PATH.
+// pointed at the env so `npm install -g` lands the hook's executables in its
+// bin dir, which Run then puts on PATH.
 func nodeEnvVars(envDir string) []string {
+	return nodeEnvVarsFor(runtime.GOOS, envDir)
+}
+
+// On Windows a global npm install puts executables directly in the prefix and
+// modules in prefix/node_modules, so upstream points the prefix at Scripts
+// (the nodeenv bin dir) and NODE_PATH at Scripts/node_modules.
+func nodeEnvVarsFor(goos, envDir string) []string {
+	binDir := venvBinDirFor(goos, envDir)
+	prefix, libDir := envDir, "lib"
+	if goos == "windows" {
+		prefix, libDir = binDir, "Scripts"
+	}
 	return []string{
 		"NODE_VIRTUAL_ENV=" + envDir,
-		"NPM_CONFIG_PREFIX=" + envDir,
-		"npm_config_prefix=" + envDir,
-		"NODE_PATH=" + filepath.Join(envDir, "lib", "node_modules"),
-		PrependPath(filepath.Join(envDir, "bin")),
+		"NPM_CONFIG_PREFIX=" + prefix,
+		"npm_config_prefix=" + prefix,
+		"NODE_PATH=" + filepath.Join(envDir, libDir, "node_modules"),
+		PrependPath(binDir),
 	}
 }
 
 func (n *Node) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	envDir := filepath.Join(prefix, n.EnvironmentDir()+"-"+version)
 
-	nodeVersion := version
-	if nodeVersion == "default" {
-		nodeVersion = "system"
-	}
-
 	// Create the nodeenv ("system" symlinks the host node into the env).
-	cmd := exec.Command("nodeenv", "--prebuilt", "--clean-src", envDir, "-n", nodeVersion)
+	// nodeenv cannot do `-n system` on Windows, so there, as upstream, the
+	// default is no -n at all: nodeenv's own default prebuilt node.
+	args := []string{"--prebuilt", "--clean-src", envDir}
+	switch {
+	case version != "default":
+		args = append(args, "-n", version)
+	case runtime.GOOS != "windows":
+		args = append(args, "-n", "system")
+	}
+	cmd := exec.Command("nodeenv", args...)
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("nodeenv failed: %s: %w", string(out), err)
