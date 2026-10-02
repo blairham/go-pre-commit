@@ -150,7 +150,9 @@ release:
   header: |
     ## go-pre-commit {{ .Tag }} ({{ .Date }})
 
-    Welcome to this new release!
+    Targets Python pre-commit **{{ .Env.UPSTREAM_VERSION }}**: the differential
+    parity suite runs against that release on every pull request
+    ([how it is measured](https://github.com/blairham/go-pre-commit/blob/main/docs/parity.md)).
 
   footer: |
     **Full Changelog**: https://github.com/blairham/go-pre-commit/compare/{{ .PreviousTag }}...{{ .Tag }}
