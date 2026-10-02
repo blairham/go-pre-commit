@@ -90,29 +90,25 @@ claim than "supported".
 |---|---|
 | Linux | Every check on this page runs here on every pull request. |
 | macOS | The composite action is exercised on `macos-latest` (arm64) each run, installing and running a real `python` hook. Used daily by the maintainer. |
-| Windows | **Hooks that need an installed environment do not work.** See below. |
+| Windows | `python`, `node` and `golang` hooks are built from source and run on `windows-latest` on every pull request, from the release after v4.6.9. See below. |
 
-**Windows is not merely untested — it is known broken for most hooks.** Every
-language backend that installs an environment hardcodes a `bin` directory, and
-a Windows virtualenv puts its executables in `Scripts`. So a `python` hook fails
-during install:
+**What is proven on Windows, and what is not.** The `Hooks from source` CI job
+builds the pull request's code on `windows-latest` and runs a `python`
+(`trailing-whitespace`), a `node` (prettier) and a `golang`
+(`check-conflict-markers`) hook, each against input it must reject. It asserts
+each one reached a `Failed` verdict, not just a non-zero exit, and that the
+python hook actually fixed its file. The composite action is also installed and
+run on `windows-latest` every run, with `pygrep`, `fail`, `system` and `script`
+hooks.
 
-```
-failed to install environment for hook "trailing-whitespace":
-  pip install failed: exec: "...\py_env-default\bin\pip":
-  executable file not found in %PATH%
-```
+`ruby`, `rust`, `dotnet`, `lua`, `perl` and the rest of the environment-building
+languages have **never been run on Windows**. Upstream installs them into `bin`
+there too, which is what this does, but nothing has checked it.
 
-`node`, `ruby` and `golang` share the same assumption and fail the same way.
-
-What *does* work on Windows, and is asserted in CI on every run: installing the
-binary through the composite action, `pre-commit --version`, and hooks whose
-language needs no environment — `pygrep`, `fail`, `system` and `script`. If your
-hooks are all `system` or `script`, Windows is usable today. If any of them is
-`python` or `node`, it is not.
-
-This is tracked in [#53](https://github.com/blairham/go-pre-commit/issues/53) and is not a parity decision — upstream works on Windows and
-this does not, which makes it a bug rather than a difference.
+Up to and including **v4.6.9**, every hook that installs an environment failed
+on Windows ([#53](https://github.com/blairham/go-pre-commit/issues/53)). The
+python and node backends looked for `bin` where a Windows virtualenv and
+nodeenv put `Scripts`, and executables were looked up without their `.exe`.
 
 ## Deliberate behaviors that surprise people
 
