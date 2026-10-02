@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Blair Hamilton
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pcre provides PCRE-compatible regex matching using regexp2.
 // Python's pre-commit uses Python's re module (PCRE), which supports features
 // like lookahead, lookbehind, and backreferences that Go's stdlib regexp (RE2)

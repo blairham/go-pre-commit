@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Blair Hamilton
+// SPDX-License-Identifier: Apache-2.0
+
 // Package integration tests compare the Go pre-commit binary against the
 // Python pre-commit tool to ensure CLI parity.
 //

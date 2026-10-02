@@ -5,7 +5,7 @@ on:
     tags:
     # Full versions only. The moving major alias (v4) is a tag too, and matching
     # "v*" would make every alias update kick off a second, duplicate release.
-    - "v[0-9]+.[0-9]+.[0-9]+*"
+      - "v[0-9]+.[0-9]+.[0-9]+*"
   # Re-run a release for a tag that already exists — after a failed publish,
   # say — without moving or re-creating the tag.
   workflow_dispatch:
@@ -25,16 +25,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        ref: ${{ inputs.tag || github.ref }}
-    # The toolchain go.mod pins, not a minor line: the released binary must be
-    # the one CI tested, not whatever Go shipped this morning.
-    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: go.mod
-        check-latest: true
-    - run: make test
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      # The toolchain go.mod pins, not a minor line: the released binary must be
+      # the one CI tested, not whatever Go shipped this morning.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - run: make test
 
   release:
     needs: test
@@ -43,65 +43,65 @@ jobs:
       # The GitHub release and its assets, and the moving major alias tag.
       contents: write
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        ref: ${{ inputs.tag || github.ref }}
-        fetch-depth: 0 # tags + history for versioning and changelog
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0 # tags + history for versioning and changelog
 
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: go.mod
-        check-latest: true # setup-go's manifest lags fresh Go patch releases; resolve via go.dev
-        cache: false # replaced by the release-scoped cache below
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true # setup-go's manifest lags fresh Go patch releases; resolve via go.dev
+          cache: false # replaced by the release-scoped cache below
 
-    # Release-scoped Go cache: setup-go's built-in cache is exact-match on
-    # go.sum and usually saved by CI test jobs (host-platform builds only);
-    # this one falls back on a restore-keys prefix and is saved at job end —
-    # after goreleaser — so it warms every cross-compiled GOOS/GOARCH target.
-    - name: Restore release Go cache
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: |
-          ~/go/pkg/mod
-          ~/.cache/go-build
-        key: go-release-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
-        restore-keys: |
-          go-release-${{ runner.os }}-
+      # Release-scoped Go cache: setup-go's built-in cache is exact-match on
+      # go.sum and usually saved by CI test jobs (host-platform builds only);
+      # this one falls back on a restore-keys prefix and is saved at job end —
+      # after goreleaser — so it warms every cross-compiled GOOS/GOARCH target.
+      - name: Restore release Go cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-release-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: |
+            go-release-${{ runner.os }}-
 
-    - name: Run GoReleaser
-      uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-      with:
-        distribution: goreleaser
-        version: "~> v2"
-        args: release --clean
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # A PAT with contents:write on blairham/homebrew-tap, so the formula can
-        # be committed to that separate repo.
-        HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        # Apple Developer ID signing + notarization of the darwin binaries.
-        # The notarize block in .goreleaser.yaml self-disables when
-        # MACOS_SIGN_P12 is unset, so releases still work without these.
-        MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-        MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-        MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-        MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-        MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
-    # `uses: blairham/go-pre-commit@v4` is the documented way to consume the
-    # composite action, and a documented path that does not resolve is worse
-    # than no documentation. Move the alias with every release rather than
-    # remembering to do it by hand.
-    - name: Move the major-version alias tag
-      env:
-        TAG: ${{ inputs.tag || github.ref_name }}
-      run: |
-        major="${TAG%%.*}"          # v4.6.7 -> v4
-        git config user.name  "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git tag "$major" "$TAG^{}" --force
-        # Retire the old alias, then publish the new one. Deleting first keeps
-        # this a plain create rather than a rewrite of a ref someone may be
-        # resolving right now.
-        git push origin ":refs/tags/$major" || true
-        git push origin "refs/tags/$major"
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT with contents:write on blairham/homebrew-tap, so the formula can
+          # be committed to that separate repo.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # Apple Developer ID signing + notarization of the darwin binaries.
+          # The notarize block in .goreleaser.yaml self-disables when
+          # MACOS_SIGN_P12 is unset, so releases still work without these.
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+      # `uses: blairham/go-pre-commit@v4` is the documented way to consume the
+      # composite action, and a documented path that does not resolve is worse
+      # than no documentation. Move the alias with every release rather than
+      # remembering to do it by hand.
+      - name: Move the major-version alias tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          major="${TAG%%.*}"          # v4.6.7 -> v4
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$major" "$TAG^{}" --force
+          # Retire the old alias, then publish the new one. Deleting first keeps
+          # this a plain create rather than a rewrite of a ref someone may be
+          # resolving right now.
+          git push origin ":refs/tags/$major" || true
+          git push origin "refs/tags/$major"

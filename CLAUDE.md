@@ -12,7 +12,7 @@ here.
 
 ## Claude Code-specific notes
 
-- **`make check` is `fmt vet test` — it does not lint.** Run `make check` *and* `make lint` before proposing a PR.
+- **There is no `lint` target.** golangci-lint runs in the pre-commit hook and in CI; never run it by hand.
 - **The repo-root `action.yml` is public API.** Changing its inputs breaks `aws-sso-config`, `aws-config-management`, and `ghorg`, which consume it in CI. Grep those repos' workflows before touching it.
 - **Behavior questions are settled by upstream, not by taste** — when unsure how a hook, flag, or cache path should behave, check Python pre-commit's source or CHANGELOG rather than choosing something reasonable-looking.
 - Parity tests need real Python pre-commit and don't run by default: `go test -v -tags=integration -timeout=600s ./test/integration/`.

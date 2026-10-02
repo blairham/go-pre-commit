@@ -35,61 +35,61 @@ jobs:
     name: Pre-commit
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        # `--new-from-merge-base` needs the base branch's history to find the
-        # common ancestor; a shallow clone has none of it.
-        fetch-depth: 0
-    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: go.mod
-        check-latest: true
-        cache: true # go-mod-tidy-repo resolves the whole graph; uncached it is slow and flaky
-    - name: Resolve the diff this change introduces
-      # Everything below runs against this range and nothing else — no
-      # `--all-files` anywhere in CI. A branch create or a force-push sends an
-      # all-zero `before`, and an unresolvable ref makes both pre-commit and
-      # golangci-lint report nothing while exiting 0, which is the silent pass
-      # this whole job exists to prevent. So: fall back to the merge base with
-      # main, then verify every ref actually resolves and fail loudly if not.
-      id: range
-      env:
-        BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      run: |
-        set -euo pipefail
-        base="$BASE"
-        if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
-           || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-          echo "No usable base ref ('${base:-empty}') — falling back to the merge base with main"
-          base="$(git merge-base origin/main "$HEAD_SHA")"
-        fi
-        git rev-parse --verify "${base}^{commit}" >/dev/null
-        git rev-parse --verify "${HEAD_SHA}^{commit}" >/dev/null
-        # The manual hook below diffs against origin/main; if that is missing
-        # it reports `0 issues` and exits 0 rather than erroring.
-        git rev-parse --verify origin/main >/dev/null
-        echo "base=$base" >> "$GITHUB_OUTPUT"
-        echo "head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-        echo "Linting ${base}..${HEAD_SHA}"
-    - name: Run pre-commit hooks
-      # Nothing is skipped here, unlike every other repo, which skips the
-      # HEAD-relative `golangci-lint`. Building a `language: golang` hook is
-      # this project's product, and the hook reporting nothing against a clean
-      # checkout is beside the point — that it *builds and runs* is the thing
-      # under test, and this is the one job that runs the action from the
-      # checkout. The step below is what gates the change itself.
-      uses: ./
-      with:
-        extra_args: --from-ref ${{ steps.range.outputs.base }} --to-ref ${{ steps.range.outputs.head }}
-    - name: Lint what this change introduces
-      # Same config, same pin, same hook — asked the narrower question, and
-      # told not to fix (`--fix=false` in the hook's args): a linter that
-      # repairs its own findings exits 0 and reports nothing, which is a green
-      # check over unchanged, still-broken committed code.
-      uses: ./
-      with:
-        extra_args: --from-ref ${{ steps.range.outputs.base }} --to-ref ${{ steps.range.outputs.head }} --hook-stage manual golangci-lint-new
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `--new-from-merge-base` needs the base branch's history to find the
+          # common ancestor; a shallow clone has none of it.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true # go-mod-tidy-repo resolves the whole graph; uncached it is slow and flaky
+      - name: Resolve the diff this change introduces
+        # Everything below runs against this range and nothing else — no
+        # `--all-files` anywhere in CI. A branch create or a force-push sends an
+        # all-zero `before`, and an unresolvable ref makes both pre-commit and
+        # golangci-lint report nothing while exiting 0, which is the silent pass
+        # this whole job exists to prevent. So: fall back to the merge base with
+        # main, then verify every ref actually resolves and fail loudly if not.
+        id: range
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          base="$BASE"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "No usable base ref ('${base:-empty}') — falling back to the merge base with main"
+            base="$(git merge-base origin/main "$HEAD_SHA")"
+          fi
+          git rev-parse --verify "${base}^{commit}" >/dev/null
+          git rev-parse --verify "${HEAD_SHA}^{commit}" >/dev/null
+          # The manual hook below diffs against origin/main; if that is missing
+          # it reports `0 issues` and exits 0 rather than erroring.
+          git rev-parse --verify origin/main >/dev/null
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "Linting ${base}..${HEAD_SHA}"
+      - name: Run pre-commit hooks
+        # Nothing is skipped here, unlike every other repo, which skips the
+        # HEAD-relative `golangci-lint`. Building a `language: golang` hook is
+        # this project's product, and the hook reporting nothing against a clean
+        # checkout is beside the point — that it *builds and runs* is the thing
+        # under test, and this is the one job that runs the action from the
+        # checkout. The step below is what gates the change itself.
+        uses: ./
+        with:
+          extra_args: --from-ref ${{ steps.range.outputs.base }} --to-ref ${{ steps.range.outputs.head }}
+      - name: Lint what this change introduces
+        # Same config, same pin, same hook — asked the narrower question, and
+        # told not to fix (`--fix=false` in the hook's args): a linter that
+        # repairs its own findings exits 0 and reports nothing, which is a green
+        # check over unchanged, still-broken committed code.
+        uses: ./
+        with:
+          extra_args: --from-ref ${{ steps.range.outputs.base }} --to-ref ${{ steps.range.outputs.head }} --hook-stage manual golangci-lint-new
 
   # Gating happens inside the jobs, never with a workflow-level `paths:`
   # filter: a required check that never runs reports as *pending forever*
@@ -105,58 +105,58 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        fetch-depth: 0 # the diff needs the base commit, not just HEAD
-    - id: filter
-      name: Is any of this code?
-      env:
-        # On a merge to main there is no pull request; `before` is the commit
-        # main pointed at, which makes the diff the merge itself.
-        BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-      run: |
-        code=false
-        if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
-          # A merge runs everything. Not because the merge itself changed code
-          # — it may be pure prose — but because this is the first time this
-          # tree is tested *as main*, and what it protects against is an
-          # earlier merge that broke something nobody has run since.
-          echo "push to $GITHUB_REF_NAME — running everything"
-          code=true
-        elif ! git cat-file -e "$BASE" 2>/dev/null; then
-          # No usable base commit — a force push, or a shallow fetch that did
-          # not reach it. `git diff` would fail here and print nothing, and an
-          # empty diff is indistinguishable from "only prose changed", so this
-          # would silently skip every test. The safe answer is to run them.
-          echo "base commit $BASE is not present — running everything"
-          code=true
-        else
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            case "$f" in
-              docs/*|*.md|LICENSE|LICENSE.*|*.png|*.jpg|*.gif|*.svg) ;; # prose
-              *) code=true; break ;;
-            esac
-          done <<<"$(git diff --name-only "$BASE"...HEAD)"
-        fi
-        echo "code=$code" >> "$GITHUB_OUTPUT"
-        echo "changed files are $([ "$code" = true ] && echo 'code — full run' || echo 'prose only — skipping the code jobs')"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff needs the base commit, not just HEAD
+      - id: filter
+        name: Is any of this code?
+        env:
+          # On a merge to main there is no pull request; `before` is the commit
+          # main pointed at, which makes the diff the merge itself.
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          code=false
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            # A merge runs everything. Not because the merge itself changed code
+            # — it may be pure prose — but because this is the first time this
+            # tree is tested *as main*, and what it protects against is an
+            # earlier merge that broke something nobody has run since.
+            echo "push to $GITHUB_REF_NAME — running everything"
+            code=true
+          elif ! git cat-file -e "$BASE" 2>/dev/null; then
+            # No usable base commit — a force push, or a shallow fetch that did
+            # not reach it. `git diff` would fail here and print nothing, and an
+            # empty diff is indistinguishable from "only prose changed", so this
+            # would silently skip every test. The safe answer is to run them.
+            echo "base commit $BASE is not present — running everything"
+            code=true
+          else
+            while IFS= read -r f; do
+              [ -n "$f" ] || continue
+              case "$f" in
+                docs/*|*.md|LICENSE|LICENSE.*|*.png|*.jpg|*.gif|*.svg) ;; # prose
+                *) code=true; break ;;
+              esac
+            done <<<"$(git diff --name-only "$BASE"...HEAD)"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "changed files are $([ "$code" = true ] && echo 'code — full run' || echo 'prose only — skipping the code jobs')"
 
   test:
     name: Build and test
     needs: changes
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      if: needs.changes.outputs.code == 'true'
-    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      if: needs.changes.outputs.code == 'true'
-      with:
-        go-version-file: go.mod
-        check-latest: true
-        cache: true
-    - run: make test
-      if: needs.changes.outputs.code == 'true'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - run: make test
+        if: needs.changes.outputs.code == 'true'
 
 
   # Parity is this project's entire claim, so a change that breaks it fails
@@ -166,39 +166,39 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      if: needs.changes.outputs.code == 'true'
-      with:
-        fetch-depth: 0
-    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      if: needs.changes.outputs.code == 'true'
-      with:
-        go-version-file: go.mod
-        check-latest: true
-        cache: true
-    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-      if: needs.changes.outputs.code == 'true'
-      with:
-        python-version: '3.13'
-    - name: Install Python pre-commit
-      if: needs.changes.outputs.code == 'true'
-      # Pinned to the line our version number claims parity with. The harness
-      # rejects any other line, so a bump here is a deliberate parity decision.
-      run: pip install 'pre-commit==4.6.2'
-    - name: Run parity tests
-      if: needs.changes.outputs.code == 'true'
-      # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
-      # green skip into a failure. This job exists to make the comparison; a
-      # run that makes no comparison has not done its job.
-      env:
-        PARITY_REQUIRE: '1'
-      run: go test -v -tags=integration -timeout=600s ./test/integration/
-    - name: Upload parity report
-      if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: parity-report
-        path: test/integration/parity_report.json
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          python-version: '3.13'
+      - name: Install Python pre-commit
+        if: needs.changes.outputs.code == 'true'
+        # Pinned to the line our version number claims parity with. The harness
+        # rejects any other line, so a bump here is a deliberate parity decision.
+        run: pip install 'pre-commit==4.6.2'
+      - name: Run parity tests
+        if: needs.changes.outputs.code == 'true'
+        # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
+        # green skip into a failure. This job exists to make the comparison; a
+        # run that makes no comparison has not done its job.
+        env:
+          PARITY_REQUIRE: '1'
+        run: go test -v -tags=integration -timeout=600s ./test/integration/
+      - name: Upload parity report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: parity-report
+          path: test/integration/parity_report.json
 
   # No `if:` needed: a job that `needs` a skipped job is itself skipped.
   build:
@@ -206,18 +206,18 @@ jobs:
     needs: [changes, test]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      if: needs.changes.outputs.code == 'true'
-      with:
-        fetch-depth: 0
-    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      if: needs.changes.outputs.code == 'true'
-      with:
-        go-version-file: go.mod
-        check-latest: true
-        cache: true
-    - run: make build
-      if: needs.changes.outputs.code == 'true'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'true'
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - run: make build
+        if: needs.changes.outputs.code == 'true'
 
   # The composite action is published to the Marketplace and its README offers
   # it to Linux, macOS and Windows runners, but only Linux had ever run it: the
@@ -246,94 +246,94 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Install through the action
-      uses: ./
-      with:
-        # The run step is exercised separately below against a config small
-        # enough to reason about. This repo's own hook set needs a Go
-        # toolchain and would be testing something else.
-        install-only: 'true'
-        cache: 'false'
+      - name: Install through the action
+        uses: ./
+        with:
+          # The run step is exercised separately below against a config small
+          # enough to reason about. This repo's own hook set needs a Go
+          # toolchain and would be testing something else.
+          install-only: 'true'
+          cache: 'false'
 
-    - name: The binary is on PATH and reports its version
-      shell: bash
-      run: |
-        set -euo pipefail
-        pre-commit --version
-        # A drop-in that answers to the name is the whole contract, so assert
-        # the name resolves rather than trusting the step above to have failed.
-        command -v pre-commit
+      - name: The binary is on PATH and reports its version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pre-commit --version
+          # A drop-in that answers to the name is the whole contract, so assert
+          # the name resolves rather than trusting the step above to have failed.
+          command -v pre-commit
 
-    - name: A hook with no environment runs, and changes a file
-      # pygrep needs no installed environment, so this is the part of the tool
-      # that works on every platform. It is the Windows leg's real assertion.
-      shell: bash
-      run: |
-        set -euo pipefail
-        tmp="$(mktemp -d)"
-        cd "$tmp"
-        git init -q .
-        git config user.email ci@example.com
-        git config user.name CI
-        cat > .pre-commit-config.yaml <<'YAML'
-        repos:
-        -   repo: local
-            hooks:
-            -   id: no-todo
-                name: no TODO markers
-                language: pygrep
-                entry: TODO
-        YAML
-        printf 'clean line\n' > ok.txt
-        printf 'TODO fix me\n' > bad.txt
-        git add -A
+      - name: A hook with no environment runs, and changes a file
+        # pygrep needs no installed environment, so this is the part of the tool
+        # that works on every platform. It is the Windows leg's real assertion.
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          git init -q .
+          git config user.email ci@example.com
+          git config user.name CI
+          cat > .pre-commit-config.yaml <<'YAML'
+          repos:
+          -   repo: local
+              hooks:
+              -   id: no-todo
+                  name: no TODO markers
+                  language: pygrep
+                  entry: TODO
+          YAML
+          printf 'clean line\n' > ok.txt
+          printf 'TODO fix me\n' > bad.txt
+          git add -A
 
-        # pygrep fails when the pattern matches, so a pass means it did nothing.
-        if pre-commit run --all-files --color=never; then
-          echo "::error::pygrep passed on a file containing the pattern" >&2
-          exit 1
-        fi
-        echo "pygrep hook ran and matched"
+          # pygrep fails when the pattern matches, so a pass means it did nothing.
+          if pre-commit run --all-files --color=never; then
+            echo "::error::pygrep passed on a file containing the pattern" >&2
+            exit 1
+          fi
+          echo "pygrep hook ran and matched"
 
-    - name: A hook that builds an environment runs, and changes a file
-      # Every language backend that installs an environment hardcodes a `bin`
-      # directory. A Windows virtualenv puts its executables in `Scripts`, so
-      # python, node, ruby and golang hooks all fail there with
-      # `py_env-default\bin\pip: executable file not found`. That is issue
-      # #53; until it is fixed this step would be a permanent red X on
-      # Windows rather than a signal, so it asserts where it can and the
-      # limitation is documented rather than hidden.
-      if: runner.os != 'Windows'
-      shell: bash
-      run: |
-        set -euo pipefail
-        tmp="$(mktemp -d)"
-        cd "$tmp"
-        git init -q .
-        git config user.email ci@example.com
-        git config user.name CI
-        cat > .pre-commit-config.yaml <<'YAML'
-        repos:
-        -   repo: https://github.com/pre-commit/pre-commit-hooks
-            rev: v5.0.0
-            hooks:
-            -   id: trailing-whitespace
-        YAML
-        printf 'x   \n' > f.txt
-        git add -A
+      - name: A hook that builds an environment runs, and changes a file
+        # Every language backend that installs an environment hardcodes a `bin`
+        # directory. A Windows virtualenv puts its executables in `Scripts`, so
+        # python, node, ruby and golang hooks all fail there with
+        # `py_env-default\bin\pip: executable file not found`. That is issue
+        # #53; until it is fixed this step would be a permanent red X on
+        # Windows rather than a signal, so it asserts where it can and the
+        # limitation is documented rather than hidden.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          git init -q .
+          git config user.email ci@example.com
+          git config user.name CI
+          cat > .pre-commit-config.yaml <<'YAML'
+          repos:
+          -   repo: https://github.com/pre-commit/pre-commit-hooks
+              rev: v5.0.0
+              hooks:
+              -   id: trailing-whitespace
+          YAML
+          printf 'x   \n' > f.txt
+          git add -A
 
-        # The hook fixes the file, so a passing run means it did nothing.
-        if pre-commit run --all-files --color=never; then
-          echo "::error::trailing-whitespace passed on a file that needed fixing" >&2
-          exit 1
-        fi
+          # The hook fixes the file, so a passing run means it did nothing.
+          if pre-commit run --all-files --color=never; then
+            echo "::error::trailing-whitespace passed on a file that needed fixing" >&2
+            exit 1
+          fi
 
-        # Exit codes are cheap to get right by accident. The file is not.
-        got="$(cat f.txt)"
-        if [ "$got" != "x" ]; then
-          echo "::error::whitespace was not fixed; f.txt is $(od -c f.txt | head -1)" >&2
-          exit 1
-        fi
-        echo "hook environment built, hook ran, file fixed"
+          # Exit codes are cheap to get right by accident. The file is not.
+          got="$(cat f.txt)"
+          if [ "$got" != "x" ]; then
+            echo "::error::whitespace was not fixed; f.txt is $(od -c f.txt | head -1)" >&2
+            exit 1
+          fi
+          echo "hook environment built, hook ran, file fixed"
