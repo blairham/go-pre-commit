@@ -78,8 +78,8 @@ and the README's flat list does not tell you which is which. This table does.
 | `golang` | — | ✅ 2 | ✅ (Windows job) |
 | `docker`, `docker_image` | — | ✅ 3 | — |
 | `node` | — | ✅ 1 (env layout) | ✅ (Windows job) |
-| `ruby` | — | ❌ none | — |
-| `rust` | — | ❌ none | — |
+| `ruby` | — | ❌ none | ✅ (Windows job) |
+| `rust` | — | ❌ none | ✅ (Windows job) |
 | `conda`, `coursier`, `dart`, `dotnet`, `haskell`, `lua`, `perl`, `r` | — | ❌ none of their own¹ | — |
 | `julia`, `swift` | — | ❌ none | — |
 
@@ -99,19 +99,22 @@ claim than "supported".
 |---|---|
 | Linux | Every check on this page runs here on every pull request. |
 | macOS | The composite action is exercised on `macos-latest` (arm64) each run, installing and running a real `python` hook. Used daily by the maintainer. |
-| Windows | `python`, `node` and `golang` hooks are built from source and run on `windows-latest` on every pull request, from the release after v4.6.9. See below. |
+| Windows | `python`, `node`, `golang`, `ruby` and `rust` hooks are built from source and run on `windows-latest` on every pull request. See below. |
 
 **What is proven on Windows, and what is not.** The `Hooks from source` CI job
 builds the pull request's code on `windows-latest` and runs a `python`
 (`trailing-whitespace`), a `node` (prettier) and a `golang`
-(`check-conflict-markers`) hook, each against input it must reject. It asserts
+(`check-conflict-markers`) hook, plus a `ruby` and a `rust` hook whose repositories
+the job builds itself (a gemspec and a Cargo crate, so `gem build`/`gem install`
+and `cargo install --path` are what is exercised), each against input it must
+reject. It asserts
 each one reached a `Failed` verdict, not just a non-zero exit, and that the
 python hook actually fixed its file. The composite action is also installed and
 run on `windows-latest` every run, with `pygrep`, `fail`, `system` and `script`
 hooks.
 
-`ruby`, `rust`, `dotnet`, `lua`, `perl` and the rest of the environment-building
-languages have **never been run on Windows**. Upstream installs them into `bin`
+`dotnet`, `lua`, `perl` and the rest of the environment-building languages have
+**never been run on Windows**. Upstream installs them into `bin`
 there too, which is what this does, but nothing has checked it.
 
 Up to and including **v4.6.9**, every hook that installs an environment failed
