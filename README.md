@@ -62,9 +62,9 @@ brew install blairham/tap/pre-commit
 
 Download the latest release from the [Releases page](https://github.com/blairham/go-pre-commit/releases). Archives are available for Linux, macOS, and Windows (amd64/arm64).
 
-> **On Windows, `python`, `node` and `golang` hooks work from the release after
-> v4.6.9**, and CI runs one of each there on every pull request. Other languages
-> that install an environment (`ruby`, `rust`, …) have not been run on Windows.
+> **On Windows, `python`, `node`, `golang`, `ruby` and `rust` hooks work from
+> v4.6.10**, and CI runs one of each there on every pull request. The other languages that install an environment have not been run on
+> Windows.
 > See [platform support](docs/parity.md#platform-support).
 
 ```bash
