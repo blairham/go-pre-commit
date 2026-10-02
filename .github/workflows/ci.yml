@@ -357,6 +357,10 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           python-version: '3.13'
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        if: needs.changes.outputs.code == 'true'
+        with:
+          ruby-version: '3.3'
       - name: Build from this checkout
         if: needs.changes.outputs.code == 'true'
         run: |
@@ -425,3 +429,76 @@ jobs:
             echo "::error::trailing-whitespace did not fix f.txt" >&2
             exit 1
           fi
+
+      - name: ruby and rust hooks build an environment and run
+        # Each backend gets a hook repository made right here, so what is
+        # exercised is this tool's install path (gem build + gem install,
+        # cargo install --path) rather than somebody else's repo. Both hooks
+        # reject a file containing TODO.
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          mkrepo() { git init -q "$1"; git -C "$1" config user.email ci@example.com; git -C "$1" config user.name CI; }
+
+          mkrepo "$root/rubyhook"
+          cd "$root/rubyhook"
+          mkdir bin
+          cat > no-todo.gemspec <<'RUBY'
+          Gem::Specification.new do |s|
+            s.name = 'no-todo'
+            s.version = '0.0.0'
+            s.summary = 'rejects marker files'
+            s.authors = ['ci']
+            s.files = ['bin/no-todo-rb']
+            s.executables = ['no-todo-rb']
+          end
+          RUBY
+          cat > bin/no-todo-rb <<'RUBY'
+          #!/usr/bin/env ruby
+          bad = ARGV.select { |f| File.read(f).include?('TODO') }
+          bad.each { |f| puts "#{f}: TODO" }
+          exit(bad.empty? ? 0 : 1)
+          RUBY
+          printf -- '-   id: no-todo-rb\n    name: no TODO (ruby)\n    entry: no-todo-rb\n    language: ruby\n' > .pre-commit-hooks.yaml
+          git add -A && git commit -qm hook
+
+          mkrepo "$root/rusthook"
+          cd "$root/rusthook"
+          mkdir src
+          printf '[package]\nname = "no-todo-rs"\nversion = "0.0.0"\nedition = "2021"\n' > Cargo.toml
+          cat > src/main.rs <<'RUST'
+          fn main() {
+              let mut bad = false;
+              for f in std::env::args().skip(1) {
+                  if std::fs::read_to_string(&f).unwrap_or_default().contains("TODO") {
+                      println!("{f}: TODO");
+                      bad = true;
+                  }
+              }
+              std::process::exit(if bad { 1 } else { 0 });
+          }
+          RUST
+          printf -- '-   id: no-todo-rs\n    name: no TODO (rust)\n    entry: no-todo-rs\n    language: rust\n' > .pre-commit-hooks.yaml
+          git add -A && git commit -qm hook
+
+          mkrepo "$root/target"
+          cd "$root/target"
+          printf 'TODO: fix\n' > bad.txt
+          git add -A
+
+          verdict() {
+            if out="$(pre-commit try-repo "$(cygpath -w "$1")" "$2" --all-files --color=never 2>&1)"; then
+              echo "$out"
+              echo "::error::$2 passed on input it must reject" >&2
+              exit 1
+            fi
+            echo "$out"
+            if ! grep -qE '\.Failed$' <<<"$out" || grep -q '\[ERROR\]' <<<"$out" || ! grep -q 'bad.txt: TODO' <<<"$out"; then
+              echo "::error::$2 did not run to a verdict" >&2
+              exit 1
+            fi
+            echo "$2 ran and rejected its input"
+          }
+          verdict "$root/rubyhook" no-todo-rb
+          verdict "$root/rusthook" no-todo-rs
