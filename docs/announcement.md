@@ -25,7 +25,7 @@ written:
   framing leads with the 1.0×.
 - **"A replacement for pre-commit."** It is an independent reimplementation of
   someone else's design. The reference implementation is theirs.
-- **"100% compatible."** The number is 82 differential checks, measured, with a
+- **"100% compatible."** The number is 98 differential checks, measured, with a
   named upstream version. That is a much smaller and much more defensible
   claim, and it is the one on the front page.
 - **Anything about Windows.** See below.
@@ -76,7 +76,7 @@ want it mentioned somewhere, that is their call to make, not ours to ask for.
 - *"Does it work on Windows?"* — Not for hooks that install an environment.
   Link [#53](https://github.com/blairham/go-pre-commit/issues/53). Do not
   soften it.
-- *"How do you know it is compatible?"* — 82 differential checks against a
+- *"How do you know it is compatible?"* — 98 differential checks against a
   pinned upstream version, run on every PR, and a divergence fails the build.
   Link [parity.md](parity.md).
 - *"It shadows the Homebrew formula."* — Deliberate; a drop-in has to answer to
