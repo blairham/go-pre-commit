@@ -170,14 +170,16 @@ func (c *RunCommand) Run(args []string) int {
 	needsStash := !opts.AllFiles && len(opts.Files) == 0 && opts.FromRef == "" && opts.ToRef == "" && !noStash
 	var stashMgr *staged.Manager
 	if needsStash {
-		hasUnstaged, _ := git.HasUnstagedChanges(root)
-		if hasUnstaged {
-			stashMgr = staged.NewManager(root)
-			stashed, err := stashMgr.StashUnstaged()
-			if !stashed || err != nil {
-				output.Warn("Failed to stash unstaged changes: %v", err)
-				stashMgr = nil
-			}
+		// StashUnstaged decides whether there is anything to stash itself: it
+		// must judge against the index git handed the hook, which a plain
+		// `git diff` here would not (see git.HostIndexEnv).
+		stashMgr = staged.NewManager(root)
+		stashed, err := stashMgr.StashUnstaged()
+		if err != nil {
+			output.Warn("Failed to stash unstaged changes: %v", err)
+		}
+		if !stashed {
+			stashMgr = nil
 		}
 	}
 

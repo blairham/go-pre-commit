@@ -4,6 +4,7 @@
 package hook
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
+	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/identify"
 	"github.com/blairham/go-pre-commit/v4/internal/languages"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
@@ -180,7 +182,7 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 			metaExit, metaOut := r.runMetaHook(h, files)
 			if metaExit != 0 {
 				output.PrintHookHeader(h.Name, output.ResultFailed)
-				output.PrintHookOutput(metaOut, h.ID, metaExit, true)
+				output.PrintHookOutput(metaOut, h.ID, metaExit, false, true)
 				result.Failed++
 			} else {
 				output.PrintHookHeader(h.Name, output.ResultPassed)
@@ -194,11 +196,9 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 			fileArgs = matchedFiles
 		}
 
-		// Capture file state before running hook (for modification detection).
-		var fpBefore map[string]fileFingerprint
-		if !opts.AllFiles {
-			fpBefore = fingerprintFiles(fileArgs)
-		}
+		// Snapshot the working tree's diff against the index: a hook that
+		// changes it has modified files, whether or not it was passed them.
+		diffBefore := r.worktreeDiff()
 
 		// Run the hook using xargs for batching.
 		var exitCode int
@@ -214,21 +214,11 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 			continue
 		}
 
-		// Detect if files were modified by the hook.
-		filesModified := false
-		if fpBefore != nil && exitCode == 0 {
-			fpAfter := fingerprintFiles(fileArgs)
-			for f, before := range fpBefore {
-				if after, ok := fpAfter[f]; ok && (before.size != after.size || before.modTime != after.modTime) {
-					filesModified = true
-					break
-				}
-			}
-		}
+		filesModified := !bytes.Equal(diffBefore, r.worktreeDiff())
 
 		if exitCode != 0 || filesModified {
 			output.PrintHookHeader(h.Name, output.ResultFailed)
-			output.PrintHookOutput(hookOutput, h.ID, exitCode, opts.Verbose || h.Verbose)
+			output.PrintHookOutput(hookOutput, h.ID, exitCode, filesModified, opts.Verbose || h.Verbose)
 			result.Failed++
 
 			// Write to log file if configured.
@@ -242,7 +232,7 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		} else {
 			output.PrintHookHeader(h.Name, output.ResultPassed)
 			if opts.Verbose || h.Verbose {
-				output.PrintHookOutput(hookOutput, h.ID, exitCode, true)
+				output.PrintHookOutput(hookOutput, h.ID, exitCode, false, true)
 			}
 			result.Passed++
 		}
@@ -481,25 +471,16 @@ func targetConcurrency(jobs, fileCount int) int {
 	return n
 }
 
-// fileFingerprint is a lightweight file state fingerprint using mtime and size
-// instead of reading entire file contents.
-type fileFingerprint struct {
-	size    int64
-	modTime int64
-}
-
-// fingerprintFiles returns a map of filename to stat-based fingerprint.
-// This is much faster than hashing file contents, especially for large files.
-func fingerprintFiles(files []string) map[string]fileFingerprint {
-	fps := make(map[string]fileFingerprint, len(files))
-	for _, f := range files {
-		info, err := os.Stat(f)
-		if err != nil {
-			continue
-		}
-		fps[f] = fileFingerprint{size: info.Size(), modTime: info.ModTime().UnixNano()}
-	}
-	return fps
+// worktreeDiff returns the working tree's diff against the host index, the
+// same command upstream pre-commit compares around each hook to decide that
+// "files were modified by this hook". Outside a repository it returns nil both
+// times, so nothing is reported.
+func (r *Runner) worktreeDiff() []byte {
+	cmd := exec.Command("git", "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules")
+	cmd.Dir = r.root
+	cmd.Env = git.HostIndexEnv()
+	out, _ := cmd.Output()
+	return out
 }
 
 // checkMinVersion checks if the current version meets the minimum requirement.
@@ -669,6 +650,7 @@ func ShowDiffOnFailure(allFiles bool) {
 		useColor = "always"
 	}
 	cmd := exec.Command("git", "--no-pager", "diff", "--no-ext-diff", "--color="+useColor)
+	cmd.Env = git.HostIndexEnv()
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	_ = cmd.Run()

@@ -149,15 +149,20 @@ func PrintHookHeader(name string, result HookResult) {
 }
 
 // PrintHookOutput prints hook output with optional indentation.
-func PrintHookOutput(output []byte, hookID string, exitCode int, verbose bool) {
-	if len(output) == 0 && !verbose {
+// filesModified reports that the hook changed the working tree, which fails it
+// even at exit code 0.
+func PrintHookOutput(output []byte, hookID string, exitCode int, filesModified, verbose bool) {
+	if len(output) == 0 && !verbose && !filesModified {
 		return
 	}
 
-	if exitCode != 0 || verbose {
+	if exitCode != 0 || filesModified || verbose {
 		fmt.Fprintf(os.Stderr, "- hook id: %s\n", hookID)
 		if exitCode != 0 {
 			fmt.Fprintf(os.Stderr, "- exit code: %d\n", exitCode)
+		}
+		if filesModified {
+			fmt.Fprintln(os.Stderr, "- files were modified by this hook")
 		}
 	}
 
