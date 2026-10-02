@@ -1,6 +1,7 @@
 # go-pre-commit
 
 [![CI](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml/badge.svg)](https://github.com/blairham/go-pre-commit/actions/workflows/ci.yml)
+[![Marketplace](https://img.shields.io/badge/marketplace-go--pre--commit-blue?logo=github)](https://github.com/marketplace/actions/go-pre-commit)
 [![CodeQL](https://github.com/blairham/go-pre-commit/actions/workflows/codeql.yml/badge.svg)](https://github.com/blairham/go-pre-commit/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/blairham/go-pre-commit/badge)](https://scorecard.dev/viewer/?uri=github.com/blairham/go-pre-commit)
 [![Go version](https://img.shields.io/github/go-mod/go-version/blairham/go-pre-commit)](go.mod)

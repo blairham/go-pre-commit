@@ -90,7 +90,7 @@ want it mentioned somewhere, that is their call to make, not ours to ask for.
 - [ ] `uses: blairham/go-pre-commit@v4` resolves and runs
 - [ ] Every command in the README quick start, in order, in a scratch repo
 - [ ] Issue templates render (open one, cancel it)
-- [ ] The Marketplace listing exists and its description matches the README's
+- [x] The Marketplace listing exists and its description matches the README's
       first line
 
 ## After posting
