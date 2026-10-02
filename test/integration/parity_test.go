@@ -990,6 +990,57 @@ func TestRun(t *testing.T) {
 // Tests: repo: local hooks (environment provisioning)
 // ---------------------------------------------------------------------------
 
+// The README's two everyday forms: a plain `run` (staged files only), and a
+// commit going through the hook `install` wrote.
+func TestReadmeEverydayFlow(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+
+	t.Run("run checks staged files only", func(t *testing.T) {
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		pyRepo := initTestRepo(t, standardCfg, "staged   \n")
+		goRepo := initTestRepo(t, standardCfg, "staged   \n")
+		for _, dir := range []string{pyRepo, goRepo} {
+			// Committed earlier with trailing whitespace, and not staged now:
+			// a run over staged files must leave it alone.
+			if err := os.WriteFile(filepath.Join(dir, "old.txt"), []byte("old   \n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, pyExit := runCmd(t, pyRepo, pyBin, "run", "trailing-whitespace", "--color=never")
+		_, goExit := runCmd(t, goRepo, goBinary, "run", "trailing-whitespace", "--color=never")
+		addExitResult("run", "staged-only run fails on the staged file", pyExit, goExit, pyExit != 0 && goExit != 0, "")
+		addFSResult("run", "staged file fixed, unstaged file untouched",
+			readFile(filepath.Join(pyRepo, "test.txt")) == "staged\n" && readFile(filepath.Join(goRepo, "test.txt")) == "staged\n" &&
+				readFile(filepath.Join(pyRepo, "old.txt")) == "old   \n" && readFile(filepath.Join(goRepo, "old.txt")) == "old   \n",
+			fmt.Sprintf("py test=%q old=%q, go test=%q old=%q",
+				readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(pyRepo, "old.txt")),
+				readFile(filepath.Join(goRepo, "test.txt")), readFile(filepath.Join(goRepo, "old.txt"))))
+	})
+
+	t.Run("commit runs the installed hook", func(t *testing.T) {
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		// The hook `install` writes runs `pre-commit` by name, so the binary
+		// under test must come first on PATH, or this would grade whichever
+		// pre-commit the machine happens to have.
+		t.Setenv("PATH", filepath.Dir(goBinary)+string(os.PathListSeparator)+os.Getenv("PATH"))
+		pyRepo := initTestRepo(t, standardCfg, "commit me   \n")
+		goRepo := initTestRepo(t, standardCfg, "commit me   \n")
+		runCmd(t, pyRepo, pyBin, "install")
+		runCmd(t, goRepo, goBinary, "install")
+		pyOut, pyExit := runCmd(t, pyRepo, "git", "-c", "commit.gpgsign=false", "commit", "-m", "x")
+		goOut, goExit := runCmd(t, goRepo, "git", "-c", "commit.gpgsign=false", "commit", "-m", "x")
+		addExitResult("install", "commit is stopped by the hook", pyExit, goExit, pyExit != 0 && goExit != 0, "")
+		compareHookStatuses(t, "install", pyOut, goOut, 3)
+		addFSResult("install", "hook fixed the file during the commit",
+			readFile(filepath.Join(pyRepo, "test.txt")) == "commit me\n" && readFile(filepath.Join(goRepo, "test.txt")) == "commit me\n",
+			fmt.Sprintf("py=%q go=%q", readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(goRepo, "test.txt"))))
+		// The grading needs to have run the binary under test.
+		got, _ := runCmd(t, goRepo, "sh", "-c", "command -v pre-commit")
+		addOutputResult("install", "hook resolved the binary under test",
+			strings.TrimSpace(got) == goBinary, fmt.Sprintf("resolved %q", strings.TrimSpace(got)))
+	})
+}
+
 func TestLocalHooks(t *testing.T) {
 	pyBin := pythonPreCommit(t)
 
@@ -1191,6 +1242,113 @@ func TestTryRepo(t *testing.T) {
 		addExitResult("try-repo", "no args fails", pyExit, goExit,
 			(pyExit != 0) && (goExit != 0), "")
 	})
+
+	// The README's own example. Only "no args fails" was here, so try-repo
+	// against a remote found no hooks at all (#74) under a full green report.
+	const hooksRepo = "https://github.com/pre-commit/pre-commit-hooks"
+
+	tryBoth := func(t *testing.T, content string, args ...string) (pyOut, goOut string, pyExit, goExit int) {
+		t.Helper()
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		pyRepo := initTestRepoFile(t, "test.yaml", content)
+		goRepo := initTestRepoFile(t, "test.yaml", content)
+		full := append([]string{"try-repo", hooksRepo}, args...)
+		full = append(full, "--all-files", "--color=never")
+		pyOut, pyExit = runCmd(t, pyRepo, pyBin, full...)
+		goOut, goExit = runCmd(t, goRepo, goBinary, full...)
+		return
+	}
+
+	t.Run("remote repo, named hook, valid input", func(t *testing.T) {
+		pyOut, goOut, pyExit, goExit := tryBoth(t, "a: 1\n", "check-yaml")
+		addExitResult("try-repo", "remote named hook passes", pyExit, goExit, pyExit == 0 && goExit == 0, "")
+		compareHookStatuses(t, "try-repo", pyOut, goOut, 1)
+		addOutputResult("try-repo", "same generated config",
+			tryRepoConfig(pyOut) != "" && tryRepoConfig(pyOut) == tryRepoConfig(goOut),
+			fmt.Sprintf("py=%q go=%q", tryRepoConfig(pyOut), tryRepoConfig(goOut)))
+	})
+
+	t.Run("remote repo, named hook, invalid input", func(t *testing.T) {
+		pyOut, goOut, pyExit, goExit := tryBoth(t, "a: [\n", "check-yaml")
+		addExitResult("try-repo", "remote named hook fails on bad input", pyExit, goExit, pyExit != 0 && goExit != 0, "")
+		compareHookStatuses(t, "try-repo", pyOut, goOut, 1)
+	})
+
+	t.Run("remote repo, no hook id", func(t *testing.T) {
+		pyOut, goOut, _, _ := tryBoth(t, "a: 1\n")
+		pyCfg, goCfg := tryRepoConfig(pyOut), tryRepoConfig(goOut)
+		addOutputResult("try-repo", "every manifest hook is listed, same rev",
+			strings.Count(pyCfg, "-   id: ") > 1 && pyCfg == goCfg,
+			fmt.Sprintf("py=%d go=%d hooks", strings.Count(pyCfg, "-   id: "), strings.Count(goCfg, "-   id: ")))
+	})
+
+	t.Run("--ref pins the rev", func(t *testing.T) {
+		pyOut, goOut, pyExit, goExit := tryBoth(t, "a: 1\n", "check-yaml", "--ref", "v5.0.0")
+		addExitResult("try-repo", "--ref run passes", pyExit, goExit, pyExit == 0 && goExit == 0, "")
+		addOutputResult("try-repo", "--ref appears as the rev",
+			strings.Contains(tryRepoConfig(pyOut), "rev: v5.0.0") && tryRepoConfig(pyOut) == tryRepoConfig(goOut),
+			fmt.Sprintf("py=%q go=%q", tryRepoConfig(pyOut), tryRepoConfig(goOut)))
+	})
+
+	t.Run("local repo path", func(t *testing.T) {
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		hooks := t.TempDir()
+		for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}, {"config", "commit.gpgsign", "false"}} {
+			runCmd(t, hooks, "git", args...)
+		}
+		manifest := "-   id: no-todo\n    name: no TODO\n    entry: TODO\n    language: pygrep\n"
+		if err := os.WriteFile(filepath.Join(hooks, ".pre-commit-hooks.yaml"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runCmd(t, hooks, "git", "add", "-A")
+		runCmd(t, hooks, "git", "commit", "-qm", "hooks")
+
+		pyRepo := initTestRepo(t, "", "TODO: fix\n")
+		goRepo := initTestRepo(t, "", "TODO: fix\n")
+		pyOut, pyExit := runCmd(t, pyRepo, pyBin, "try-repo", hooks, "no-todo", "--all-files", "--color=never")
+		goOut, goExit := runCmd(t, goRepo, goBinary, "try-repo", hooks, "no-todo", "--all-files", "--color=never")
+		addExitResult("try-repo", "local path hook rejects its input", pyExit, goExit, pyExit != 0 && goExit != 0, "")
+		compareHookStatuses(t, "try-repo", pyOut, goOut, 1)
+	})
+}
+
+// initTestRepoFile is initTestRepo with a named file, for hooks that select by
+// file type (check-yaml ignores test.txt).
+func initTestRepoFile(t *testing.T, name, content string) string {
+	t.Helper()
+	dir := initTestRepo(t, "", "")
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runCmd(t, dir, "git", "add", "-A")
+	return dir
+}
+
+// compareHookStatuses records that both tools ran want hooks with the same
+// statuses. A run with no hook lines matches trivially, so want guards it.
+func compareHookStatuses(t *testing.T, cmd, pyOut, goOut string, want int) {
+	t.Helper()
+	pyHooks, goHooks := extractHookResults(pyOut), extractHookResults(goOut)
+	ok := len(pyHooks) == want && len(goHooks) == want
+	for i := 0; ok && i < want; i++ {
+		ok = pyHooks[i].Status == goHooks[i].Status
+	}
+	addOutputResult(cmd, fmt.Sprintf("%d hook(s) ran with matching status", want), ok,
+		fmt.Sprintf("py=%v go=%v", pyHooks, goHooks))
+}
+
+// tryRepoConfig extracts the "Using config:" block try-repo prints, so the
+// generated config can be compared byte for byte.
+func tryRepoConfig(out string) string {
+	rule := strings.Repeat("=", 79)
+	parts := strings.Split(out, rule+"\n")
+	// rule, "Using config:", rule, <config>, rule
+	for i := 0; i+2 < len(parts); i++ {
+		if parts[i] == "Using config:\n" {
+			return parts[i+1]
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------

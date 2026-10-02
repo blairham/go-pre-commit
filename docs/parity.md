@@ -52,6 +52,14 @@ Every command's surface: `run`, `install`, `uninstall`, `install-hooks`,
 `sample-config`, `validate-config`, `validate-manifest`, `help`, `--version` —
 their exit codes, their output, and the files they leave behind.
 
+That includes **every command in the README's Usage section, as written**: a
+plain `run` over staged files, a commit going through the hook `install`
+wrote, and `try-repo` against a remote repository, a pinned `--ref` and a
+local path. Until those were added the suite had only "`try-repo` with no
+arguments fails", and the README's own `try-repo` example was broken (#74)
+under a 100% headline. Run against that broken code, the new checks fail 7 of
+11.
+
 What they do **not** cover is the part underneath: building an environment for
 each language and running a real hook in it. The suite's own configs use
 `language: system` and `language: python` only.
@@ -65,10 +73,11 @@ and the README's flat list does not tell you which is which. This table does.
 |---|---|---|---|
 | `python`, `python_venv` | ✅ | ✅ 12 | ✅ |
 | `system` | ✅ | ✅ | ✅ |
-| `script`, `fail`, `pygrep` | — | ✅ 11 (shared file) | — |
-| `golang` | — | ✅ 2 | — |
+| `pygrep` | ✅ (`try-repo`, local path) | ✅ 11 (shared file) | ✅ |
+| `script`, `fail` | — | ✅ 11 (shared file) | — |
+| `golang` | — | ✅ 2 | ✅ (Windows job) |
 | `docker`, `docker_image` | — | ✅ 3 | — |
-| `node` | — | ❌ none | — |
+| `node` | — | ✅ 1 (env layout) | ✅ (Windows job) |
 | `ruby` | — | ❌ none | — |
 | `rust` | — | ❌ none | — |
 | `conda`, `coursier`, `dart`, `dotnet`, `haskell`, `lua`, `perl`, `r` | — | ❌ none of their own¹ | — |
