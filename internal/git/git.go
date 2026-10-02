@@ -362,12 +362,14 @@ func GetHooksDir(root ...string) (string, error) {
 		return filepath.Join(rootDir, out), nil
 	}
 
-	// Fall back to .git/hooks.
-	gitDir, err := GetGitDir(rootDir)
+	// Fall back to the common dir's hooks. In a linked worktree --git-dir is
+	// .git/worktrees/<name>, which git never reads hooks from; upstream joins
+	// get_git_common_dir() for the same reason.
+	commonDir, err := GetGitCommonDir(rootDir)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(gitDir, "hooks"), nil
+	return filepath.Join(commonDir, "hooks"), nil
 }
 
 // IntentToAddFiles returns files that were added with --intent-to-add.
