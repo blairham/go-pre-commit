@@ -42,6 +42,11 @@ func versionString(b BuildInfo) string {
 
 // Run creates the CLI application and executes the command specified by args.
 func Run(args []string, build BuildInfo) int {
+	// Upstream: "argparse doesn't really provide a way to use a `default`
+	// subparser" — a bare `pre-commit` is `pre-commit run`.
+	if len(args) == 0 {
+		args = []string{"run"}
+	}
 	ui := &mcli.BasicUi{
 		Reader:      os.Stdin,
 		Writer:      os.Stdout,
@@ -54,6 +59,11 @@ func Run(args []string, build BuildInfo) int {
 		Name:    "pre-commit",
 		Version: versionString(build),
 		Args:    args,
+		// Upstream (argparse) prints --version and --help to stdout and only
+		// errors to stderr. mitchellh/cli defaults both to stderr, which left
+		// `v=$(pre-commit --version)` empty.
+		HelpWriter:  os.Stdout,
+		ErrorWriter: os.Stderr,
 		Commands: map[string]mcli.CommandFactory{
 			"run":               func() (mcli.Command, error) { return &RunCommand{Meta: meta}, nil },
 			"install":           func() (mcli.Command, error) { return &InstallCommand{Meta: meta}, nil },

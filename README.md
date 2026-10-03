@@ -16,7 +16,7 @@ single binary. An independent Go reimplementation of
 affiliated with it.
 
 Measured against Python pre-commit 4.6.2 on every pull request that changes code:
-**98 of 98 differential checks pass** ([how that is measured](docs/parity.md)).
+**105 of 105 differential checks pass** ([how that is measured](docs/parity.md)).
 
 ## Is this for you?
 
