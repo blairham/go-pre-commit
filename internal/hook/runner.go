@@ -670,8 +670,22 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 	return nil
 }
 
-// ShowDiffOnFailure runs git diff to show changes made by hooks.
+// ShowDiffOnFailure prints what the hooks changed, as upstream's _run_hooks
+// does: only when there is a diff to show, with upstream's guidance lines
+// first under --all-files, and before unstaged changes are restored, so the
+// diff is the hooks' alone.
 func ShowDiffOnFailure(allFiles bool) {
+	check := exec.Command("git", "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules")
+	check.Env = git.HostIndexEnv()
+	if out, err := check.Output(); err != nil || len(out) == 0 {
+		return
+	}
+	if allFiles {
+		fmt.Println("pre-commit hook(s) made changes.\n" +
+			"If you are seeing this message in CI, reproduce locally with: `pre-commit run --all-files`.\n" +
+			"To run `pre-commit` as part of git workflow, use `pre-commit install`.")
+	}
+	fmt.Println("All changes made by hooks:")
 	useColor := "never"
 	if output.UseColor() {
 		useColor = "always"
@@ -681,11 +695,6 @@ func ShowDiffOnFailure(allFiles bool) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	_ = cmd.Run()
-
-	if allFiles {
-		fmt.Println()
-		fmt.Println("Hint: You may want to review the changes and commit them.")
-	}
 }
 
 // runMetaHook performs meta hook checks (check-hooks-apply, check-useless-excludes).

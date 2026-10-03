@@ -13,16 +13,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/text/width"
 )
 
-// Styles for terminal output.
-var (
-	redStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	yellowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	subtleStyle = lipgloss.NewStyle().Faint(true)
+// Upstream's escape codes (color.py), byte for byte: the status word gets a
+// background color, detail lines are dimmed. lipgloss used to render these as
+// foreground colors, and also dropped them whenever stdout was not a
+// terminal, so --color=always printed no color at all in CI (#88).
+const (
+	red       = "\033[41m"
+	green     = "\033[42m"
+	yellow    = "\033[43;30m"
+	turquoise = "\033[46;30m"
+	subtle    = "\033[2m"
+	normal    = "\033[m"
 )
 
 // ColorMode controls when colors are used.
@@ -90,11 +94,13 @@ func SetColorFromEnv() bool {
 	}
 }
 
-func render(style lipgloss.Style, text string) string {
+// colorize is upstream's format_color: the code, the text, and a reset, when
+// color is on. An empty code still gets the reset, as upstream's [INFO] does.
+func colorize(text, code string) string {
 	if !UseColor() {
 		return text
 	}
-	return style.Render(text)
+	return code + text + normal
 }
 
 // HookResult represents the outcome of running a hook.
@@ -126,13 +132,13 @@ func (r HookResult) String() string {
 func coloredResult(result HookResult) string {
 	switch result {
 	case ResultPassed:
-		return render(greenStyle, "Passed")
+		return colorize("Passed", green)
 	case ResultFailed:
-		return render(redStyle, "Failed")
+		return colorize("Failed", red)
 	case ResultSkipped:
-		return render(yellowStyle, "Skipped")
+		return colorize("Skipped", yellow)
 	case ResultError:
-		return render(redStyle, "Error")
+		return colorize("Error", red)
 	default:
 		return "Unknown"
 	}
@@ -201,7 +207,12 @@ func PrintHookSkipped(name string, cols int, noFiles bool) {
 	if noFiles {
 		postfix = noFilesPostfix
 	}
-	fmt.Println(name + dots(cols, name, postfix, len(skippedMsg)) + postfix + coloredResult(ResultSkipped))
+	// Upstream colors the two kinds of skip differently.
+	code := yellow
+	if noFiles {
+		code = turquoise
+	}
+	fmt.Println(name + dots(cols, name, postfix, len(skippedMsg)) + postfix + colorize(skippedMsg, code))
 }
 
 // PrintHookHeader prints a complete status line for the paths upstream has no
@@ -227,15 +238,15 @@ func PrintHookDetails(d HookDetails) {
 	if !d.Verbose && d.ExitCode == 0 && !d.FilesModified {
 		return
 	}
-	fmt.Println(render(subtleStyle, "- hook id: "+d.ID))
+	fmt.Println(colorize("- hook id: "+d.ID, subtle))
 	if d.Verbose && d.Duration != nil {
-		fmt.Println(render(subtleStyle, "- duration: "+formatDuration(*d.Duration)+"s"))
+		fmt.Println(colorize("- duration: "+formatDuration(*d.Duration)+"s", subtle))
 	}
 	if d.ExitCode != 0 {
-		fmt.Println(render(subtleStyle, fmt.Sprintf("- exit code: %d", d.ExitCode)))
+		fmt.Println(colorize(fmt.Sprintf("- exit code: %d", d.ExitCode), subtle))
 	}
 	if d.FilesModified {
-		fmt.Println(render(subtleStyle, "- files were modified by this hook"))
+		fmt.Println(colorize("- files were modified by this hook", subtle))
 	}
 	out := bytes.TrimSpace(d.Output)
 	if len(out) == 0 {
@@ -271,19 +282,19 @@ func formatDuration(d time.Duration) string {
 // Info prints an informational message.
 func Info(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("[INFO] %s\n", msg)
+	fmt.Printf("%s %s\n", colorize("[INFO]", ""), msg)
 }
 
 // Warn prints a warning message.
 func Warn(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("[%s] %s\n", render(yellowStyle, "WARNING"), msg)
+	fmt.Printf("%s %s\n", colorize("[WARNING]", yellow), msg)
 }
 
 // Error prints an error message.
 func Error(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintf(os.Stderr, "[%s] %s\n", render(redStyle, "ERROR"), msg)
+	fmt.Fprintf(os.Stderr, "%s %s\n", colorize("[ERROR]", red), msg)
 }
 
 // PrintSeparator prints a separator line.

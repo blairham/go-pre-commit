@@ -546,6 +546,44 @@ func TestRunReport(t *testing.T) {
         entry: "true"
         language: system
 `
+	// Hooks that print nothing: with color on, upstream runs hooks in a pty,
+	// which rewrites their output's line endings (#90). This compares the
+	// report's own colors, not hook output.
+	colorCfg := `repos:
+-   repo: local
+    hooks:
+    -   id: ok
+        name: ok
+        entry: "true"
+        language: system
+    -   id: fails-quietly
+        name: fails quietly
+        entry: sh -c 'exit 3'
+        language: system
+    -   id: modifies
+        name: modifies a file
+        entry: sh -c 'printf changed >> test.txt'
+        language: system
+        pass_filenames: false
+    -   id: skipped-by-env
+        name: skipped by SKIP
+        entry: "true"
+        language: system
+    -   id: no-files
+        name: matches no files
+        entry: "true"
+        language: system
+        files: '\.nomatch$'
+`
+	modifyCfg := `repos:
+-   repo: local
+    hooks:
+    -   id: modifies
+        name: modifies a file
+        entry: sh -c 'printf changed >> test.txt'
+        language: system
+        pass_filenames: false
+`
 	patchRe := regexp.MustCompile(`\S*patch\d+-\d+`)
 	durationRe := regexp.MustCompile(`- duration: [0-9.]+s`)
 	norm := func(s string) string {
@@ -557,11 +595,18 @@ func TestRunReport(t *testing.T) {
 		args      []string
 		env       []string
 		unstaged  bool
+		color     string // --color; "never" when empty
 	}{
-		{"every status and block", reportCfg, []string{"--all-files"}, []string{"SKIP=skipped-by-env"}, false},
-		{"verbose", reportCfg, []string{"--all-files", "--verbose"}, []string{"SKIP=skipped-by-env"}, false},
-		{"width follows the longest name", longCfg, []string{"--all-files"}, nil, false},
-		{"unstaged changes are stashed and restored", longCfg, nil, nil, true},
+		{"every status and block", reportCfg, []string{"--all-files"}, []string{"SKIP=skipped-by-env"}, false, ""},
+		{"verbose", reportCfg, []string{"--all-files", "--verbose"}, []string{"SKIP=skipped-by-env"}, false, ""},
+		{"width follows the longest name", longCfg, []string{"--all-files"}, nil, false, ""},
+		{"unstaged changes are stashed and restored", longCfg, nil, nil, true, ""},
+		{"colored", colorCfg, []string{"--all-files", "--verbose"}, []string{"SKIP=skipped-by-env"}, false, "always"},
+		{"show diff on failure, all files", modifyCfg, []string{"--all-files", "--show-diff-on-failure"}, nil, false, ""},
+		{"show diff on failure, staged files", modifyCfg, []string{"--show-diff-on-failure"}, nil, false, ""},
+		// The diff must be the hooks' changes only, shown before the user's
+		// unstaged work is put back.
+		{"show diff on failure, with unstaged work", modifyCfg, []string{"--show-diff-on-failure"}, nil, true, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -579,7 +624,11 @@ func TestRunReport(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				cmd := exec.Command(bin, append([]string{"run", "--color=never"}, tc.args...)...)
+				colorMode := tc.color
+				if colorMode == "" {
+					colorMode = "never"
+				}
+				cmd := exec.Command(bin, append([]string{"run", "--color=" + colorMode}, tc.args...)...)
 				cmd.Dir = repo
 				cmd.Env = append(append(os.Environ(), "PRE_COMMIT_HOME="+filepath.Join(home, fmt.Sprint(i))), tc.env...)
 				var o, e bytes.Buffer
