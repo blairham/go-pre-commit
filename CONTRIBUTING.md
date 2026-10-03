@@ -92,7 +92,7 @@ config. Redirect with `t.TempDir()` and `t.Setenv` — including `PRE_COMMIT_HOM
 
 ## Adding a language backend
 
-Ten of the 22 language backends are implemented but effectively unexercised —
+Ten of the 21 language backends are implemented but effectively unexercised —
 see the [grading table](docs/parity.md#language-support-graded). Moving one of
 those rows from "untested" to "proven" is genuinely wanted work, and it is
 mostly test-writing rather than implementation. Start by adding it to the

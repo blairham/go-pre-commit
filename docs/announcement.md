@@ -21,14 +21,16 @@ written:
 - **"Faster than pre-commit."** It starts faster and it is faster on trivial
   hooks. If your slow hook is `golangci-lint`, the tool doing the work is the
   same tool and the number does not move. The README benchmark says exactly
-  that — 4× on `trailing-whitespace`, 1.0× on `golangci-lint` — and the honest
+  that — 3.5× on `trailing-whitespace`, 1.0× on a `go vet` that has to compile,
+  because the saving is a fixed ~0.2s of interpreter startup — and the honest
   framing leads with the 1.0×.
 - **"A replacement for pre-commit."** It is an independent reimplementation of
   someone else's design. The reference implementation is theirs.
 - **"100% compatible."** The number is 98 differential checks, measured, with a
   named upstream version. That is a much smaller and much more defensible
   claim, and it is the one on the front page.
-- **Anything about Windows.** See below.
+- **"Works on Windows."** Five languages are proven there; the rest have never
+  been run there. See below.
 
 ## Known weak points, stated before someone finds them
 
@@ -38,8 +40,8 @@ rather than waiting to be asked.
 
 | Weak point | Where it is documented |
 |---|---|
-| Windows: hooks that install an environment do not work | [platform support](parity.md#platform-support), [#53](https://github.com/blairham/go-pre-commit/issues/53) |
-| Ten of 22 language backends are effectively unexercised | [language grading](parity.md#language-support-graded) |
+| Windows: only `python`, `node`, `golang`, `ruby` and `rust` are proven there (from v4.6.10); every other environment-building language has never been run on Windows | [platform support](parity.md#platform-support), [#53](https://github.com/blairham/go-pre-commit/issues/53) |
+| Ten of the 21 language backends are effectively unexercised | [language grading](parity.md#language-support-graded) |
 | The binary is named `pre-commit` and shadows the Python one | [deliberate behaviors](parity.md#deliberate-behaviors-that-surprise-people) |
 | The cache is shared with Python pre-commit, and `clean` is destructive | same |
 | `v4.6.x` is upstream's number, not a maturity claim | [stability](stability.md) |
@@ -72,10 +74,14 @@ want it mentioned somewhere, that is their call to make, not ours to ask for.
 
 - *"Why not just use pre-commit?"* — You should. Link
   [comparison.md](comparison.md), which opens with the case for staying.
-- *"Is this a fork?"* — No, and it shares no code. Link [NOTICE](../NOTICE).
-- *"Does it work on Windows?"* — Not for hooks that install an environment.
-  Link [#53](https://github.com/blairham/go-pre-commit/issues/53). Do not
-  soften it.
+- *"Is this a fork?"* — No. It is an independent Go implementation of
+  upstream's behavior; what it does take (the design, and `identify`'s file-type
+  tables as data) is credited in [NOTICE](../NOTICE).
+- *"Does it work on Windows?"* — For `python`, `node`, `golang`, `ruby` and
+  `rust` hooks, from v4.6.10, and CI proves each on every pull request. Not
+  proven for any other language that installs an environment, and up to v4.6.9
+  none of them worked. Link [platform support](parity.md#platform-support). Do
+  not round it up.
 - *"How do you know it is compatible?"* — 98 differential checks against a
   pinned upstream version, run on every PR, and a divergence fails the build.
   Link [parity.md](parity.md).
