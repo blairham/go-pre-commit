@@ -218,18 +218,19 @@ func (c *RunCommand) Run(args []string) int {
 		PreRebaseBranch:            opts.PreRebaseBranch,
 	})
 
+	hasFailures := result.Failed > 0 || result.Errors > 0
+
+	// Before the stash is restored, as upstream does, so the diff shown is
+	// what the hooks changed and not the user's unstaged work.
+	if opts.ShowDiffOnFail && hasFailures {
+		hook.ShowDiffOnFailure(opts.AllFiles)
+	}
+
 	// Restore stash.
 	if stashMgr != nil {
 		if err := stashMgr.Restore(); err != nil {
 			output.Warn("Failed to restore unstaged changes: %v", err)
 		}
-	}
-
-	hasFailures := result.Failed > 0 || result.Errors > 0
-
-	// Show diff on failure if requested.
-	if opts.ShowDiffOnFail && hasFailures {
-		hook.ShowDiffOnFailure(opts.AllFiles)
 	}
 
 	if hasFailures {
