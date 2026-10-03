@@ -242,7 +242,7 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 			if parts := languages.ParseEntry(h.Entry); len(parts) > 0 {
 				exe = parts[0]
 			}
-			exitCode, hookOutput = 1, []byte(fmt.Sprintf("Executable `%s` not found", exe))
+			exitCode, hookOutput = 1, []byte(fmt.Sprintf("Executable %#q not found", exe))
 		}
 		elapsed := time.Since(start)
 

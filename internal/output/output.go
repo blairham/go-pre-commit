@@ -242,7 +242,7 @@ func PrintHookDetails(d HookDetails) {
 		return
 	}
 	fmt.Println()
-	os.Stdout.Write(append(out, '\n'))
+	_, _ = os.Stdout.Write(append(out, '\n'))
 	fmt.Println()
 	if d.LogFile != "" {
 		// Upstream appends exactly the lines it printed, and only these.
