@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func initTestRepo(t *testing.T) string {
 // --- NewManager tests ---
 
 func TestNewManager(t *testing.T) {
-	m := NewManager("/some/dir")
+	m := NewManager("/some/dir", t.TempDir())
 	if m == nil {
 		t.Fatal("expected non-nil Manager")
 	}
@@ -62,7 +63,7 @@ func TestNewManager(t *testing.T) {
 // --- IsStashed tests ---
 
 func TestIsStashed_Default(t *testing.T) {
-	m := NewManager("/tmp")
+	m := NewManager("/tmp", t.TempDir())
 	if m.IsStashed() {
 		t.Error("expected IsStashed=false for new Manager")
 	}
@@ -72,7 +73,7 @@ func TestIsStashed_Default(t *testing.T) {
 
 func TestStashUnstaged_NoChanges(t *testing.T) {
 	dir := initTestRepo(t)
-	m := NewManager(dir)
+	m := NewManager(dir, t.TempDir())
 
 	stashed, err := m.StashUnstaged()
 	if err != nil {
@@ -104,7 +105,7 @@ func TestStashUnstaged_WithUnstagedChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewManager(dir)
+	m := NewManager(dir, t.TempDir())
 	stashed, err := m.StashUnstaged()
 	if err != nil {
 		t.Fatalf("StashUnstaged failed: %v", err)
@@ -139,7 +140,7 @@ func TestStashUnstaged_OnlyStagedChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewManager(dir)
+	m := NewManager(dir, t.TempDir())
 	stashed, err := m.StashUnstaged()
 	if err != nil {
 		t.Fatalf("StashUnstaged failed: %v", err)
@@ -152,7 +153,7 @@ func TestStashUnstaged_OnlyStagedChanges(t *testing.T) {
 // --- Restore tests ---
 
 func TestRestore_NotStashed(t *testing.T) {
-	m := NewManager("/tmp")
+	m := NewManager("/tmp", t.TempDir())
 	// Restore on a non-stashed manager should be a no-op.
 	if err := m.Restore(); err != nil {
 		t.Fatalf("Restore failed: %v", err)
@@ -177,7 +178,7 @@ func TestRestore_RoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewManager(dir)
+	m := NewManager(dir, t.TempDir())
 	stashed, err := m.StashUnstaged()
 	if err != nil {
 		t.Fatalf("StashUnstaged failed: %v", err)
@@ -207,7 +208,10 @@ func TestRestore_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestRestore_CleansPatchFile(t *testing.T) {
+// Upstream keeps the patch in the store after restoring, named
+// patch<time>-<pid>: the path it prints is how a user recovers unstaged work
+// if a hook or the process dies first.
+func TestRestore_KeepsPatchFileInStore(t *testing.T) {
 	dir := initTestRepo(t)
 
 	// Stage + unstage.
@@ -223,7 +227,8 @@ func TestRestore_CleansPatchFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewManager(dir)
+	store := t.TempDir()
+	m := NewManager(dir, store)
 	m.StashUnstaged()
 
 	patchPath := m.patchPath
@@ -236,11 +241,14 @@ func TestRestore_CleansPatchFile(t *testing.T) {
 		t.Fatal("expected patch file to exist before restore")
 	}
 
+	if filepath.Dir(patchPath) != store || !regexp.MustCompile(`^patch\d+-\d+$`).MatchString(filepath.Base(patchPath)) {
+		t.Errorf("patch is %q, want <store>/patch<time>-<pid>", patchPath)
+	}
+
 	m.Restore()
 
-	// Verify patch file is cleaned up.
-	if _, err := os.Stat(patchPath); !os.IsNotExist(err) {
-		t.Error("expected patch file to be cleaned up after restore")
+	if _, err := os.Stat(patchPath); err != nil {
+		t.Errorf("expected the patch to be kept after restore: %v", err)
 	}
 }
 
@@ -290,7 +298,7 @@ func TestStashUnstaged_HostIndexWhileIndexLocked(t *testing.T) {
 	git.SetHostIndexFile(lock)
 	t.Cleanup(func() { git.SetHostIndexFile("") })
 
-	m := NewManager(dir)
+	m := NewManager(dir, t.TempDir())
 	stashed, err := m.StashUnstaged()
 	if err != nil {
 		t.Fatalf("StashUnstaged with index.lock held: %v", err)
@@ -315,7 +323,7 @@ func TestRestore_ConflictWithHookFixRollsBack(t *testing.T) {
 	dir := initTestRepo(t)
 	stageAndDirty(t, dir)
 
-	m := NewManager(dir)
+	m := NewManager(dir, t.TempDir())
 	if stashed, err := m.StashUnstaged(); err != nil || !stashed {
 		t.Fatalf("StashUnstaged = %v, %v", stashed, err)
 	}
@@ -344,7 +352,7 @@ func TestRestore_ReaddsIntentToAdd(t *testing.T) {
 		t.Fatalf("git add -N: %v\n%s", err, out)
 	}
 
-	m := NewManager(dir)
+	m := NewManager(dir, t.TempDir())
 	if stashed, err := m.StashUnstaged(); err != nil || !stashed {
 		t.Fatalf("StashUnstaged = %v, %v", stashed, err)
 	}

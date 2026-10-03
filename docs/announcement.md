@@ -26,7 +26,7 @@ written:
   framing leads with the 1.0×.
 - **"A replacement for pre-commit."** It is an independent reimplementation of
   someone else's design. The reference implementation is theirs.
-- **"100% compatible."** The number is 105 differential checks, measured, with a
+- **"100% compatible."** The number is 115 differential checks, measured, with a
   named upstream version. That is a much smaller and much more defensible
   claim, and it is the one on the front page.
 - **"Works on Windows."** Five languages are proven there; the rest have never
@@ -82,7 +82,7 @@ want it mentioned somewhere, that is their call to make, not ours to ask for.
   proven for any other language that installs an environment, and up to v4.6.9
   none of them worked. Link [platform support](parity.md#platform-support). Do
   not round it up.
-- *"How do you know it is compatible?"* — 105 differential checks against a
+- *"How do you know it is compatible?"* — 115 differential checks against a
   pinned upstream version, run on every PR, and a divergence fails the build.
   Link [parity.md](parity.md).
 - *"It shadows the Homebrew formula."* — Deliberate; a drop-in has to answer to

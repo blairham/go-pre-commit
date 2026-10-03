@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -492,6 +493,111 @@ func TestOutputStreams(t *testing.T) {
 	addOutputResult("no-such-command", "fails, on stderr",
 		pyExit != 0 && goExit != 0 && pyOut == "" && goOut == "" && pyErr != "" && goErr != "",
 		fmt.Sprintf("py exit=%d stdout=%d, go exit=%d stdout=%d", pyExit, len(pyOut), goExit, len(goOut)))
+}
+
+// The run report is compared byte for byte: every status line, its width and
+// postfix, the per-hook block, and which stream it goes to. Until this existed
+// only the Passed/Failed words were compared, so a line one column too wide, a
+// report on stderr, and missing stash messages all passed (#86). The only
+// normalization is for values that legitimately differ run to run: the stash
+// patch's path and a hook's duration.
+func TestRunReport(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+
+	reportCfg := `repos:
+-   repo: local
+    hooks:
+    -   id: ok
+        name: ok
+        entry: "true"
+        language: system
+    -   id: fails-with-output
+        name: fails with output
+        entry: sh -c 'echo some output; echo more; exit 3'
+        language: system
+    -   id: modifies
+        name: modifies a file
+        entry: sh -c 'echo changed >> test.txt'
+        language: system
+        pass_filenames: false
+    -   id: skipped-by-env
+        name: skipped by SKIP
+        entry: "true"
+        language: system
+    -   id: no-files
+        name: matches no files
+        entry: "true"
+        language: system
+        files: '\.nomatch$'
+    -   id: missing-exe
+        name: missing executable
+        entry: no-such-executable-86
+        language: system
+`
+	longCfg := `repos:
+-   repo: local
+    hooks:
+    -   id: long
+        name: a hook whose name is long enough to widen every status line in the report
+        entry: "true"
+        language: system
+    -   id: short
+        name: short
+        entry: "true"
+        language: system
+`
+	patchRe := regexp.MustCompile(`\S*patch\d+-\d+`)
+	durationRe := regexp.MustCompile(`- duration: [0-9.]+s`)
+	norm := func(s string) string {
+		return durationRe.ReplaceAllString(patchRe.ReplaceAllString(s, "<patch>"), "- duration: <n>s")
+	}
+
+	cases := []struct {
+		name, cfg string
+		args      []string
+		env       []string
+		unstaged  bool
+	}{
+		{"every status and block", reportCfg, []string{"--all-files"}, []string{"SKIP=skipped-by-env"}, false},
+		{"verbose", reportCfg, []string{"--all-files", "--verbose"}, []string{"SKIP=skipped-by-env"}, false},
+		{"width follows the longest name", longCfg, []string{"--all-files"}, nil, false},
+		{"unstaged changes are stashed and restored", longCfg, nil, nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			var outs, errs [2]string
+			for i, bin := range []string{pyBin, goBinary} {
+				repo := initTestRepo(t, tc.cfg, "hello\n")
+				if tc.unstaged {
+					runCmd(t, repo, "git", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "commit", "-qm", "init")
+					if err := os.WriteFile(filepath.Join(repo, "test.txt"), []byte("hello\nstaged\n"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+					runCmd(t, repo, "git", "add", "test.txt")
+					if err := os.WriteFile(filepath.Join(repo, "test.txt"), []byte("hello\nstaged\nunstaged\n"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				cmd := exec.Command(bin, append([]string{"run", "--color=never"}, tc.args...)...)
+				cmd.Dir = repo
+				cmd.Env = append(append(os.Environ(), "PRE_COMMIT_HOME="+filepath.Join(home, fmt.Sprint(i))), tc.env...)
+				var o, e bytes.Buffer
+				cmd.Stdout, cmd.Stderr = &o, &e
+				_ = cmd.Run()
+				outs[i], errs[i] = norm(o.String()), norm(e.String())
+				if tc.unstaged {
+					got := readFile(filepath.Join(repo, "test.txt"))
+					addFSResult("run", "unstaged change restored ("+[]string{"py", "go"}[i]+")",
+						got == "hello\nstaged\nunstaged\n", fmt.Sprintf("%q", got))
+				}
+			}
+			addOutputResult("run", tc.name+": stdout identical", outs[0] != "" && outs[0] == outs[1],
+				fmt.Sprintf("\n--- python ---\n%s--- go ---\n%s", outs[0], outs[1]))
+			addOutputResult("run", tc.name+": stderr identical", errs[0] == errs[1],
+				fmt.Sprintf("\n--- python ---\n%s--- go ---\n%s", errs[0], errs[1]))
+		})
+	}
 }
 
 // Upstream runs `run` when given no arguments at all.

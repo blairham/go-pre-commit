@@ -77,27 +77,3 @@ func TestHookResultStringUnknown(t *testing.T) {
 		t.Fatalf("expected Unknown, got %s", unknown.String())
 	}
 }
-
-func TestTerminalWidthDefault(t *testing.T) {
-	t.Setenv("COLUMNS", "")
-	w := TerminalWidth()
-	if w != 80 {
-		t.Fatalf("expected default width 80, got %d", w)
-	}
-}
-
-func TestTerminalWidthFromEnv(t *testing.T) {
-	t.Setenv("COLUMNS", "120")
-	w := TerminalWidth()
-	if w != 120 {
-		t.Fatalf("expected 120, got %d", w)
-	}
-}
-
-func TestTerminalWidthInvalidEnvFallsBack(t *testing.T) {
-	t.Setenv("COLUMNS", "notanumber")
-	w := TerminalWidth()
-	if w != 80 {
-		t.Fatalf("expected fallback width 80 for invalid COLUMNS, got %d", w)
-	}
-}

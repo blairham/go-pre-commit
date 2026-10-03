@@ -6,13 +6,16 @@ package hook
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dlclark/regexp2"
 
@@ -129,6 +132,15 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		return result
 	}
 
+	// Every status line in a run shares one width, from the longest name, as
+	// upstream's _compute_cols does.
+	names := make([]string, len(hooksToRun))
+	for i, h := range hooksToRun {
+		names[i] = h.Name
+	}
+	cols := output.ReportCols(names)
+	verbose := func(h *Hook) bool { return opts.Verbose || h.Verbose }
+
 	for _, h := range hooksToRun {
 		select {
 		case <-ctx.Done():
@@ -139,7 +151,7 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		// Check minimum_pre_commit_version.
 		if h.MinimumPreCommitVersion != "" && h.MinimumPreCommitVersion != "0" {
 			if !checkMinVersion(h.MinimumPreCommitVersion) {
-				output.PrintHookHeader(h.Name, output.ResultError)
+				output.PrintHookHeader(h.Name, cols, output.ResultError)
 				output.Error("hook requires pre-commit >= %s", h.MinimumPreCommitVersion)
 				result.Errors++
 				if shouldFailFast(r.cfg, h) {
@@ -151,7 +163,8 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 
 		// Check if skipped.
 		if skipSet[h.ID] || (h.Alias != "" && skipSet[h.Alias]) {
-			output.PrintHookHeader(h.Name, output.ResultSkipped)
+			output.PrintHookSkipped(h.Name, cols, false)
+			output.PrintHookDetails(output.HookDetails{ID: h.ID, Verbose: verbose(h)})
 			result.Skipped++
 			continue
 		}
@@ -160,7 +173,8 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		matchedFiles := filterFiles(files, h)
 
 		if len(matchedFiles) == 0 && !h.AlwaysRun {
-			output.PrintHookHeader(h.Name, output.ResultSkipped)
+			output.PrintHookSkipped(h.Name, cols, true)
+			output.PrintHookDetails(output.HookDetails{ID: h.ID, Verbose: verbose(h)})
 			result.Skipped++
 			continue
 		}
@@ -168,7 +182,7 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		// Get the language handler.
 		lang, err := languages.Get(h.Language)
 		if err != nil {
-			output.PrintHookHeader(h.Name, output.ResultError)
+			output.PrintHookHeader(h.Name, cols, output.ResultError)
 			output.Error("unsupported language %q: %v", h.Language, err)
 			result.Errors++
 			if shouldFailFast(r.cfg, h) {
@@ -177,15 +191,23 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 			continue
 		}
 
+		// Name and dots first, so a slow hook shows what is running.
+		output.PrintHookStart(h.Name, cols)
+		start := time.Now()
+
 		// Handle meta hooks specially.
 		if h.ID == "check-hooks-apply" || h.ID == "check-useless-excludes" {
 			metaExit, metaOut := r.runMetaHook(h, files)
+			elapsed := time.Since(start)
+			output.PrintHookStatus(metaExit == 0)
+			output.PrintHookDetails(output.HookDetails{
+				ID: h.ID, Verbose: verbose(h), Duration: &elapsed,
+				ExitCode: metaExit, Output: metaOut, LogFile: h.LogFile,
+			})
 			if metaExit != 0 {
-				output.PrintHookHeader(h.Name, output.ResultFailed)
-				output.PrintHookOutput(metaOut, h.ID, metaExit, false, true)
 				result.Failed++
 			} else {
-				output.PrintHookHeader(h.Name, output.ResultPassed)
+				result.Passed++
 			}
 			continue
 		}
@@ -205,35 +227,40 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		var hookOutput []byte
 		exitCode, hookOutput, err = runHookXargs(ctx, lang, h, fileArgs, r.root, opts.Jobs)
 		if err != nil {
-			output.PrintHookHeader(h.Name, output.ResultError)
-			output.Error("hook execution error: %v", err)
-			result.Errors++
-			if shouldFailFast(r.cfg, h) {
-				return result
+			if !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, fs.ErrNotExist) {
+				fmt.Println()
+				output.Error("hook execution error: %v", err)
+				result.Errors++
+				if shouldFailFast(r.cfg, h) {
+					return result
+				}
+				continue
 			}
-			continue
+			// Upstream reports a missing executable as the hook failing,
+			// with its own wording as the output.
+			exe := h.Entry
+			if parts := languages.ParseEntry(h.Entry); len(parts) > 0 {
+				exe = parts[0]
+			}
+			exitCode, hookOutput = 1, []byte(fmt.Sprintf("Executable %#q not found", exe))
 		}
+		elapsed := time.Since(start)
 
 		filesModified := !bytes.Equal(diffBefore, r.worktreeDiff())
+		failed := exitCode != 0 || filesModified
 
-		if exitCode != 0 || filesModified {
-			output.PrintHookHeader(h.Name, output.ResultFailed)
-			output.PrintHookOutput(hookOutput, h.ID, exitCode, filesModified, opts.Verbose || h.Verbose)
+		output.PrintHookStatus(!failed)
+		output.PrintHookDetails(output.HookDetails{
+			ID: h.ID, Verbose: verbose(h), Duration: &elapsed,
+			ExitCode: exitCode, FilesModified: filesModified,
+			Output: hookOutput, LogFile: h.LogFile,
+		})
+		if failed {
 			result.Failed++
-
-			// Write to log file if configured.
-			if h.LogFile != "" {
-				_ = os.WriteFile(h.LogFile, hookOutput, 0o644)
-			}
-
 			if shouldFailFast(r.cfg, h) {
 				return result
 			}
 		} else {
-			output.PrintHookHeader(h.Name, output.ResultPassed)
-			if opts.Verbose || h.Verbose {
-				output.PrintHookOutput(hookOutput, h.ID, exitCode, false, true)
-			}
 			result.Passed++
 		}
 	}
@@ -651,13 +678,13 @@ func ShowDiffOnFailure(allFiles bool) {
 	}
 	cmd := exec.Command("git", "--no-pager", "diff", "--no-ext-diff", "--color="+useColor)
 	cmd.Env = git.HostIndexEnv()
-	cmd.Stdout = os.Stderr
+	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	_ = cmd.Run()
 
 	if allFiles {
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Hint: You may want to review the changes and commit them.")
+		fmt.Println()
+		fmt.Println("Hint: You may want to review the changes and commit them.")
 	}
 }
 
