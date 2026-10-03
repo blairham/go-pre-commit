@@ -1,0 +1,45 @@
+<!--
+  Source for assets/social-preview.png (1280x640, GitHub's recommended size).
+  Regenerate: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+    --hide-scrollbars --force-device-scale-factor=1 --window-size=1280,640 \
+    --screenshot=assets/social-preview.png "file://$PWD/assets/social-preview.html"
+  Uploaded by hand at Settings -> General -> Social preview; there is no API.
+-->
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; width: 1280px; height: 640px; background: #0f2a40; overflow: hidden; }
+  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #f4efe6; display: flex; align-items: center; }
+  .tile { margin-left: 96px; width: 360px; height: 360px; border-radius: 56px; background: #12324c;
+          box-shadow: 0 24px 60px rgba(0,0,0,.35); display: flex; flex-direction: column; overflow: hidden; }
+  .bar { height: 44px; background: #0c2336; display: flex; align-items: center; padding-left: 26px; gap: 10px; }
+  .dot { width: 13px; height: 13px; border-radius: 50%; }
+  .term { flex: 1; padding: 0 28px 10px; display: flex; flex-direction: column; justify-content: center; font-family: Menlo, "SF Mono", monospace; font-size: 19px; line-height: 2.05; color: #9fb7cc; }
+  .row { display: flex; white-space: nowrap; }
+  .name { color: #dbe6ef; }
+  .fill { flex: 1; overflow: hidden; color: #4d6b84; letter-spacing: 1px; }
+  .fill::before { content: "................................................"; }
+  .ok { color: #3fbf6f; font-weight: 700; }
+  .prompt { color: #7fa3c0; }
+  .prompt b { color: #dbe6ef; font-weight: 400; }
+  .text { margin-left: 64px; }
+  h1 { font-size: 86px; font-weight: 800; letter-spacing: -2px; margin: 0 0 22px; }
+  .pitch { font-size: 34px; line-height: 1.38; color: #d6e1ea; margin: 0 0 30px; }
+  .tags { font-family: Menlo, "SF Mono", monospace; font-size: 25px; color: #8fb0c9; }
+  .tags span { color: #e2574c; margin: 0 12px; }
+</style></head><body>
+  <div class="tile">
+    <div class="bar"><div class="dot" style="background:#e2574c"></div><div class="dot" style="background:#e6a23c"></div><div class="dot" style="background:#3fbf6f"></div></div>
+    <div class="term">
+      <div class="prompt">$ <b>pre-commit run</b></div>
+      <div class="row"><span class="name">whitespace</span><span class="fill"></span><span class="ok">Passed</span></div>
+      <div class="row"><span class="name">end of files</span><span class="fill"></span><span class="ok">Passed</span></div>
+      <div class="row"><span class="name">check yaml</span><span class="fill"></span><span class="ok">Passed</span></div>
+      <div class="row"><span class="name">go vet</span><span class="fill"></span><span class="ok">Passed</span></div>
+    </div>
+  </div>
+  <div class="text">
+    <h1>go-pre-commit</h1>
+    <p class="pitch">Run your existing pre-commit hooks<br>without installing Python.</p>
+    <div class="tags">same config<span>·</span>same hooks<span>·</span>one binary</div>
+  </div>
+</body></html>
