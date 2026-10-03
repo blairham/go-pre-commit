@@ -65,12 +65,22 @@ written from a report produced by the differential suite, which runs this tool
 and Python pre-commit against the same inputs and diffs them:
 
 ```bash
-go test ./test/integration/... -run Parity -v
+pip install --require-hashes -r .github/requirements/parity.txt
+PARITY_REQUIRE=1 go test -tags=integration -timeout=600s ./test/integration/
 ```
 
 It pins the upstream version it measures against and refuses any other, so the
 number cannot quietly drift. If you change behavior, this suite is the thing
 that decides whether you were right.
+
+### Every change comes with a test
+
+**New behavior and bug fixes come with tests in the same pull request.** A fix
+adds a test that fails without it; a change that brings behavior in line with
+upstream adds a check to the parity suite, which compares the two tools
+directly. Say in the pull request how you know the test can fail — the parity
+suite has passed over broken behavior before, because a check it needed did not
+exist. Changes that cannot be tested this way (docs, CI) say so instead.
 
 ### Tests must not touch your real state
 
