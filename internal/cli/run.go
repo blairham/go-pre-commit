@@ -173,7 +173,7 @@ func (c *RunCommand) Run(args []string) int {
 		// StashUnstaged decides whether there is anything to stash itself: it
 		// must judge against the index git handed the hook, which a plain
 		// `git diff` here would not (see git.HostIndexEnv).
-		stashMgr = staged.NewManager(root)
+		stashMgr = staged.NewManager(root, s.Dir())
 		stashed, err := stashMgr.StashUnstaged()
 		if err != nil {
 			output.Warn("Failed to stash unstaged changes: %v", err)

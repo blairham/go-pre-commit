@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
@@ -27,15 +29,18 @@ import (
 // `git commit <paths>`.
 type Manager struct {
 	dir         string
+	patchDir    string // where the patch is kept: the store, as upstream does
 	patchPath   string
 	intentFiles []string
 	stashed     bool
 }
 
-// NewManager creates a new stash Manager for the given repo directory.
-func NewManager(dir string) *Manager {
+// NewManager creates a stash Manager for the repo at dir that keeps its patch
+// files in patchDir (the store directory, as upstream does).
+func NewManager(dir, patchDir string) *Manager {
 	return &Manager{
-		dir: dir,
+		dir:      dir,
+		patchDir: patchDir,
 	}
 }
 
@@ -96,25 +101,22 @@ func (m *Manager) stash() (bool, error) {
 		return false, nil // e.g. only submodule or mode-only noise git declines to print
 	}
 
-	f, err := os.CreateTemp("", "pre-commit-unstaged-*.patch")
-	if err != nil {
-		return false, fmt.Errorf("creating patch file: %w", err)
+	// Upstream's name and place: patch<unix time>-<pid> in the store, kept
+	// after the run, because the path it prints is how someone recovers their
+	// unstaged work when a hook or the process dies before the restore.
+	m.patchPath = filepath.Join(m.patchDir, fmt.Sprintf("patch%d-%d", time.Now().Unix(), os.Getpid()))
+	output.Warn("Unstaged files detected.")
+	output.Info("Stashing unstaged files to %s.", m.patchPath)
+	if err := os.MkdirAll(m.patchDir, 0o755); err != nil {
+		return false, fmt.Errorf("creating patch directory: %w", err)
 	}
-	m.patchPath = f.Name()
-	_, werr := f.Write(diff)
-	if cerr := f.Close(); werr == nil {
-		werr = cerr
-	}
-	if werr != nil {
-		os.Remove(m.patchPath)
+	if err := os.WriteFile(m.patchPath, diff, 0o644); err != nil {
 		m.patchPath = ""
-		return false, fmt.Errorf("writing patch: %w", werr)
+		return false, fmt.Errorf("writing patch: %w", err)
 	}
 
 	if err := m.checkoutIndex(); err != nil {
-		os.Remove(m.patchPath)
-		m.patchPath = ""
-		return false, fmt.Errorf("checkout: %w", err)
+		return false, fmt.Errorf("checkout (patch saved at %s): %w", m.patchPath, err)
 	}
 
 	m.stashed = true
@@ -154,6 +156,7 @@ func (m *Manager) clearIntentToAdd() error {
 	if len(files) == 0 {
 		return nil
 	}
+	output.Warn("Unstaged intent-to-add files detected.")
 	if err := m.run(append([]string{"rm", "--cached", "--"}, files...)...); err != nil {
 		return err
 	}
@@ -190,7 +193,7 @@ func (m *Manager) Restore() error {
 			return fmt.Errorf("restoring unstaged changes (patch saved at %s): %w", m.patchPath, err)
 		}
 	}
-	os.Remove(m.patchPath)
+	output.Info("Restored changes from %s.", m.patchPath)
 	return nil
 }
 

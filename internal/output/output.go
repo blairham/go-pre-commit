@@ -5,11 +5,16 @@
 package output
 
 import (
+	"bytes"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/text/width"
 )
 
 // Styles for terminal output.
@@ -17,7 +22,7 @@ var (
 	redStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	yellowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	cyanStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	subtleStyle = lipgloss.NewStyle().Faint(true)
 )
 
 // ColorMode controls when colors are used.
@@ -133,76 +138,140 @@ func coloredResult(result HookResult) string {
 	}
 }
 
-// PrintHookHeader prints a hook execution header line.
-// Format: "Hook Name...................................................Result"
-func PrintHookHeader(name string, result HookResult) {
-	totalWidth := TerminalWidth()
-	nameLen := len(name)
-	resultStr := result.String()
-	resultLen := len(resultStr)
-	dotsLen := totalWidth - nameLen - resultLen
-	if dotsLen < 1 {
-		dotsLen = 1
+// The hook report mirrors upstream's commands/run.py line for line: the
+// status line's width and postfix, the per-hook block under it, and stdout as
+// the stream for all of it. Comparing only the Passed/Failed word let every one
+// of those drift (#86); the parity suite now compares the report byte for byte.
+
+const (
+	noFilesPostfix = "(no files to check)"
+	skippedMsg     = "Skipped"
+)
+
+// ReportCols is upstream's _compute_cols: wide enough for the widest line that
+// can appear, "<longest name>...(no files to check)Skipped", and never under 80.
+func ReportCols(names []string) int {
+	nameLen := 0
+	for _, n := range names {
+		nameLen = max(nameLen, displayWidth(n))
 	}
-	dots := strings.Repeat(".", dotsLen)
-	fmt.Fprintf(os.Stderr, "%s%s%s\n", name, dots, coloredResult(result))
+	return max(nameLen+3+len(noFilesPostfix)+1+len(skippedMsg), 80)
 }
 
-// PrintHookOutput prints hook output with optional indentation.
-// filesModified reports that the hook changed the working tree, which fails it
-// even at exit code 0.
-func PrintHookOutput(output []byte, hookID string, exitCode int, filesModified, verbose bool) {
-	if len(output) == 0 && !verbose && !filesModified {
+// displayWidth is upstream's _len_cjk: East Asian wide and fullwidth runes
+// count two columns, everything else one.
+func displayWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		switch width.LookupRune(r).Kind() {
+		case width.EastAsianWide, width.EastAsianFullwidth:
+			n += 2
+		default:
+			n++
+		}
+	}
+	return n
+}
+
+// dots pads a status line so it ends one column short of cols, as upstream's
+// _full_msg and _start_msg do.
+func dots(cols int, start, postfix string, endLen int) string {
+	return strings.Repeat(".", max(cols-displayWidth(start)-len(postfix)-endLen-1, 0))
+}
+
+// PrintHookStart prints a hook's name and dots before it runs, so a slow hook
+// shows what is running; PrintHookStatus finishes the line.
+func PrintHookStart(name string, cols int) {
+	fmt.Print(name + dots(cols, name, "", len("Passed")))
+}
+
+// PrintHookStatus finishes the line PrintHookStart began.
+func PrintHookStatus(passed bool) {
+	if passed {
+		fmt.Println(coloredResult(ResultPassed))
+	} else {
+		fmt.Println(coloredResult(ResultFailed))
+	}
+}
+
+// PrintHookSkipped prints a skipped hook's whole line: "(no files to check)"
+// before Skipped when no file matched, nothing when SKIP named it.
+func PrintHookSkipped(name string, cols int, noFiles bool) {
+	postfix := ""
+	if noFiles {
+		postfix = noFilesPostfix
+	}
+	fmt.Println(name + dots(cols, name, postfix, len(skippedMsg)) + postfix + coloredResult(ResultSkipped))
+}
+
+// PrintHookHeader prints a complete status line for the paths upstream has no
+// equivalent of (a hook this tool refuses before running it).
+func PrintHookHeader(name string, cols int, result HookResult) {
+	fmt.Println(name + dots(cols, name, "", len(result.String())) + coloredResult(result))
+}
+
+// HookDetails is what upstream prints under a hook's status line.
+type HookDetails struct {
+	ID            string
+	Verbose       bool           // --verbose, or the hook's own verbose: true
+	Duration      *time.Duration // nil when the hook did not run
+	ExitCode      int
+	FilesModified bool
+	Output        []byte
+	LogFile       string // hook's log_file: also receives the output
+}
+
+// PrintHookDetails prints the block under a status line, when upstream would:
+// in verbose mode, or when the hook failed.
+func PrintHookDetails(d HookDetails) {
+	if !d.Verbose && d.ExitCode == 0 && !d.FilesModified {
 		return
 	}
-
-	if exitCode != 0 || filesModified || verbose {
-		fmt.Fprintf(os.Stderr, "- hook id: %s\n", hookID)
-		if exitCode != 0 {
-			fmt.Fprintf(os.Stderr, "- exit code: %d\n", exitCode)
-		}
-		if filesModified {
-			fmt.Fprintln(os.Stderr, "- files were modified by this hook")
-		}
+	fmt.Println(render(subtleStyle, "- hook id: "+d.ID))
+	if d.Verbose && d.Duration != nil {
+		fmt.Println(render(subtleStyle, "- duration: "+formatDuration(*d.Duration)+"s"))
 	}
-
-	if len(output) > 0 {
-		outStr := string(output)
-		// Check if files were modified.
-		if strings.Contains(outStr, "Files were modified by this hook") {
-			fmt.Fprintln(os.Stderr)
-			fmt.Fprintln(os.Stderr, render(yellowStyle, "Files were modified by this hook. Additional output:"))
-			fmt.Fprintln(os.Stderr)
-		}
-		fmt.Fprint(os.Stderr, outStr)
-		if !strings.HasSuffix(outStr, "\n") {
-			fmt.Fprintln(os.Stderr)
+	if d.ExitCode != 0 {
+		fmt.Println(render(subtleStyle, fmt.Sprintf("- exit code: %d", d.ExitCode)))
+	}
+	if d.FilesModified {
+		fmt.Println(render(subtleStyle, "- files were modified by this hook"))
+	}
+	out := bytes.TrimSpace(d.Output)
+	if len(out) == 0 {
+		return
+	}
+	fmt.Println()
+	os.Stdout.Write(append(out, '\n'))
+	fmt.Println()
+	if d.LogFile != "" {
+		// Upstream appends exactly the lines it printed, and only these.
+		if f, err := os.OpenFile(d.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			_, _ = f.Write(append(out, '\n'))
+			_ = f.Close()
 		}
 	}
 }
 
-// TerminalWidth returns the terminal width, defaulting to 80.
-func TerminalWidth() int {
-	// Try to get terminal width from environment.
-	if cols := os.Getenv("COLUMNS"); cols != "" {
-		n := 0
-		for _, c := range cols {
-			if c >= '0' && c <= '9' {
-				n = n*10 + int(c-'0')
-			}
-		}
-		if n > 0 {
-			return n
-		}
+// formatDuration renders seconds as upstream does, `round(t, 2) or 0` printed
+// by Python: "0" for nothing measurable, otherwise a float repr such as "0.01",
+// "1.5" or "2.0".
+func formatDuration(d time.Duration) string {
+	secs := math.Round(d.Seconds()*100) / 100
+	if secs == 0 {
+		return "0"
 	}
-	// Default.
-	return 80
+	s := strconv.FormatFloat(secs, 'f', -1, 64)
+	if !strings.Contains(s, ".") {
+		s += ".0"
+	}
+	return s
 }
 
 // Info prints an informational message.
 func Info(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("[%s] %s\n", render(cyanStyle, "INFO"), msg)
+	fmt.Printf("[INFO] %s\n", msg)
 }
 
 // Warn prints a warning message.
