@@ -46,17 +46,26 @@ A release re-run by hand (the workflow's `workflow_dispatch` input) is signed
 by the ref it was dispatched from, usually `refs/heads/main`, rather than by
 the tag, so use `@refs/heads/main` in `--certificate-identity` for that release.
 
-Releases after `v4.6.13` also carry SLSA build provenance
-(`multiple.intoto.jsonl`), which ties each archive to the exact workflow run
-that built it. Verify one with
-[slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
+Releases after `v4.6.14` also carry SLSA build provenance, which ties each
+archive to the exact workflow run and commit that built it. GitHub stores the
+attestation, so verify an archive with the GitHub CLI:
 
 ```sh
-slsa-verifier verify-artifact pre-commit_Linux_x86_64.tar.gz \
-  --provenance-path multiple.intoto.jsonl \
-  --source-uri github.com/blairham/go-pre-commit \
-  --source-tag "$VERSION"
+gh attestation verify pre-commit_Linux_x86_64.tar.gz --repo blairham/go-pre-commit
 ```
+
+The same attestation is attached to the release as
+`go-pre-commit-$VERSION.intoto.jsonl`, for checking without a round trip to
+GitHub's attestation store:
+
+```sh
+gh attestation verify pre-commit_Linux_x86_64.tar.gz --repo blairham/go-pre-commit \
+  --bundle "go-pre-commit-$VERSION.intoto.jsonl"
+```
+
+`v4.6.14` itself carries the older slsa-github-generator provenance
+(`multiple.intoto.jsonl`), which verifies with
+[slsa-verifier](https://github.com/slsa-framework/slsa-verifier) instead.
 
 The macOS builds are additionally Developer ID signed and notarized.
 

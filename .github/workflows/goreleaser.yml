@@ -39,15 +39,13 @@ jobs:
   release:
     needs: test
     runs-on: ubuntu-latest
-    outputs:
-      # checksums.txt, base64'd: the subjects the provenance job attests.
-      hashes: ${{ steps.hash.outputs.hashes }}
     permissions:
       # The GitHub release and its assets, and the moving major alias tag.
       contents: write
-      # Keyless cosign over checksums.txt: the OIDC token is the signing
-      # identity — see `signs` in .goreleaser.yaml.
+      # Keyless cosign over checksums.txt and the provenance attestation both
+      # sign with the workflow's OIDC identity — see `signs` in .goreleaser.yaml.
       id-token: write
+      attestations: write # store the provenance in the repository's attestations
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,15 +104,37 @@ jobs:
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
-      - name: Hash the release artifacts for provenance
-        id: hash
+      # SLSA build provenance for every file checksums.txt lists. GitHub stores
+      # it (`gh attestation verify`), and the bundle is also attached to the
+      # release so it can be checked offline and found by tools that look for
+      # an .intoto.jsonl beside the artifacts. This replaces the
+      # slsa-github-generator reusable workflow: that one must be referenced by
+      # tag, never by SHA, and Scorecard's Pinned-Dependencies check does not
+      # exempt it; this action pins by SHA like every other.
+      - name: Locate GoReleaser's checksums file
+        id: checksums
         env:
           ARTIFACTS: ${{ steps.goreleaser.outputs.artifacts }}
         run: |
           set -euo pipefail
           checksums="$(jq -r '.[] | select(.type == "Checksum") | .path' <<<"$ARTIFACTS")"
           [ -s "$checksums" ] || { echo "::error::no checksums file in GoReleaser's artifacts" >&2; exit 1; }
-          echo "hashes=$(base64 -w0 < "$checksums")" >> "$GITHUB_OUTPUT"
+          echo "path=$checksums" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: ${{ steps.checksums.outputs.path }}
+      - name: Attach the provenance to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/go-pre-commit-$TAG.intoto.jsonl"
+          cp "$BUNDLE" "$out"
+          gh release upload "$TAG" "$out" --clobber
       # `uses: blairham/go-pre-commit@v4` is the documented way to consume the
       # composite action, and a documented path that does not resolve is worse
       # than no documentation. Move the alias with every release rather than
@@ -132,19 +152,3 @@ jobs:
           # resolving right now.
           git push origin ":refs/tags/$major" || true
           git push origin "refs/tags/$major"
-
-  # SLSA build provenance for every archive, as multiple.intoto.jsonl on the
-  # release. The generator is a reusable workflow that must be referenced by
-  # tag, not SHA -- its own verification depends on that, and Scorecard exempts
-  # it from Pinned-Dependencies for the same reason.
-  provenance:
-    needs: release
-    permissions:
-      actions: read # read the run that built the artifacts
-      id-token: write # sign the provenance
-      contents: write # upload it to the release
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
-    with:
-      base64-subjects: ${{ needs.release.outputs.hashes }}
-      upload-assets: true
-      upload-tag-name: ${{ inputs.tag || github.ref_name }}
