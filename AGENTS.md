@@ -69,7 +69,7 @@ test/integration/        # Parity tests against real Python pre-commit (build ta
   ```bash
   go test -v -tags=integration -timeout=600s ./test/integration/
   ```
-  CI runs them on every push to `main`, and on PRs only when labeled `test-languages`
+  CI runs them on every push to `main` and on every pull request that changes code
 - Tests must never touch real user state — redirect the home directory and hook cache via `t.TempDir()` + `t.Setenv`
 
 ## CI/CD
@@ -83,7 +83,8 @@ test/integration/        # Parity tests against real Python pre-commit (build ta
 | `Build and test` | `make test` |
 | `Parity with Python pre-commit` | Differential suite against real Python pre-commit 4.6.2 |
 | `Build` | `make build` |
-| `Action (macos/windows)` | Installs through the action on the other runner OSes |
+| `Action (macos/windows)` | Installs the *released* binary through the action on the other runner OSes and runs a pygrep and a python hook |
+| `Hooks from source (windows-latest)` | Builds this checkout on Windows and runs a python, node, golang, ruby and rust hook, each against input it must reject |
 
 `codeql.yml` (security-extended) and `scorecard.yml` (OpenSSF Scorecard) run on pushes to `main` and on a schedule; CodeQL also runs on PRs.
 

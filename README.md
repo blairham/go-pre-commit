@@ -15,7 +15,7 @@ single binary. An independent Go reimplementation of
 [pre-commit](https://github.com/pre-commit/pre-commit), not a fork and not
 affiliated with it.
 
-Measured against Python pre-commit 4.6.2 on every pull request:
+Measured against Python pre-commit 4.6.2 on every pull request that changes code:
 **98 of 98 differential checks pass** ([how that is measured](docs/parity.md)).
 
 ## Is this for you?
@@ -35,7 +35,7 @@ toolchain is to run its hooks.
 - **All hook types**: pre-commit, pre-merge-commit, pre-push, commit-msg,
   post-checkout, post-commit, post-merge, post-rewrite, prepare-commit-msg,
   pre-rebase
-- **22 languages** implemented — though not equally proven; the
+- **All 21 of upstream's languages** implemented — though not equally proven; the
   [parity grading](docs/parity.md#language-support-graded) says which are
   well-trodden and which you would be the first to try
 - **File type identification** by extension, filename, and shebang
@@ -192,32 +192,36 @@ repos:
 
 ## Performance
 
-Benchmarked against Python pre-commit v4.5.1 on the same config (macOS, Apple Silicon, warm caches, 5 iterations averaged).
+Measured against Python pre-commit 4.6.2 on a scratch repository with a fixed
+config (macOS, Apple M5 Max, warm hook environments, separate caches per tool,
+median of 15 runs alternating which tool goes first):
 
-### Startup time (no staged files)
+| Case | this tool | Python | |
+|---|---|---|---|
+| startup (`run`, nothing staged) | 0.034s | 0.172s | 5.1x |
+| `trailing-whitespace` | 0.059s | 0.205s | 3.5x |
+| `end-of-file-fixer` | 0.063s | 0.226s | 3.6x |
+| `check-yaml` | 0.075s | 0.208s | 2.8x |
+| `check-added-large-files` | 0.072s | 0.225s | 3.1x |
+| `check-merge-conflict` | 0.060s | 0.198s | 3.3x |
+| `go vet` (system hook), warm build cache | 0.101s | 0.185s | 1.8x |
+| `go vet` (system hook), cold build cache | 1.255s | 1.291s | 1.0x |
 
-| Tool | Avg | Min | Max |
-|------|-----|-----|-----|
-| **Go** | **0.161s** | 0.155s | 0.167s |
-| Python | 0.269s | 0.267s | 0.272s |
+**Read the last two rows first.** The difference is a roughly fixed 0.15–0.2s
+per run — Python's interpreter startup and imports. On a hook that finishes in
+a tenth of a second that is most of the time, so the ratio looks large; on a
+tool that does real work it disappears into the noise. If your slow hook is
+`golangci-lint` or `eslint`, the tool doing the work is the same tool and this
+will not make it faster.
 
-**1.7x faster** — Go's compiled binary avoids Python interpreter startup overhead.
+The machine was not idle (load average 12–16 from other work), so treat the
+absolute numbers as indicative; the ratios held across three separate runs.
+Run it yourself — it builds the scratch repo, and refuses a Python pre-commit
+that is not the version the parity suite targets:
 
-### Per-hook execution (`--all-files`)
-
-| Hook | Go | Python | Speedup |
-|------|-----|--------|---------|
-| trailing-whitespace | 0.058s | 0.232s | **4.0x** |
-| end-of-file-fixer | 0.053s | 0.225s | **4.2x** |
-| check-yaml | 0.074s | 0.223s | **3.0x** |
-| check-added-large-files | 0.079s | 0.286s | **3.6x** |
-| check-merge-conflict | 0.066s | 0.250s | **3.8x** |
-| golangci-lint | 0.919s | 0.905s | 1.0x |
-| go-vet-mod | 0.560s | 0.711s | **1.3x** |
-
-Python-based hooks (pre-commit-hooks) see the largest improvement since Go avoids spawning a Python interpreter for each hook. Hooks that shell out to external tools (golangci-lint) show similar performance since the tool itself dominates.
-
-Run the benchmark yourself: `bash .github/bench.sh`
+```bash
+PRE_COMMIT_PY=/path/to/python-pre-commit bash .github/bench.sh
+```
 
 ## Development
 

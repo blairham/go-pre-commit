@@ -1,73 +1,115 @@
 #!/usr/bin/env bash
-# Performance benchmark: Go pre-commit vs Python pre-commit
+# Benchmark: this tool vs Python pre-commit, on a scratch repository.
+#
+# It used to time `run --all-files` over this repo's own config, which runs
+# golangci-lint and whatever Python happened to be installed. This builds a
+# small repo with a fixed config instead, so the numbers in the README can be
+# reproduced, and it refuses to run against a Python pre-commit that is not the
+# version the parity suite targets.
+#
+# Usage: PRE_COMMIT_PY=/path/to/python-pre-commit bash .github/bench.sh
+#   (default: `pre-commit` from `python3 -m pre_commit`)
 set -euo pipefail
 
-GO_BIN="./build/pre-commit"
-RUNS=5
-
 cd "$(dirname "$0")/.."
+want="$(grep -oE "pre-commit==[0-9][0-9.]*" .github/workflows/ci.yml | head -1 | cut -d= -f3)"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 
-echo "================================================================"
-echo "  Pre-commit Performance Benchmark"
-echo "================================================================"
-echo ""
-echo "  Go binary:    $GO_BIN"
-echo "  Python:       python3 -m pre_commit"
-echo "  Iterations:   $RUNS"
-echo ""
+ver="$(git describe --tags --always --dirty | sed 's/^v//')"
+go build -ldflags "-X github.com/blairham/go-pre-commit/v4/internal/config.Version=$ver" -o "$work/go-pc" .
+if [ -n "${PRE_COMMIT_PY:-}" ]; then
+  py=("$PRE_COMMIT_PY")
+else
+  py=(python3 -m pre_commit)
+fi
+got="$("${py[@]}" --version 2>&1)"
+case "$got" in
+  "pre-commit $want") ;;
+  *) echo "need Python pre-commit $want (CI's parity pin), got: $got" >&2; exit 1 ;;
+esac
 
-# Warm up caches.
-echo "--- Warming caches ---"
-${GO_BIN} run --all-files > /dev/null 2>&1 || true
-python3 -m pre_commit run --all-files > /dev/null 2>&1 || true
-echo "  Done"
-echo ""
+repo="$work/repo"
+git init -q "$repo"
+cd "$repo"
+git config user.email bench@example.com
+git config user.name bench
+git config commit.gpgsign false
+printf 'module x\n\ngo 1.26\n' > go.mod
+printf 'package main\n\nfunc main() {}\n' > main.go
+for i in $(seq 1 40); do
+  printf 'line %s\n' "$i" > "f$i.txt"
+  printf 'k%s: v\n' "$i" > "y$i.yaml"
+done
+cat > .pre-commit-config.yaml <<'YAML'
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+    -   id: check-merge-conflict
+-   repo: local
+    hooks:
+    -   id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        pass_filenames: false
+        types: [go]
+YAML
+git add -A
+git commit -qm init
 
-run_precise() {
-    local label="$1"
-    local go_args="$2"
-    local py_args="$3"
+# Separate stores, so neither tool times the other's environment builds, and
+# both warmed before anything is measured.
+for t in go py; do
+  if [ "$t" = go ]; then exe=("$work/go-pc"); else exe=("${py[@]}"); fi
+  PRE_COMMIT_HOME="$work/home-$t" "${exe[@]}" install-hooks > /dev/null
+  PRE_COMMIT_HOME="$work/home-$t" "${exe[@]}" run --all-files > /dev/null
+done
 
-    echo "================================================================"
-    echo "  Benchmark: $label"
-    echo "================================================================"
-    echo ""
+echo "this tool:  $("$work/go-pc" --version 2>&1)"
+echo "python:     $got"
+echo "machine:    $(uname -sm), load $(uptime | sed 's/.*load averages*: //')"
+echo
 
-    local go_times=""
-    local py_times=""
+python3 - "$work" "${py[@]}" <<'PY'
+import os, statistics, subprocess, sys, tempfile, time
 
-    for i in $(seq 1 "$RUNS"); do
-        go_elapsed=$(python3 -c "
-import subprocess, time
-s = time.time()
-subprocess.run('${GO_BIN} ${go_args}'.split(), capture_output=True)
-print(f'{time.time()-s:.3f}')
-")
-        py_elapsed=$(python3 -c "
-import subprocess, time, sys
-s = time.time()
-subprocess.run([sys.executable, '-m', 'pre_commit'] + '${py_args}'.split(), capture_output=True)
-print(f'{time.time()-s:.3f}')
-")
-        printf "  Run %d/%d — Go: %ss  Python: %ss\n" "$i" "$RUNS" "$go_elapsed" "$py_elapsed"
-        go_times="$go_times $go_elapsed"
-        py_times="$py_times $py_elapsed"
-    done
+work, py = sys.argv[1], sys.argv[2:]
+tools = {"go": [os.path.join(work, "go-pc")], "py": py}
+repo = os.path.join(work, "repo")
 
-    echo ""
-    python3 -c "
-go = [float(x) for x in '$go_times'.split()]
-py = [float(x) for x in '$py_times'.split()]
-ga, gn, gx = sum(go)/len(go), min(go), max(go)
-pa, pn, px = sum(py)/len(py), min(py), max(py)
-print(f'  Go:     avg={ga:.3f}s  min={gn:.3f}s  max={gx:.3f}s')
-print(f'  Python: avg={pa:.3f}s  min={pn:.3f}s  max={px:.3f}s')
-print()
-s = pa / ga if ga > 0 else float('inf')
-print(f'  Speedup: {s:.1f}x {\"faster\" if s > 1 else \"slower\"} (Go vs Python)')
-"
-    echo ""
-}
 
-run_precise "run --all-files (all hooks, all files)" "run --all-files" "run --all-files"
-run_precise "run (no staged files — startup overhead)" "run" "run"
+def timed(tool, args, extra_env=None):
+    env = dict(os.environ, PRE_COMMIT_HOME=os.path.join(work, "home-" + tool), **(extra_env or {}))
+    start = time.perf_counter()
+    p = subprocess.run(tools[tool] + args, cwd=repo, env=env, capture_output=True)
+    elapsed = time.perf_counter() - start
+    if p.returncode != 0:
+        sys.exit(f"{tool} {args} exited {p.returncode}:\n{p.stdout.decode()}")
+    return elapsed
+
+
+def compare(label, args, runs=15, fresh_gocache=False):
+    times = {"go": [], "py": []}
+    for i in range(runs):
+        # Alternate which tool goes first, so neither always runs warm.
+        for tool in ("go", "py") if i % 2 == 0 else ("py", "go"):
+            extra = {"GOCACHE": tempfile.mkdtemp(dir=work)} if fresh_gocache else None
+            times[tool].append(timed(tool, args, extra))
+    g, p = statistics.median(times["go"]), statistics.median(times["py"])
+    print(f"| {label} | {g:.3f}s | {p:.3f}s | {p / g:.1f}x |")
+
+
+print(f"| Case (median) | this tool | Python | |")
+print(f"|---|---|---|---|")
+compare("startup (`run`, nothing staged)", ["run"])
+for hook in ["trailing-whitespace", "end-of-file-fixer", "check-yaml", "check-added-large-files", "check-merge-conflict"]:
+    compare(f"`{hook}`", ["run", hook, "--all-files"])
+compare("`go vet`, warm build cache", ["run", "go-vet", "--all-files"])
+compare("`go vet`, cold build cache", ["run", "go-vet", "--all-files"], runs=6, fresh_gocache=True)
+PY

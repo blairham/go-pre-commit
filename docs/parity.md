@@ -66,7 +66,8 @@ each language and running a real hook in it. The suite's own configs use
 
 ## Language support, graded
 
-All 22 languages are implemented and registered. They are not equally proven,
+All 21 of upstream's languages are implemented and registered (`system` and
+`script` are upstream's aliases for `unsupported` and `unsupported_script`). They are not equally proven,
 and the README's flat list does not tell you which is which. This table does.
 
 | Language | Differential vs Python | Unit tests | Exercised in CI |
@@ -110,8 +111,9 @@ and `cargo install --path` are what is exercised), each against input it must
 reject. It asserts
 each one reached a `Failed` verdict, not just a non-zero exit, and that the
 python hook actually fixed its file. The composite action is also installed and
-run on `windows-latest` every run, with `pygrep`, `fail`, `system` and `script`
-hooks.
+run on `windows-latest` every run: a `pygrep` hook (no environment) and a
+`python` hook (`trailing-whitespace`, which must fix its file), against the
+*released* binary.
 
 `dotnet`, `lua`, `perl` and the rest of the environment-building languages have
 **never been run on Windows**. Upstream installs them into `bin`

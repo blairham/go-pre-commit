@@ -11,9 +11,10 @@ reimplementation that oversells itself wastes your afternoon and earns nothing.
 - **Your team already has Python everywhere.** The install cost this removes is
   a cost you are not paying.
 - **You rely on a language backend outside the well-trodden set.** Python,
-  system, script, pygrep and fail are proven here. Julia, Swift, R, Haskell and
-  friends are implemented but effectively unexercised — see
-  [parity.md](parity.md) for the grading.
+  system and pygrep are measured against upstream on every pull request; golang,
+  node, ruby and rust run real hooks in CI; script and fail have unit tests
+  only. Julia, Swift, R, Haskell and friends are implemented but effectively
+  unexercised — see [parity.md](parity.md) for the grading.
 - **You need Windows beyond `python`, `node`, `golang`, `ruby` and `rust`.**
   Those five run on Windows in CI on every pull request (up to v4.6.9 every
   hook that installs an environment failed there). The other
@@ -35,20 +36,22 @@ reimplementation that oversells itself wastes your afternoon and earns nothing.
 
 ## What it is not
 
-- **Not a fork.** It shares no code with upstream. It is an independent
-  implementation of the same behavior, and it can be wrong in ways upstream is
-  not. See [NOTICE](../NOTICE).
+- **Not a fork.** It is an independent Go implementation of upstream's
+  behavior, and it can be wrong in ways upstream is not. What it takes from
+  upstream — the design, and `identify`'s file-type tables as data — is
+  credited in [NOTICE](../NOTICE).
 - **Not affiliated with the pre-commit project.** Do not file its bugs on their
   tracker. Do not ask them about it.
 - **Not a different design.** There is deliberately no feature here that
   upstream lacks. New behavior would be a compatibility break with extra steps;
   divergence is a bug. If you want something pre-commit does not do, the useful
   place to ask for it is upstream.
-- **Not faster at running your hooks.** It is faster at *starting*, and faster
-  per-hook when the hook itself is trivial. If your slow hook is `golangci-lint`
-  or `eslint`, the tool doing the work is the same tool, and the number will not
-  move. The README's benchmark shows exactly that: 4× on `trailing-whitespace`,
-  1.0× on `golangci-lint`.
+- **Not faster at running your hooks.** It saves a roughly fixed 0.15–0.2s of
+  interpreter startup per run. That is most of the time for a trivial hook and
+  none of it for a real one. If your slow hook is `golangci-lint` or `eslint`,
+  the tool doing the work is the same tool, and the number will not move. The
+  README's benchmark shows exactly that: 3.5× on `trailing-whitespace`, 1.0× on
+  a `go vet` that has to compile.
 
 ## Against other options
 
