@@ -584,6 +584,18 @@ func TestRunReport(t *testing.T) {
         language: system
         pass_filenames: false
 `
+	// What a hook sees, which is what makes tools color their own output:
+	// under color upstream runs hooks in a pty (stdout and stderr a TTY,
+	// stdin /dev/null), otherwise with pipes (#90). Exits 1 so it is shown.
+	ttyCfg := `repos:
+-   repo: local
+    hooks:
+    -   id: what-it-sees
+        name: what the hook sees
+        entry: sh -c 'for fd in 0 1 2; do if [ -t $fd ]; then echo "fd $fd tty"; else echo "fd $fd not a tty"; fi; done; exit 1'
+        language: system
+        pass_filenames: false
+`
 	patchRe := regexp.MustCompile(`\S*patch\d+-\d+`)
 	durationRe := regexp.MustCompile(`- duration: [0-9.]+s`)
 	norm := func(s string) string {
@@ -602,6 +614,8 @@ func TestRunReport(t *testing.T) {
 		{"width follows the longest name", longCfg, []string{"--all-files"}, nil, false, ""},
 		{"unstaged changes are stashed and restored", longCfg, nil, nil, true, ""},
 		{"colored", colorCfg, []string{"--all-files", "--verbose"}, []string{"SKIP=skipped-by-env"}, false, "always"},
+		{"hook sees a terminal under color", ttyCfg, []string{"--all-files"}, nil, false, "always"},
+		{"hook sees pipes without color", ttyCfg, []string{"--all-files"}, nil, false, ""},
 		{"show diff on failure, all files", modifyCfg, []string{"--all-files", "--show-diff-on-failure"}, nil, false, ""},
 		{"show diff on failure, staged files", modifyCfg, []string{"--show-diff-on-failure"}, nil, false, ""},
 		// The diff must be the hooks' changes only, shown before the user's

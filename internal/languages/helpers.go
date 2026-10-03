@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 
 // RunCommand is a helper to run a command and capture output.
@@ -62,19 +64,28 @@ func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs []str
 	// (case-insensitively on Windows), so this is what replaces os.environ's
 	// PATH for the child, as Python's envcontext does. First, they lost.
 	cmd.Env = append(os.Environ(), env...)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	err = cmd.Run()
+
+	// Under color, upstream runs the hook in a pty so it sees a terminal and
+	// colors its own output; otherwise stdout and stderr share one pipe.
+	var out []byte
+	if output.UseColor() && ptySupported {
+		out, err = runInPty(cmd)
+	} else {
+		var buf bytes.Buffer
+		cmd.Stdout = &buf
+		cmd.Stderr = &buf
+		err = cmd.Run()
+		out = buf.Bytes()
+	}
 	exitCode := 0
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return -1, buf.Bytes(), err
+			return -1, out, err
 		}
 	}
-	return exitCode, buf.Bytes(), nil
+	return exitCode, out, nil
 }
 
 // ParseEntry splits an entry string respecting quotes.
