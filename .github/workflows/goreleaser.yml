@@ -39,6 +39,9 @@ jobs:
   release:
     needs: test
     runs-on: ubuntu-latest
+    outputs:
+      # checksums.txt, base64'd: the subjects the provenance job attests.
+      hashes: ${{ steps.hash.outputs.hashes }}
     permissions:
       # The GitHub release and its assets, and the moving major alias tag.
       contents: write
@@ -78,12 +81,13 @@ jobs:
       - name: Read the upstream version the parity suite targets
         run: |
           set -euo pipefail
-          v="$(grep -oE "pre-commit==[0-9][0-9.]*" .github/workflows/ci.yml | head -1 | cut -d= -f3)"
-          [ -n "$v" ] || { echo "::error::no pre-commit==X pin found in ci.yml" >&2; exit 1; }
+          v="$(grep -oE "pre-commit==[0-9][0-9.]*" .github/requirements/parity.in | head -1 | cut -d= -f3)"
+          [ -n "$v" ] || { echo "::error::no pre-commit==X pin found in .github/requirements/parity.in" >&2; exit 1; }
           echo "UPSTREAM_VERSION=$v" >> "$GITHUB_ENV"
           echo "Targets Python pre-commit $v"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Run GoReleaser
+        id: goreleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
@@ -102,6 +106,15 @@ jobs:
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+      - name: Hash the release artifacts for provenance
+        id: hash
+        env:
+          ARTIFACTS: ${{ steps.goreleaser.outputs.artifacts }}
+        run: |
+          set -euo pipefail
+          checksums="$(jq -r '.[] | select(.type == "Checksum") | .path' <<<"$ARTIFACTS")"
+          [ -s "$checksums" ] || { echo "::error::no checksums file in GoReleaser's artifacts" >&2; exit 1; }
+          echo "hashes=$(base64 -w0 < "$checksums")" >> "$GITHUB_OUTPUT"
       # `uses: blairham/go-pre-commit@v4` is the documented way to consume the
       # composite action, and a documented path that does not resolve is worse
       # than no documentation. Move the alias with every release rather than
@@ -119,3 +132,19 @@ jobs:
           # resolving right now.
           git push origin ":refs/tags/$major" || true
           git push origin "refs/tags/$major"
+
+  # SLSA build provenance for every archive, as multiple.intoto.jsonl on the
+  # release. The generator is a reusable workflow that must be referenced by
+  # tag, not SHA -- its own verification depends on that, and Scorecard exempts
+  # it from Pinned-Dependencies for the same reason.
+  provenance:
+    needs: release
+    permissions:
+      actions: read # read the run that built the artifacts
+      id-token: write # sign the provenance
+      contents: write # upload it to the release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.release.outputs.hashes }}
+      upload-assets: true
+      upload-tag-name: ${{ inputs.tag || github.ref_name }}

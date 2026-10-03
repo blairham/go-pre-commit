@@ -1,0 +1,12 @@
+# Advisories that OSV (and so OpenSSF Scorecard) reports against go.mod but
+# that cannot reach this program. Each entry says why; remove it as soon as
+# that stops being true.
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = """
+golang.org/x/crypto/openpgp is unmaintained and has no fixed release. This
+module is in go.mod only for other x/crypto packages (bcrypt, pbkdf2, via
+mitchellh/cli's dependencies); `go list -deps ./... tool` contains no
+x/crypto/openpgp package, and go-vulncheck, which reports only reachable
+code, is clean."""

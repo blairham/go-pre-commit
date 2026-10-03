@@ -12,7 +12,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-want="$(grep -oE "pre-commit==[0-9][0-9.]*" .github/workflows/ci.yml | head -1 | cut -d= -f3)"
+want="$(grep -oE "pre-commit==[0-9][0-9.]*" .github/requirements/parity.in | head -1 | cut -d= -f3)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
