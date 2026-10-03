@@ -46,6 +46,18 @@ A release re-run by hand (the workflow's `workflow_dispatch` input) is signed
 by the ref it was dispatched from, usually `refs/heads/main`, rather than by
 the tag, so use `@refs/heads/main` in `--certificate-identity` for that release.
 
+Releases after `v4.6.13` also carry SLSA build provenance
+(`multiple.intoto.jsonl`), which ties each archive to the exact workflow run
+that built it. Verify one with
+[slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
+
+```sh
+slsa-verifier verify-artifact pre-commit_Linux_x86_64.tar.gz \
+  --provenance-path multiple.intoto.jsonl \
+  --source-uri github.com/blairham/go-pre-commit \
+  --source-tag "$VERSION"
+```
+
 The macOS builds are additionally Developer ID signed and notarized.
 
 ## What is in scope

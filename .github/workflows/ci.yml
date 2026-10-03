@@ -182,9 +182,10 @@ jobs:
           python-version: '3.13'
       - name: Install Python pre-commit
         if: needs.changes.outputs.code == 'true'
-        # Pinned to the line our version number claims parity with. The harness
+        # Pinned (with hashes, in .github/requirements/parity.in -> parity.txt) to
+        # the line our version number claims parity with. The harness
         # rejects any other line, so a bump here is a deliberate parity decision.
-        run: pip install 'pre-commit==4.6.2'
+        run: pip install --require-hashes -r .github/requirements/parity.txt
       - name: Run parity tests
         if: needs.changes.outputs.code == 'true'
         # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
@@ -369,7 +370,7 @@ jobs:
           go build -o "$RUNNER_TEMP/bin/pre-commit.exe" .
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           # nodeenv is what the node backend drives, as upstream's does.
-          python -m pip install --disable-pip-version-check nodeenv
+          python -m pip install --disable-pip-version-check --require-hashes -r .github/requirements/nodeenv.txt
       - name: python, node and golang hooks build an environment and run
         if: needs.changes.outputs.code == 'true'
         run: |
