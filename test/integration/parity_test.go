@@ -350,6 +350,26 @@ func runCmd(t *testing.T, dir, name string, args ...string) (combined string, ex
 	return buf.String(), exitCode
 }
 
+// runSplit is runCmd with stdout and stderr kept apart. runCmd merges them,
+// which is why --version and --help going to the wrong stream (#81) went
+// unseen.
+func runSplit(t *testing.T, dir, name string, args ...string) (stdout, stderr string, exitCode int) {
+	t.Helper()
+	var out, errb bytes.Buffer
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		if e, ok := err.(*exec.ExitError); ok {
+			exitCode = e.ExitCode()
+		} else {
+			t.Fatalf("failed to run %s %v: %v", name, args, err)
+		}
+	}
+	return out.String(), errb.String(), exitCode
+}
+
 func initTestRepo(t *testing.T, cfg, testFileContent string) string {
 	t.Helper()
 	tmp := t.TempDir()
@@ -455,6 +475,39 @@ func TestVersion(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Tests: help
 // ---------------------------------------------------------------------------
+
+// Which stream each front-door command writes to is part of the contract:
+// `v=$(pre-commit --version)` and `pre-commit --help | less` depend on it.
+func TestOutputStreams(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+	for _, args := range [][]string{{"--version"}, {"--help"}, {"run", "--help"}} {
+		pyOut, pyErr, _ := runSplit(t, ".", pyBin, args...)
+		goOut, goErr, _ := runSplit(t, ".", goBinary, args...)
+		addOutputResult(strings.Join(args, " "), "writes to stdout, not stderr",
+			pyOut != "" && pyErr == "" && goOut != "" && goErr == "",
+			fmt.Sprintf("py stdout=%d stderr=%d, go stdout=%d stderr=%d", len(pyOut), len(pyErr), len(goOut), len(goErr)))
+	}
+	pyOut, pyErr, pyExit := runSplit(t, ".", pyBin, "no-such-command")
+	goOut, goErr, goExit := runSplit(t, ".", goBinary, "no-such-command")
+	addOutputResult("no-such-command", "fails, on stderr",
+		pyExit != 0 && goExit != 0 && pyOut == "" && goOut == "" && pyErr != "" && goErr != "",
+		fmt.Sprintf("py exit=%d stdout=%d, go exit=%d stdout=%d", pyExit, len(pyOut), goExit, len(goOut)))
+}
+
+// Upstream runs `run` when given no arguments at all.
+func TestNoArgumentsRuns(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+	t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+	pyRepo := initTestRepo(t, standardCfg, "trailing   \n")
+	goRepo := initTestRepo(t, standardCfg, "trailing   \n")
+	pyOut, pyExit := runCmd(t, pyRepo, pyBin)
+	goOut, goExit := runCmd(t, goRepo, goBinary)
+	addExitResult("(no arguments)", "runs the hooks, which fail", pyExit, goExit, pyExit != 0 && pyExit == goExit, "")
+	compareHookStatuses(t, "(no arguments)", pyOut, goOut, 3)
+	addFSResult("(no arguments)", "the staged file was fixed",
+		readFile(filepath.Join(pyRepo, "test.txt")) == "trailing\n" && readFile(filepath.Join(goRepo, "test.txt")) == "trailing\n",
+		fmt.Sprintf("py=%q go=%q", readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(goRepo, "test.txt"))))
+}
 
 func TestHelp(t *testing.T) {
 	pyBin := pythonPreCommit(t)
