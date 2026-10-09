@@ -1,13 +1,13 @@
-# Gitleaks configuration for go-pre-commit
-# This file defines rules for the gitleaks security scanner
-
-title = "go-pre-commit Gitleaks Configuration"
+# gitleaks configuration for go-pre-commit: the default rules.
+#
+# Rendered from blairham/.github baseline/gitleaks.toml.tmpl by `make sync`.
+# An allowlist entry is an override (overrides/go-pre-commit.yml) and carries the
+# reason it is not a secret. Allowlist exact values, never a broad pattern: a
+# wildcard silences the rule that exists to catch a genuine key.
 
 [extend]
-# Extend the default gitleaks configuration
 useDefault = true
 
-# Global allowlist for false positives in test fixtures.
 [allowlist]
 description = "Global allowlist for false positives"
 
