@@ -1,12 +1,9 @@
 # yamllint configuration.
 #
-# Block sequences are indented under their parent key (`key:` then
-# `  - item`, parent+2) — the Kubernetes/Helm convention. Editor note:
-# VS Code's kubernetes-yaml-formatter v2 honors this via
-# `better-yaml.indentSeq: true`; Prettier dedents sequences and offers no
-# override, so keep *.yaml/*.yml out of Prettier format-on-save.
+# Rendered from blairham/.github baseline/yamllint.yml.tmpl by `make sync`.
 #
-# Enforced via pre-commit; run manually: yamllint .
+# Block sequences are indented under their parent key, the Kubernetes/Helm
+# convention. Prettier dedents them, so keep YAML out of format-on-save.
 extends: default
 
 rules:

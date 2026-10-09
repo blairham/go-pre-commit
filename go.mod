@@ -1,6 +1,6 @@
 module github.com/blairham/go-pre-commit/v4
 
-go 1.26.8
+go 1.26.9
 
 require (
 	github.com/creack/pty v1.1.24

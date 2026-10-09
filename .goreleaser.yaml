@@ -4,6 +4,13 @@ version: 2
 # See: https://goreleaser.com
 project_name: pre-commit
 
+# The release notes name the upstream version this targets, read from the
+# parity suite's pin (.github/requirements/parity.in) — the one source of that
+# number. Fail rather than publish notes without it.
+before:
+  hooks:
+    - grep -qE "^pre-commit==[0-9]" .github/requirements/parity.in
+
 builds:
   - id: pre-commit
     binary: pre-commit
@@ -118,7 +125,7 @@ changelog:
 # Linux exactly as they do on macOS — which matters here, since this binary is
 # what CI runs on Linux runners.
 #
-# GoReleaser marks `brews` deprecated in favour of `homebrew_casks`, on the
+# GoReleaser marks `brews` deprecated in favor of `homebrew_casks`, on the
 # grounds that formulae installing pre-compiled binaries are "hackyish" and
 # were only needed because Linuxbrew could not handle casks. There is no
 # announced removal date, and the Linuxbrew limitation is not our reason for
@@ -153,7 +160,7 @@ release:
   header: |
     ## go-pre-commit {{ .Tag }} ({{ .Date }})
 
-    Targets Python pre-commit **{{ .Env.UPSTREAM_VERSION }}**: the differential
+    Targets Python pre-commit **{{ trimprefix (trim (filter (mustReadFile ".github/requirements/parity.in") "^pre-commit==")) "pre-commit==" }}**: the differential
     parity suite runs against that release on every pull request
     ([how it is measured](https://github.com/blairham/go-pre-commit/blob/main/docs/parity.md)).
 
