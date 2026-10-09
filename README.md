@@ -239,11 +239,14 @@ There is no `lint` target: golangci-lint runs as a pre-commit hook (`pre-commit 
 
 ## Releasing
 
-Releases are automated with [GoReleaser](https://goreleaser.com) via GitHub Actions. To create a release:
+Releases are automated with [GoReleaser](https://goreleaser.com) via the shared
+release workflow in [blairham/.github](https://github.com/blairham/.github). Move
+`CHANGELOG.md`'s `[Unreleased]` section under `## [X.Y.Z] - <date>` (the
+release notes are that section, and a release without one fails), then tag:
 
 ```bash
-git tag v4.6.7
-git push origin v4.6.7
+git tag -s v4.6.17
+git push origin v4.6.17
 ```
 
 The release workflow also moves the `v4` alias tag to the new release, which is

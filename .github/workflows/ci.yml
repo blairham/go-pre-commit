@@ -1,21 +1,33 @@
 name: CI
 
-# One workflow holds everything that gates a merge, so there is one file to
-# read and one check to require. Splitting pre-commit or tests into their own
-# workflow bought nothing and cost a second place to keep in sync.
+# Everything that gates a merge. Pre-commit, Detect changed files, Build and
+# test and Fuzz are blairham/.github's go-ci.yml, shared with every Go
+# repository there; their checks report as `CI / <job>`. The jobs below it are
+# this project's own: parity with Python pre-commit, the release build, and the
+# composite action and hook backends on every runner OS. Each `needs: ci` and
+# gates its *steps* on `needs.ci.outputs.code` (never a job-level `if:` or a
+# `paths:` filter: a required check that never runs is pending forever).
+#
+# go-ci.yml runs the hooks through a released go-pre-commit, pinned in
+# blairham/.github, so this repository's CI never needs a release of itself to
+# pass. What the pull request changes is tested from source below: the action
+# by `uses: ./` in `Action`, the binary by `Parity` and `Hooks from source`.
 on:
   pull_request:
     # `synchronize` is every push to a branch with an open pull request, which
     # is the feedback that matters. A draft is treated exactly like any other
-    # pull request: the distinction bought a little runner time and cost a
-    # second set of rules to hold in your head.
+    # pull request.
     types: [opened, reopened, synchronize, ready_for_review]
   push:
-    # Everything runs here too, not just pre-commit. A squash merge lands a
-    # tree no pull request ever built — the branch was tested before the
-    # squash, and `main` may have moved under it since — so the merge result
-    # gets its own run rather than inheriting the branch's green tick.
+    # A squash merge lands a tree no pull request ever built — the branch was
+    # tested before the squash, and `main` may have moved under it since — so
+    # the merge result gets its own run rather than inheriting the branch's
+    # green tick.
     branches: [main]
+  schedule:
+    # Weekly, for go-ci.yml's Fuzz job, which explores on main and on this
+    # schedule but never on a pull request.
+    - cron: '41 5 * * 3'
 
 permissions:
   contents: read
@@ -26,168 +38,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Runs for every commit that reaches GitHub — every push to a pull request,
-  # draft or not, and every push to main. It is the only job that looks at
-  # *every* file rather than at Go: trailing whitespace, licence headers,
-  # secrets, the toolchain pin. None of that is worth detecting changes for,
-  # and a secret committed to a draft is committed.
-  pre-commit:
-    name: Pre-commit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # `--new-from-merge-base` needs the base branch's history to find the
-          # common ancestor; a shallow clone has none of it.
-          fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: true # go-mod-tidy-repo resolves the whole graph; uncached it is slow and flaky
-      - name: Resolve the diff this change introduces
-        # Everything below runs against this range and nothing else — no
-        # `--all-files` anywhere in CI. A branch create or a force-push sends an
-        # all-zero `before`, and an unresolvable ref makes both pre-commit and
-        # golangci-lint report nothing while exiting 0, which is the silent pass
-        # this whole job exists to prevent. So: fall back to the merge base with
-        # main, then verify every ref actually resolves and fail loudly if not.
-        id: range
-        env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          base="$BASE"
-          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
-             || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-            echo "No usable base ref ('${base:-empty}') — falling back to the merge base with main"
-            base="$(git merge-base origin/main "$HEAD_SHA")"
-          fi
-          git rev-parse --verify "${base}^{commit}" >/dev/null
-          git rev-parse --verify "${HEAD_SHA}^{commit}" >/dev/null
-          # The manual hook below diffs against origin/main; if that is missing
-          # it reports `0 issues` and exits 0 rather than erroring.
-          git rev-parse --verify origin/main >/dev/null
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-          echo "head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "Linting ${base}..${HEAD_SHA}"
-      - name: Run pre-commit hooks
-        # Nothing is skipped here, unlike every other repo, which skips the
-        # HEAD-relative `golangci-lint`. Building a `language: golang` hook is
-        # this project's product, and the hook reporting nothing against a clean
-        # checkout is beside the point — that it *builds and runs* is the thing
-        # under test, and this is the one job that runs the action from the
-        # checkout. The step below is what gates the change itself.
-        uses: ./
-        with:
-          extra_args: --from-ref ${{ steps.range.outputs.base }} --to-ref ${{ steps.range.outputs.head }}
-      - name: Lint what this change introduces
-        # Same config, same pin, same hook — asked the narrower question, and
-        # told not to fix (`--fix=false` in the hook's args): a linter that
-        # repairs its own findings exits 0 and reports nothing, which is a green
-        # check over unchanged, still-broken committed code.
-        uses: ./
-        with:
-          extra_args: --from-ref ${{ steps.range.outputs.base }} --to-ref ${{ steps.range.outputs.head }} --hook-stage manual golangci-lint-new
-
-  # Gating happens inside the jobs, never with a workflow-level `paths:`
-  # filter: a required check that never runs reports as *pending forever*
-  # rather than as passed, which makes a docs-only pull request unmergeable.
-  # Anything unrecognised counts as code, so when this is wrong it is wrong in
-  # the direction of running the tests.
-  # Only after the cheap universal checks have passed is it worth asking the
-  # expensive question, so this waits on pre-commit.
-  changes:
-    name: Detect changed files
-    needs: pre-commit
-    runs-on: ubuntu-latest
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # the diff needs the base commit, not just HEAD
-      - id: filter
-        name: Is any of this code?
-        env:
-          # On a merge to main there is no pull request; `before` is the commit
-          # main pointed at, which makes the diff the merge itself.
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          code=false
-          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
-            # A merge runs everything. Not because the merge itself changed code
-            # — it may be pure prose — but because this is the first time this
-            # tree is tested *as main*, and what it protects against is an
-            # earlier merge that broke something nobody has run since.
-            echo "push to $GITHUB_REF_NAME — running everything"
-            code=true
-          elif ! git cat-file -e "$BASE" 2>/dev/null; then
-            # No usable base commit — a force push, or a shallow fetch that did
-            # not reach it. `git diff` would fail here and print nothing, and an
-            # empty diff is indistinguishable from "only prose changed", so this
-            # would silently skip every test. The safe answer is to run them.
-            echo "base commit $BASE is not present — running everything"
-            code=true
-          else
-            while IFS= read -r f; do
-              [ -n "$f" ] || continue
-              case "$f" in
-                docs/*|*.md|LICENSE|LICENSE.*|*.png|*.jpg|*.gif|*.svg) ;; # prose
-                *) code=true; break ;;
-              esac
-            done <<<"$(git diff --name-only "$BASE"...HEAD)"
-          fi
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "changed files are $([ "$code" = true ] && echo 'code — full run' || echo 'prose only — skipping the code jobs')"
-
-  test:
-    name: Build and test
-    needs: changes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.changes.outputs.code == 'true'
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.changes.outputs.code == 'true'
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: true
-      - run: make test
-        if: needs.changes.outputs.code == 'true'
-
+  ci:
+    name: CI
+    uses: blairham/.github/.github/workflows/go-ci.yml@99060d62d0693570a360127ab698307d276630da # v0.0.0
+    with:
+      # The Makefile's test target: the race detector, verbose.
+      test-command: make test
 
   # Parity is this project's entire claim, so a change that breaks it fails
   # before review rather than after a merge to main.
   language-integration:
     name: Parity with Python pre-commit
-    needs: changes
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           go-version-file: go.mod
           check-latest: true
           cache: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           python-version: '3.13'
       - name: Install Python pre-commit
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         # Pinned (with hashes, in .github/requirements/parity.in -> parity.txt) to
         # the line our version number claims parity with. The harness
         # rejects any other line, so a bump here is a deliberate parity decision.
         run: pip install --require-hashes -r .github/requirements/parity.txt
       - name: Run parity tests
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
         # green skip into a failure. This job exists to make the comparison; a
         # run that makes no comparison has not done its job.
@@ -201,55 +87,57 @@ jobs:
           name: parity-report
           path: test/integration/parity_report.json
 
-  # No `if:` needed: a job that `needs` a skipped job is itself skipped.
+  # The release build, so a change that breaks `make build` fails here and
+  # not at the tag.
   build:
     name: Build
-    needs: [changes, test]
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           go-version-file: go.mod
           check-latest: true
           cache: true
       - run: make build
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
 
   # The composite action is published to the Marketplace and its README offers
-  # it to Linux, macOS and Windows runners, but only Linux had ever run it: the
-  # `pre-commit` job above uses `./`, and nothing else did. The macOS and
-  # Windows halves of the install script -- `shasum` where there is no
-  # `sha256sum`, `7z` and the `.zip` archive, the Darwin/Windows names -- were
-  # shipped unexecuted. This runs them.
+  # it to Linux, macOS and Windows runners. This runs the action as this pull
+  # request has it (`uses: ./`) on each of them: the install script's three
+  # halves -- `sha256sum` and `shasum`, `7z` and the `.zip` archive, the
+  # Linux/Darwin/Windows names -- and then a hook with and without an
+  # environment. CI / Pre-commit runs hooks through the *pinned* action in
+  # blairham/.github's go-ci.yml, so this job is the only place the action in
+  # the checkout runs at all.
   #
   # Note what this measures: the action installs the *released* binary, so this
-  # job tests the install path and the current release, not the code in the
-  # pull request. That is the intended scope -- "does the thing we publish work
-  # where we say it does".
+  # job tests the install path and the current release, not the binary built
+  # from the pull request. That is the intended scope -- "does the thing we
+  # publish work where we say it does".
   action:
     name: Action (${{ matrix.os }})
-    needs: pre-commit
+    needs: ci
     strategy:
       # One runner's failure must not hide the other's; a Windows-only break is
       # the most likely kind here and the least likely to be noticed.
       fail-fast: false
       matrix:
-        # Linux is deliberately absent: the `pre-commit` job already runs the
-        # action on ubuntu-latest for every commit, so repeating it here would
-        # buy a third runner and no coverage. macos-latest is arm64 and
-        # windows-latest is x64, which is every published archive these runners
-        # can ask for.
-        os: [macos-latest, windows-latest]
+        # ubuntu-latest and windows-latest are x64, macos-latest is arm64:
+        # every published archive these runners can ask for.
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.ci.outputs.code == 'true'
 
       - name: Install through the action
+        if: needs.ci.outputs.code == 'true'
         uses: ./
         with:
           # The run step is exercised separately below against a config small
@@ -259,6 +147,7 @@ jobs:
           cache: 'false'
 
       - name: The binary is on PATH and reports its version
+        if: needs.ci.outputs.code == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -268,6 +157,7 @@ jobs:
           command -v pre-commit
 
       - name: A hook with no environment runs, and changes a file
+        if: needs.ci.outputs.code == 'true'
         # pygrep needs no installed environment, so this is the part of the tool
         # that works on every platform. It is the Windows leg's real assertion.
         shell: bash
@@ -299,6 +189,7 @@ jobs:
           echo "pygrep hook ran and matched"
 
       - name: A hook that builds an environment runs, and changes a file
+        if: needs.ci.outputs.code == 'true'
         # Runs on Windows too since v4.6.10 (#53). The released binary is what
         # this job installs, so a regression there shows up here even if the
         # from-source Windows job is green.
@@ -340,30 +231,30 @@ jobs:
   # is one the hook must reject, so a pass means the hook did nothing.
   windows-hooks:
     name: Hooks from source (windows-latest)
-    needs: changes
+    needs: ci
     runs-on: windows-latest
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           go-version-file: go.mod
           check-latest: true
           cache: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           python-version: '3.13'
       - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         with:
           ruby-version: '3.3'
       - name: Build from this checkout
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bin"
@@ -372,7 +263,7 @@ jobs:
           # nodeenv is what the node backend drives, as upstream's does.
           python -m pip install --disable-pip-version-check --require-hashes -r .github/requirements/nodeenv.txt
       - name: python, node and golang hooks build an environment and run
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         run: |
           set -euo pipefail
           pre-commit --version
@@ -436,7 +327,7 @@ jobs:
         # exercised is this tool's install path (gem build + gem install,
         # cargo install --path) rather than somebody else's repo. Both hooks
         # reject a file containing TODO.
-        if: needs.changes.outputs.code == 'true'
+        if: needs.ci.outputs.code == 'true'
         run: |
           set -euo pipefail
           root="$(mktemp -d)"

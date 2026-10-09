@@ -74,23 +74,26 @@ test/integration/        # Parity tests against real Python pre-commit (build ta
 
 ## CI/CD
 
-`.github/workflows/ci.yml` is the one workflow that gates a merge; Go comes from `go.mod` (`go-version-file`). Every action, in the workflows and in `action.yml`, is pinned to a commit SHA with a `# vX.Y.Z` comment — Dependabot moves them.
+`.github/workflows/ci.yml` is the one workflow that gates a merge; Go comes from `go.mod` (`go-version-file`). Its first job calls the shared `go-ci.yml` in [blairham/.github](https://github.com/blairham/.github), pinned by the SHA of that repo's latest `vX.Y.Z` tag; the rest are this repo's own, `needs: ci`, with steps gated on `needs.ci.outputs.code`. Every action, in the workflows and in `action.yml`, is pinned to a commit SHA with a `# vX.Y.Z` comment — Dependabot moves them.
 
 | Job | What it does |
 |---|---|
-| `Pre-commit` | Dogfoods the repo's own `action.yml` via `uses: ./` over the change's diff, then the `golangci-lint-new` manual hook (issues the change introduces) |
-| `Detect changed files` | Skips the code jobs for prose-only PRs (inside the jobs, never a `paths:` filter) |
-| `Build and test` | `make test` |
+| `CI / Pre-commit` | The hooks over the change's diff, then the `golangci-lint-new` manual hook (issues the change introduces). Runs the go-pre-commit release pinned in blairham/.github, so this repo never needs a release of itself to pass CI |
+| `CI / Detect changed files` | Skips the code jobs for prose-only PRs (inside the jobs, never a `paths:` filter) |
+| `CI / Build and test (ubuntu-latest)` | `make test` |
+| `CI / Fuzz` | Every Fuzz target, on pushes to main and weekly |
 | `Parity with Python pre-commit` | Differential suite against real Python pre-commit 4.6.2 |
 | `Build` | `make build` |
-| `Action (macos/windows)` | Installs the *released* binary through the action on the other runner OSes and runs a pygrep and a python hook |
+| `Action (ubuntu/macos/windows)` | Runs `action.yml` from the checkout (`uses: ./`): installs the *released* binary and runs a pygrep and a python hook |
 | `Hooks from source (windows-latest)` | Builds this checkout on Windows and runs a python, node, golang, ruby and rust hook, each against input it must reject |
+
+The synced config files (`.golangci.yml`, `.pre-commit-config.yaml`, `.editorconfig`, `.yamllint.yml`, `.gitleaks.toml`, `dependabot.yml`, `CODEOWNERS`, `codeql.yml`, `scorecard.yml`) are rendered by blairham/.github's `make sync`; change them there (or as an approved override in its `overrides/go-pre-commit.yml`), not here.
 
 `codeql.yml` (security-extended) and `scorecard.yml` (OpenSSF Scorecard) run on pushes to `main` and on a schedule; CodeQL also runs on PRs.
 
 **The repo-root `action.yml` is a public composite action.** It downloads the release binary and runs hooks — a drop-in for `pre-commit/action` with no Python setup. `aws-sso-config`, `aws-config-management`, and `ghorg` consume it in their own CI, so a breaking change to its inputs (`version`, `extra_args`, `cache`, `install-only`) breaks those repos. The `pre-commit` CI job dogfoods it against this repo.
 
-Releases: push a `v*` tag → `goreleaser.yml` runs the tests, then GoReleaser (`.goreleaser.yaml`) builds, signs, and notarizes, updates `blairham/homebrew-tap`, and the moving `v4` alias tag follows.
+Releases: move `CHANGELOG.md`'s `[Unreleased]` under the version, push a `v*` tag → `release.yml` calls blairham/.github's `go-release.yml`, which runs the tests, then GoReleaser (`.goreleaser.yaml`) builds, signs, and notarizes, updates `blairham/homebrew-tap`, attests provenance, and publishes the tag's CHANGELOG section as the notes; then the moving `v4` alias tag follows.
 
 ## Toolchain
 

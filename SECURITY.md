@@ -27,45 +27,53 @@ release with an advisory; you will be credited unless you ask not to be.
 
 ## Verifying what you downloaded
 
-Releases after `v4.6.7` sign `checksums.txt` with cosign keyless signing
-(GitHub OIDC). The signature is tied to the workflow that built the release,
-not to a key someone could leak, so verify against that workflow — not just
-"anything in this repository". `checksums.txt` lists the digest of every
-archive, so verify the signature, then the archives against it:
+Releases are built by `.github/workflows/release.yml`, which runs the shared
+release workflow in [blairham/.github](https://github.com/blairham/.github)
+(`.github/workflows/go-release.yml`). It signs `checksums.txt` with
+[cosign](https://github.com/sigstore/cosign) keyless signing (GitHub OIDC):
+the signature is tied to the workflow that built the release, not to a key
+someone could leak. The signing identity is that shared workflow; the
+certificate also names this repository and the tag, so verify all three — not
+just "anything in this repository". `checksums.txt` lists the digest of every
+archive, so verify the signature, then the archives against it, then the
+provenance:
 
 ```sh
-VERSION=v4.6.8
+VERSION=v4.6.17
 cosign verify-blob \
-  --certificate-identity "https://github.com/blairham/go-pre-commit/.github/workflows/goreleaser.yml@refs/tags/$VERSION" \
+  --certificate-identity-regexp '^https://github\.com/blairham/\.github/\.github/workflows/go-release\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-repository blairham/go-pre-commit \
+  --certificate-github-workflow-ref "refs/tags/$VERSION" \
   --bundle checksums.txt.sigstore.json checksums.txt
 sha256sum --check --ignore-missing checksums.txt
+gh attestation verify pre-commit_Linux_x86_64.tar.gz --repo blairham/go-pre-commit \
+  --signer-workflow blairham/.github/.github/workflows/go-release.yml
 ```
 
 A release re-run by hand (the workflow's `workflow_dispatch` input) is signed
-by the ref it was dispatched from, usually `refs/heads/main`, rather than by
-the tag, so use `@refs/heads/main` in `--certificate-identity` for that release.
+for the ref it was dispatched from, usually `refs/heads/main`, rather than the
+tag, so use that in `--certificate-github-workflow-ref` for such a release.
 
-Releases after `v4.6.14` also carry SLSA build provenance, which ties each
-archive to the exact workflow run and commit that built it. GitHub stores the
-attestation, so verify an archive with the GitHub CLI:
-
-```sh
-gh attestation verify pre-commit_Linux_x86_64.tar.gz --repo blairham/go-pre-commit
-```
-
-The same attestation is attached to the release as
-`go-pre-commit-$VERSION.intoto.jsonl`, for checking without a round trip to
-GitHub's attestation store:
+The SLSA build provenance ties each archive to the exact workflow run and
+commit that built it. GitHub stores it, and the same attestation is attached
+to the release as `go-pre-commit-$VERSION.intoto.jsonl`, for checking without
+a round trip to GitHub's attestation store:
 
 ```sh
 gh attestation verify pre-commit_Linux_x86_64.tar.gz --repo blairham/go-pre-commit \
+  --signer-workflow blairham/.github/.github/workflows/go-release.yml \
   --bundle "go-pre-commit-$VERSION.intoto.jsonl"
 ```
 
-`v4.6.14` itself carries the older slsa-github-generator provenance
-(`multiple.intoto.jsonl`), which verifies with
-[slsa-verifier](https://github.com/slsa-framework/slsa-verifier) instead.
+**Tags released before the move to blairham/.github** (`v4.6.16` and earlier)
+were signed by this repository's own `goreleaser.yml`. Verify those with
+`--certificate-identity "https://github.com/blairham/go-pre-commit/.github/workflows/goreleaser.yml@refs/tags/$VERSION"`
+in place of the three identity flags above, and without `--signer-workflow`.
+Signatures start at `v4.6.8` and provenance at `v4.6.14`; `v4.6.14` itself
+carries the older slsa-github-generator provenance (`multiple.intoto.jsonl`),
+which verifies with [slsa-verifier](https://github.com/slsa-framework/slsa-verifier)
+instead.
 
 The macOS builds are additionally Developer ID signed and notarized.
 

@@ -1,0 +1,90 @@
+name: Release
+
+# A signed v* tag is the release. blairham/.github's go-release.yml builds and
+# publishes it: the tests, GoReleaser (.goreleaser.yaml: binaries for every
+# platform, notarized darwin builds, the Homebrew formula), a cosign-signed
+# checksums.txt and SLSA build provenance. The signing identity is
+# go-release.yml itself; SECURITY.md shows how to verify it. The notes are the
+# tag's section of CHANGELOG.md.
+on:
+  push:
+    tags:
+      # Full versions only. The moving major alias (v4) is a tag too, and
+      # matching "v*" would make every alias update kick off a second,
+      # duplicate release.
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+  # Re-run a release for a tag that already exists — after a failed publish,
+  # say — without moving or re-creating the tag; or dry-run the build.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v4.6.17). Must already exist. Leave empty for a dry run."
+        required: false
+        type: string
+      dry-run:
+        description: "Build with GoReleaser --snapshot; publish, sign and attest nothing."
+        required: false
+        type: boolean
+        default: false
+
+# Read-only by default; each job asks for exactly what it writes.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release
+    permissions:
+      contents: write # the GitHub release and its assets
+      # Keyless cosign and the provenance attestation both sign with the
+      # workflow's OIDC identity.
+      id-token: write
+      attestations: write # store the provenance in the repository's attestations
+    uses: blairham/.github/.github/workflows/go-release.yml@99060d62d0693570a360127ab698307d276630da # v0.0.0
+    with:
+      tag: ${{ inputs.tag }}
+      snapshot: ${{ inputs.dry-run == true }}
+      test-command: make test
+    secrets:
+      # A PAT with contents:write on blairham/homebrew-tap, so the formula can
+      # be committed to that separate repo.
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      # Apple Developer ID signing + notarization of the darwin binaries. The
+      # notarize block in .goreleaser.yaml self-disables when MACOS_SIGN_P12
+      # is unset.
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+
+  # `uses: blairham/go-pre-commit@v4` is the documented way to consume the
+  # composite action, and a documented path that does not resolve is worse
+  # than no documentation. Move the alias with every release rather than
+  # remembering to do it by hand — and only after the release is published.
+  alias:
+    name: Move the major-version alias tag
+    needs: release
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the alias tag
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - name: Move the alias
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          major="${TAG%%.*}"          # v4.6.7 -> v4
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$major" "$TAG^{}" --force
+          # Retire the old alias, then publish the new one. Deleting first keeps
+          # this a plain create rather than a rewrite of a ref someone may be
+          # resolving right now.
+          git push origin ":refs/tags/$major" || true
+          git push origin "refs/tags/$major"
