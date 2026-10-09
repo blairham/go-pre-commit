@@ -74,7 +74,7 @@ test/integration/        # Parity tests against real Python pre-commit (build ta
 
 ## CI/CD
 
-`.github/workflows/ci.yml` is the one workflow that gates a merge; Go comes from `go.mod` (`go-version-file`). Its first job calls the shared `go-ci.yml` in [blairham/.github](https://github.com/blairham/.github), pinned by the SHA of that repo's latest `vX.Y.Z` tag; the rest are this repo's own, `needs: ci`, with steps gated on `needs.ci.outputs.code`. Every action, in the workflows and in `action.yml`, is pinned to a commit SHA with a `# vX.Y.Z` comment — Dependabot moves them.
+`.github/workflows/ci.yml` is the one workflow that gates a merge; Go comes from `go.mod` (`go-version-file`). Its first job calls the shared `go-ci.yml` in [blairham/.github](https://github.com/blairham/.github), pinned by the SHA of that repo's latest `vX.Y.Z` tag; the rest are this repo's own, `needs: changes` (a `go-changes.yml` call at the same pin, so they start without waiting for all of go-ci), with steps gated on `needs.changes.outputs.code`. Every action, in the workflows and in `action.yml`, is pinned to a commit SHA with a `# vX.Y.Z` comment — Dependabot moves them.
 
 | Job | What it does |
 |---|---|

@@ -4,9 +4,10 @@ name: CI
 # test and Fuzz are blairham/.github's go-ci.yml, shared with every Go
 # repository there; their checks report as `CI / <job>`. The jobs below it are
 # this project's own: parity with Python pre-commit, the release build, and the
-# composite action and hook backends on every runner OS. Each `needs: ci` and
-# gates its *steps* on `needs.ci.outputs.code` (never a job-level `if:` or a
-# `paths:` filter: a required check that never runs is pending forever).
+# composite action and hook backends on every runner OS. Each `needs: changes`
+# (go-changes.yml, so it need not wait for all of go-ci) and gates its *steps*
+# on `needs.changes.outputs.code` (never a job-level `if:` or a `paths:`
+# filter: a required check that never runs is pending forever).
 #
 # go-ci.yml runs the hooks through a released go-pre-commit, pinned in
 # blairham/.github, so this repository's CI never needs a release of itself to
@@ -40,40 +41,46 @@ concurrency:
 jobs:
   ci:
     name: CI
-    uses: blairham/.github/.github/workflows/go-ci.yml@99060d62d0693570a360127ab698307d276630da # v0.0.0
+    uses: blairham/.github/.github/workflows/go-ci.yml@9711060ad4860f35860bcbf90d90f103617082d2 # v0.0.1
     with:
       # The Makefile's test target: the race detector, verbose.
       test-command: make test
+
+  # What changed, on its own, so the jobs below start as soon as the change is
+  # classified rather than waiting for all of go-ci.
+  changes:
+    name: Changes
+    uses: blairham/.github/.github/workflows/go-changes.yml@9711060ad4860f35860bcbf90d90f103617082d2 # v0.0.1
 
   # Parity is this project's entire claim, so a change that breaks it fails
   # before review rather than after a merge to main.
   language-integration:
     name: Parity with Python pre-commit
-    needs: ci
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           go-version-file: go.mod
           check-latest: true
           cache: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           python-version: '3.13'
       - name: Install Python pre-commit
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         # Pinned (with hashes, in .github/requirements/parity.in -> parity.txt) to
         # the line our version number claims parity with. The harness
         # rejects any other line, so a bump here is a deliberate parity decision.
         run: pip install --require-hashes -r .github/requirements/parity.txt
       - name: Run parity tests
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
         # green skip into a failure. This job exists to make the comparison; a
         # run that makes no comparison has not done its job.
@@ -91,21 +98,21 @@ jobs:
   # not at the tag.
   build:
     name: Build
-    needs: ci
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           go-version-file: go.mod
           check-latest: true
           cache: true
       - run: make build
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
 
   # The composite action is published to the Marketplace and its README offers
   # it to Linux, macOS and Windows runners. This runs the action as this pull
@@ -122,7 +129,7 @@ jobs:
   # publish work where we say it does".
   action:
     name: Action (${{ matrix.os }})
-    needs: ci
+    needs: changes
     strategy:
       # One runner's failure must not hide the other's; a Windows-only break is
       # the most likely kind here and the least likely to be noticed.
@@ -134,10 +141,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
 
       - name: Install through the action
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         uses: ./
         with:
           # The run step is exercised separately below against a config small
@@ -147,7 +154,7 @@ jobs:
           cache: 'false'
 
       - name: The binary is on PATH and reports its version
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -157,7 +164,7 @@ jobs:
           command -v pre-commit
 
       - name: A hook with no environment runs, and changes a file
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         # pygrep needs no installed environment, so this is the part of the tool
         # that works on every platform. It is the Windows leg's real assertion.
         shell: bash
@@ -189,7 +196,7 @@ jobs:
           echo "pygrep hook ran and matched"
 
       - name: A hook that builds an environment runs, and changes a file
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         # Runs on Windows too since v4.6.10 (#53). The released binary is what
         # this job installs, so a regression there shows up here even if the
         # from-source Windows job is green.
@@ -231,30 +238,30 @@ jobs:
   # is one the hook must reject, so a pass means the hook did nothing.
   windows-hooks:
     name: Hooks from source (windows-latest)
-    needs: ci
+    needs: changes
     runs-on: windows-latest
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           go-version-file: go.mod
           check-latest: true
           cache: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           python-version: '3.13'
       - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         with:
           ruby-version: '3.3'
       - name: Build from this checkout
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bin"
@@ -263,7 +270,7 @@ jobs:
           # nodeenv is what the node backend drives, as upstream's does.
           python -m pip install --disable-pip-version-check --require-hashes -r .github/requirements/nodeenv.txt
       - name: python, node and golang hooks build an environment and run
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         run: |
           set -euo pipefail
           pre-commit --version
@@ -327,7 +334,7 @@ jobs:
         # exercised is this tool's install path (gem build + gem install,
         # cargo install --path) rather than somebody else's repo. Both hooks
         # reject a file containing TODO.
-        if: needs.ci.outputs.code == 'true'
+        if: needs.changes.outputs.code == 'true'
         run: |
           set -euo pipefail
           root="$(mktemp -d)"
