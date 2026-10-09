@@ -40,7 +40,7 @@ jobs:
       # workflow's OIDC identity.
       id-token: write
       attestations: write # store the provenance in the repository's attestations
-    uses: blairham/.github/.github/workflows/go-release.yml@99060d62d0693570a360127ab698307d276630da # v0.0.0
+    uses: blairham/.github/.github/workflows/go-release.yml@9711060ad4860f35860bcbf90d90f103617082d2 # v0.0.1
     with:
       tag: ${{ inputs.tag }}
       snapshot: ${{ inputs.dry-run == true }}
