@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -52,6 +53,13 @@ func (c *AutoupdateCommand) Run(args []string) int {
 	rawBytes, err := os.ReadFile(opts.Config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to read config: %v\n", err)
+		return 1
+	}
+
+	// Upstream (4.6.1) refuses a --repo the config does not name before
+	// touching anything, so a typo is an error rather than a silent no-op.
+	if missing := missingRepos(cfg, opts.Repo); len(missing) > 0 {
+		fmt.Printf("repos (%s) were not found in %s\n", strings.Join(missing, ", "), opts.Config)
 		return 1
 	}
 
@@ -164,6 +172,27 @@ Options:
 
 func (c *AutoupdateCommand) Synopsis() string {
 	return "Auto-update pre-commit config to the latest repos' versions"
+}
+
+// missingRepos returns the requested repos that are not among cfg's
+// updatable (non-local, non-meta) repos, sorted and de-duplicated as
+// upstream's sorted(set(repos) - config_repos).
+func missingRepos(cfg *config.Config, requested []string) []string {
+	known := make(map[string]bool, len(cfg.Repos))
+	for _, r := range cfg.Repos {
+		if r.IsLocal() || r.IsMeta() {
+			continue
+		}
+		known[r.Repo] = true
+	}
+	var missing []string
+	for _, r := range requested {
+		if !known[r] {
+			missing = append(missing, r)
+		}
+	}
+	slices.Sort(missing)
+	return slices.Compact(missing)
 }
 
 type updateResult struct {
