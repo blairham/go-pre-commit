@@ -72,7 +72,13 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 	return nil
 }
 
-func (g *Golang) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (g *Golang) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	envDir := filepath.Join(prefix, g.EnvironmentDir()+"-"+version)
 	binDir := filepath.Join(envDir, "bin")
 	env := []string{

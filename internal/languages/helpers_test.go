@@ -248,7 +248,14 @@ func TestRunHookCommandEmptyEntryReturnsError(t *testing.T) {
 
 func TestRunHookCommandSetsEnv(t *testing.T) {
 	env := []string{"MY_TEST_VAR=parity_check"}
-	code, out, err := RunHookCommand(context.Background(), t.TempDir(), "sh", []string{"-c", "echo $MY_TEST_VAR"}, nil, env)
+	code, out, err := RunHookCommand(
+		context.Background(),
+		t.TempDir(),
+		"sh",
+		[]string{"-c", "echo $MY_TEST_VAR"},
+		nil,
+		env,
+	)
 	if err != nil {
 		t.Fatalf("RunHookCommand: %v", err)
 	}

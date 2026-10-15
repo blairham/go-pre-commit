@@ -97,7 +97,13 @@ func (s *SimpleLanguage) InstallEnvironment(prefix, version string, additionalDe
 	return nil
 }
 
-func (s *SimpleLanguage) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (s *SimpleLanguage) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	if s.RunFn != nil {
 		return s.RunFn(ctx, prefix, workDir, entry, args, fileArgs, version, s.EnvDirName)
 	}

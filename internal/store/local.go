@@ -151,7 +151,8 @@ func (s *Store) MakeLocal(deps []string) (string, error) {
 	if err := fsutil.RemoveAll(dest); err != nil {
 		return "", fmt.Errorf(
 			"failed to clear stale cache directory %s (remove it manually to recover): %w",
-			dest, err)
+			dest, err,
+		)
 	}
 
 	if err := writeLocalResources(dest); err != nil {

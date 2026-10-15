@@ -20,7 +20,8 @@ import (
 // containerIDPattern matches the container id in /proc/1/mountinfo when
 // running inside docker or podman (works for both cgroups v1 and v2).
 var containerIDPattern = regexp.MustCompile(
-	`/containers(?:/overlay-containers)?/([a-z0-9]{64})(?:/userdata)?/hostname`)
+	`/containers(?:/overlay-containers)?/([a-z0-9]{64})(?:/userdata)?/hostname`,
+)
 
 func containerIDFromMountinfo(mountinfo []byte) string {
 	m := containerIDPattern.FindSubmatch(mountinfo)
@@ -143,7 +144,13 @@ func (d *Docker) InstallEnvironment(prefix, version string, additionalDeps []str
 	return nil
 }
 
-func (d *Docker) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (d *Docker) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	_ string,
+) (int, []byte, error) {
 	dockerArgs := dockerRunArgs()
 
 	// Parse entry for entrypoint.
@@ -187,7 +194,13 @@ func (d *DockerImage) InstallEnvironment(prefix, version string, additionalDeps 
 	return nil
 }
 
-func (d *DockerImage) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (d *DockerImage) Run(
+	ctx context.Context,
+	_, workDir, entry string,
+	args, fileArgs []string,
+	_ string,
+) (int, []byte, error) {
 	parts := ParseEntry(entry)
 	if len(parts) == 0 {
 		return -1, nil, fmt.Errorf("docker_image entry is required")

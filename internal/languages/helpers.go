@@ -37,7 +37,7 @@ func RunCommand(ctx context.Context, dir, name string, args ...string) (int, []b
 
 // RunHookCommand is the standard way to run a hook entry with file args.
 // It splits the entry, appends args and file args, and runs the command.
-func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs []string, env []string) (int, []byte, error) {
+func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs, env []string) (int, []byte, error) {
 	parts := ParseEntry(entry)
 	if len(parts) == 0 {
 		return -1, nil, fmt.Errorf("empty entry")

@@ -25,11 +25,11 @@ type HookImplCommand struct {
 }
 
 type hookImplFlags struct {
-	Config              string `long:"config" default:".pre-commit-config.yaml" description:"Path to config file."`
-	HookType            string `long:"hook-type" required:"true" description:"The hook type being run."`
-	HookDir             string `long:"hook-dir" description:"The hook directory."`
-	SkipOnMissingConfig bool   `long:"skip-on-missing-config" description:"Skip if config file is missing."`
-	Color               string `long:"color" default:"auto" description:"Whether to use color in output."`
+	Config              string `long:"config"                 default:".pre-commit-config.yaml" description:"Path to config file."`
+	HookType            string `long:"hook-type"                                                description:"The hook type being run."        required:"true"`
+	HookDir             string `long:"hook-dir"                                                 description:"The hook directory."`
+	SkipOnMissingConfig bool   `long:"skip-on-missing-config"                                   description:"Skip if config file is missing."`
+	Color               string `long:"color"                  default:"auto"                    description:"Whether to use color in output."`
 }
 
 func (c *HookImplCommand) Run(args []string) int {

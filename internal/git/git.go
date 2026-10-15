@@ -36,7 +36,8 @@ func NoGitEnv() []string {
 	var env []string
 	for _, e := range os.Environ() {
 		k, _, _ := strings.Cut(e, "=")
-		if strings.HasPrefix(k, "GIT_") && !allowed[k] && !strings.HasPrefix(k, "GIT_CONFIG_KEY_") && !strings.HasPrefix(k, "GIT_CONFIG_VALUE_") {
+		if strings.HasPrefix(k, "GIT_") && !allowed[k] && !strings.HasPrefix(k, "GIT_CONFIG_KEY_") &&
+			!strings.HasPrefix(k, "GIT_CONFIG_VALUE_") {
 			continue
 		}
 		env = append(env, e)

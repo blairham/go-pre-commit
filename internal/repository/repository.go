@@ -144,7 +144,8 @@ func checkAdditionalDependencies(h *hook.Hook) error {
 		"the hook `%s` specifies `additional_dependencies` but is using language `%s` "+
 			"which does not install an environment. "+
 			"Perhaps you meant to use a specific language?",
-		h.ID, h.Language)
+		h.ID, h.Language,
+	)
 }
 
 func (r *Resolver) resolveMetaRepo(repo *config.RepoConfig) ([]*hook.Hook, error) {

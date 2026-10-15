@@ -19,7 +19,14 @@ func TestRunHookCommandChildSeesEnvPath(t *testing.T) {
 		t.Skip("uses sh")
 	}
 	marker := filepath.Join(t.TempDir(), "venv-marker", "bin")
-	_, out, err := RunHookCommand(context.Background(), t.TempDir(), "sh -c 'echo $PATH'", nil, nil, []string{PrependPath(marker)})
+	_, out, err := RunHookCommand(
+		context.Background(),
+		t.TempDir(),
+		"sh -c 'echo $PATH'",
+		nil,
+		nil,
+		[]string{PrependPath(marker)},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

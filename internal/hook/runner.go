@@ -392,7 +392,14 @@ func filterFiles(files []string, h *Hook) []string {
 // runHookXargs runs a hook using xargs-style batching and concurrency.
 // All execution goes through lang.Run to ensure language-specific environment
 // setup (e.g. virtualenv PATH for Python hooks).
-func runHookXargs(ctx context.Context, lang languages.Language, h *Hook, fileArgs []string, workDir string, jobs int) (int, []byte, error) {
+func runHookXargs(
+	ctx context.Context,
+	lang languages.Language,
+	h *Hook,
+	fileArgs []string,
+	workDir string,
+	jobs int,
+) (int, []byte, error) {
 	if len(fileArgs) == 0 {
 		return lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, nil, h.LanguageVersion)
 	}
@@ -643,7 +650,11 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 			defer func() { <-sem }()
 
 			envPath := languages.EnvPath(t.hook.RepoDir, t.lang, t.hook.LanguageVersion)
-			if err := t.lang.InstallEnvironment(t.hook.RepoDir, t.hook.LanguageVersion, t.hook.AdditionalDependencies); err != nil {
+			if err := t.lang.InstallEnvironment(
+				t.hook.RepoDir,
+				t.hook.LanguageVersion,
+				t.hook.AdditionalDependencies,
+			); err != nil {
 				_ = fsutil.RemoveAll(envPath)
 				errs[idx] = fmt.Errorf("failed to install environment for hook %q: %w", t.hook.ID, err)
 				return

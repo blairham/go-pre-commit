@@ -673,9 +673,13 @@ func TestNoArgumentsRuns(t *testing.T) {
 	goOut, goExit := runCmd(t, goRepo, goBinary)
 	addExitResult("(no arguments)", "runs the hooks, which fail", pyExit, goExit, pyExit != 0 && pyExit == goExit, "")
 	compareHookStatuses(t, "(no arguments)", pyOut, goOut, 3)
-	addFSResult("(no arguments)", "the staged file was fixed",
-		readFile(filepath.Join(pyRepo, "test.txt")) == "trailing\n" && readFile(filepath.Join(goRepo, "test.txt")) == "trailing\n",
-		fmt.Sprintf("py=%q go=%q", readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(goRepo, "test.txt"))))
+	addFSResult(
+		"(no arguments)",
+		"the staged file was fixed",
+		readFile(filepath.Join(pyRepo, "test.txt")) == "trailing\n" &&
+			readFile(filepath.Join(goRepo, "test.txt")) == "trailing\n",
+		fmt.Sprintf("py=%q go=%q", readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(goRepo, "test.txt"))),
+	)
 }
 
 func TestHelp(t *testing.T) {
@@ -1231,12 +1235,16 @@ func TestReadmeEverydayFlow(t *testing.T) {
 		_, pyExit := runCmd(t, pyRepo, pyBin, "run", "trailing-whitespace", "--color=never")
 		_, goExit := runCmd(t, goRepo, goBinary, "run", "trailing-whitespace", "--color=never")
 		addExitResult("run", "staged-only run fails on the staged file", pyExit, goExit, pyExit != 0 && goExit != 0, "")
-		addFSResult("run", "staged file fixed, unstaged file untouched",
+		addFSResult(
+			"run",
+			"staged file fixed, unstaged file untouched",
 			readFile(filepath.Join(pyRepo, "test.txt")) == "staged\n" && readFile(filepath.Join(goRepo, "test.txt")) == "staged\n" &&
-				readFile(filepath.Join(pyRepo, "old.txt")) == "old   \n" && readFile(filepath.Join(goRepo, "old.txt")) == "old   \n",
+				readFile(filepath.Join(pyRepo, "old.txt")) == "old   \n" &&
+				readFile(filepath.Join(goRepo, "old.txt")) == "old   \n",
 			fmt.Sprintf("py test=%q old=%q, go test=%q old=%q",
 				readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(pyRepo, "old.txt")),
-				readFile(filepath.Join(goRepo, "test.txt")), readFile(filepath.Join(goRepo, "old.txt"))))
+				readFile(filepath.Join(goRepo, "test.txt")), readFile(filepath.Join(goRepo, "old.txt"))),
+		)
 	})
 
 	t.Run("commit runs the installed hook", func(t *testing.T) {
@@ -1253,9 +1261,13 @@ func TestReadmeEverydayFlow(t *testing.T) {
 		goOut, goExit := runCmd(t, goRepo, "git", "-c", "commit.gpgsign=false", "commit", "-m", "x")
 		addExitResult("install", "commit is stopped by the hook", pyExit, goExit, pyExit != 0 && goExit != 0, "")
 		compareHookStatuses(t, "install", pyOut, goOut, 3)
-		addFSResult("install", "hook fixed the file during the commit",
-			readFile(filepath.Join(pyRepo, "test.txt")) == "commit me\n" && readFile(filepath.Join(goRepo, "test.txt")) == "commit me\n",
-			fmt.Sprintf("py=%q go=%q", readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(goRepo, "test.txt"))))
+		addFSResult(
+			"install",
+			"hook fixed the file during the commit",
+			readFile(filepath.Join(pyRepo, "test.txt")) == "commit me\n" &&
+				readFile(filepath.Join(goRepo, "test.txt")) == "commit me\n",
+			fmt.Sprintf("py=%q go=%q", readFile(filepath.Join(pyRepo, "test.txt")), readFile(filepath.Join(goRepo, "test.txt"))),
+		)
 		// The grading needs to have run the binary under test.
 		got, _ := runCmd(t, goRepo, "sh", "-c", "command -v pre-commit")
 		addOutputResult("install", "hook resolved the binary under test",
@@ -1478,7 +1490,7 @@ func TestTryRepo(t *testing.T) {
 		full = append(full, "--all-files", "--color=never")
 		pyOut, pyExit = runCmd(t, pyRepo, pyBin, full...)
 		goOut, goExit = runCmd(t, goRepo, goBinary, full...)
-		return
+		return pyOut, goOut, pyExit, goExit
 	}
 
 	t.Run("remote repo, named hook, valid input", func(t *testing.T) {

@@ -119,7 +119,8 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 	if err := fsutil.RemoveAll(dest); err != nil {
 		return "", fmt.Errorf(
 			"failed to clear stale cache directory %s (remove it manually to recover): %w",
-			dest, err)
+			dest, err,
+		)
 	}
 
 	// Try shallow clone first.
@@ -128,7 +129,8 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 		// Fall back to full clone.
 		if rmErr := fsutil.RemoveAll(dest); rmErr != nil {
 			return "", fmt.Errorf(
-				"failed to clear %s after an unsuccessful shallow clone: %w", dest, rmErr)
+				"failed to clear %s after an unsuccessful shallow clone: %w", dest, rmErr,
+			)
 		}
 		err = gitutil.Clone(repo, dest)
 		if err != nil {

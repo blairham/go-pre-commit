@@ -19,8 +19,8 @@ type InitTemplateDirCommand struct {
 
 type initTemplateDirFlags struct {
 	GlobalFlags
-	HookTypes      []string `short:"t" long:"hook-type" description:"Which hook type to install. May be specified multiple times. (default: pre-commit)"`
-	NoAllowMissing bool     `long:"no-allow-missing-config" description:"Assume cloned repos should have a pre-commit config."`
+	HookTypes      []string `short:"t" long:"hook-type"               description:"Which hook type to install. May be specified multiple times. (default: pre-commit)"`
+	NoAllowMissing bool     `          long:"no-allow-missing-config" description:"Assume cloned repos should have a pre-commit config."`
 }
 
 func (c *InitTemplateDirCommand) Run(args []string) int {

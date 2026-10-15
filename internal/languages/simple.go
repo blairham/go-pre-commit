@@ -27,7 +27,13 @@ func (f *Fail) InstallEnvironment(prefix, version string, additionalDeps []strin
 	return nil
 }
 
-func (f *Fail) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (f *Fail) Run(
+	_ context.Context,
+	_, _, entry string,
+	_, _ []string,
+	_ string,
+) (int, []byte, error) {
 	return 1, []byte(entry + "\n"), nil
 }
 
@@ -45,7 +51,13 @@ func (p *Pygrep) InstallEnvironment(prefix, version string, additionalDeps []str
 	return nil
 }
 
-func (p *Pygrep) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (p *Pygrep) Run(
+	_ context.Context,
+	_, _, entry string,
+	args, fileArgs []string,
+	_ string,
+) (int, []byte, error) {
 	// Parse args for flags.
 	caseInsensitive := false
 	multiline := false
@@ -126,7 +138,13 @@ func (u *Unsupported) InstallEnvironment(prefix, version string, additionalDeps 
 	return nil
 }
 
-func (u *Unsupported) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (u *Unsupported) Run(
+	ctx context.Context,
+	_, workDir, entry string,
+	args, fileArgs []string,
+	_ string,
+) (int, []byte, error) {
 	return RunHookCommand(ctx, workDir, entry, args, fileArgs, nil)
 }
 
@@ -142,7 +160,13 @@ func (u *UnsupportedScript) InstallEnvironment(prefix, version string, additiona
 	return nil
 }
 
-func (u *UnsupportedScript) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (u *UnsupportedScript) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	_ string,
+) (int, []byte, error) {
 	// For script hooks, entry is relative to the hook repo.
 	fullEntry := entry
 	if prefix != "" {

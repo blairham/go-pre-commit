@@ -355,7 +355,10 @@ func TestApplyDefaults_DefaultLanguageVersion(t *testing.T) {
 		t.Errorf("expected python3.9, got %s", cfg.Repos[0].Hooks[0].LanguageVersion)
 	}
 	if cfg.Repos[0].Hooks[1].LanguageVersion != "16.0.0" {
-		t.Errorf("hook with explicit language_version should not be overwritten, got %s", cfg.Repos[0].Hooks[1].LanguageVersion)
+		t.Errorf(
+			"hook with explicit language_version should not be overwritten, got %s",
+			cfg.Repos[0].Hooks[1].LanguageVersion,
+		)
 	}
 	if cfg.Repos[0].Hooks[2].LanguageVersion != "" {
 		t.Errorf("hook with no matching default should remain empty, got %s", cfg.Repos[0].Hooks[2].LanguageVersion)
