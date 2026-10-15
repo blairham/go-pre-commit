@@ -12,7 +12,7 @@ import (
 // `make build` set it with -X; `go install module@version` applies no
 // ldflags, so without the fallback below such a build reports this literal
 // whatever version it was built from.
-const defaultVersion = "4.6.0"
+const defaultVersion = "4.7.0"
 
 // Version is the current version of go-pre-commit, set via ldflags at build
 // time, or from the module's build info when they were not applied.

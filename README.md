@@ -15,8 +15,8 @@ single binary. An independent Go reimplementation of
 [pre-commit](https://github.com/pre-commit/pre-commit), not a fork and not
 affiliated with it.
 
-Measured against Python pre-commit 4.6.2 on every pull request that changes code:
-**129 of 129 differential checks pass** ([how that is measured](docs/parity.md)).
+Measured against Python pre-commit 4.7.0 on every pull request that changes code:
+**149 of 149 differential checks pass** ([how that is measured](docs/parity.md)).
 
 ## Is this for you?
 
@@ -253,7 +253,7 @@ The release workflow also moves the `v4` alias tag to the new release, which is
 what `uses: blairham/go-pre-commit@v4` resolves to. Its tag trigger deliberately
 matches full versions only, so moving the alias does not start a second release.
 
-CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub release, and updates the Homebrew formula in [blairham/homebrew-tap](https://github.com/blairham/homebrew-tap) automatically. Versions track upstream parity: `v4.6.x` means feature parity with Python pre-commit 4.6.
+CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub release, and updates the Homebrew formula in [blairham/homebrew-tap](https://github.com/blairham/homebrew-tap) automatically. Versions track upstream parity: `v4.7.x` means feature parity with Python pre-commit 4.7.
 
 ## Documentation
 

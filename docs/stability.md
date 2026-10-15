@@ -10,8 +10,8 @@ project". It means: *this behaves like Python pre-commit 4.6.x*.
 | `4.6` | The Python pre-commit line whose behavior is targeted. |
 | `.6` | Releases of this implementation against that line — fixes, coverage, packaging. |
 
-So `v4.6.6` and `v4.6.7` both target upstream 4.6. When upstream releases 4.7,
-this project's next version is `v4.7.0`, and it means *parity with 4.7*, not
+So `v4.6.6` and `v4.6.7` both target upstream 4.6. When upstream released 4.7,
+this project's next version became `v4.7.0`, and it means *parity with 4.7*, not
 "new features from us".
 
 This is unusual, and it has one consequence worth stating plainly: **a bump in

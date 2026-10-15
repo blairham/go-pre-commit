@@ -15,7 +15,7 @@ cannot generate for itself. A good one is two commands and two outputs:
 $ pre-commit run trailing-whitespace --all-files   # this tool
 ...
 
-$ python -m pre_commit run trailing-whitespace --all-files   # upstream 4.6.2
+$ python -m pre_commit run trailing-whitespace --all-files   # upstream 4.7.0
 ...
 ```
 
