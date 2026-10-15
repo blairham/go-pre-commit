@@ -1625,3 +1625,132 @@ func TestInstallHooks(t *testing.T) {
 		addExitResult("install-hooks", "exits 0", pyExit, goExit, pyExit == goExit, "")
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Tests: language: node installs (#102)
+// ---------------------------------------------------------------------------
+
+// nodeHookRepo builds a git repo holding a node hook that fails on any file
+// containing BAD, and returns its path and HEAD. scripts, when set, is the
+// package.json "scripts" object: upstream 4.6.2 (#3743) fixed hooks with a
+// scripts.build under npm 11, which the git+file install shape is what fixes.
+func nodeHookRepo(t *testing.T, scripts string) (dir, rev string) {
+	t.Helper()
+	dir = t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}, {"config", "commit.gpgsign", "false"}} {
+		runCmd(t, dir, "git", args...)
+	}
+	pkg := `{"name": "no-bad", "version": "1.0.0", "bin": {"no-bad": "bin.js"}`
+	if scripts != "" {
+		pkg += `, "scripts": ` + scripts
+	}
+	pkg += "}\n"
+	files := map[string]string{
+		"package.json": pkg,
+		"bin.js": "#!/usr/bin/env node\n" +
+			"const fs = require('fs');\n" +
+			"let bad = 0;\n" +
+			"for (const f of process.argv.slice(2)) {\n" +
+			"  if (fs.readFileSync(f, 'utf8').includes('BAD')) { console.log(f); bad = 1; }\n" +
+			"}\n" +
+			"process.exit(bad);\n",
+		".pre-commit-hooks.yaml": "-   id: no-bad\n    name: no BAD\n    entry: no-bad\n    language: node\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runCmd(t, dir, "git", "add", "-A")
+	if out, code := runCmd(t, dir, "git", "commit", "-qm", "hook"); code != 0 {
+		t.Fatalf("committing the hook repo failed:\n%s", out)
+	}
+	out, _ := runCmd(t, dir, "git", "rev-parse", "HEAD")
+	return dir, strings.TrimSpace(out)
+}
+
+func nodeHookConfig(dir, rev string) string {
+	return fmt.Sprintf("repos:\n-   repo: %s\n    rev: %s\n    hooks:\n    -   id: no-bad\n", dir, rev)
+}
+
+func TestNodeHooks(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+	if _, err := exec.LookPath("npm"); err != nil {
+		t.Skip("npm is not installed")
+	}
+
+	// Each tool gets its own cache, so neither reuses the other's install.
+	runBoth := func(t *testing.T, cfg, content string) (pyOut, goOut string, pyExit, goExit int) {
+		t.Helper()
+		pyRepo := initTestRepo(t, cfg, content)
+		goRepo := initTestRepo(t, cfg, content)
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		pyOut, pyExit = runCmd(t, pyRepo, pyBin, "run", "--all-files", "--color=never")
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		goOut, goExit = runCmd(t, goRepo, goBinary, "run", "--all-files", "--color=never")
+		return pyOut, goOut, pyExit, goExit
+	}
+
+	for _, tc := range []struct{ name, scripts string }{
+		{"hook repo installs from git", ""},
+		{"hook repo with scripts.build", `{"build": "node -e \"\""}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, rev := nodeHookRepo(t, tc.scripts)
+			cfg := nodeHookConfig(dir, rev)
+
+			pyOut, goOut, pyExit, goExit := runBoth(t, cfg, "BAD\n")
+			addExitResult("run", "node: "+tc.name+", rejects bad input", pyExit, goExit,
+				pyExit != 0 && goExit != 0, fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut))
+			compareHookStatuses(t, "run", pyOut, goOut, 1)
+
+			pyOut, goOut, pyExit, goExit = runBoth(t, cfg, "fine\n")
+			addExitResult("run", "node: "+tc.name+", passes good input", pyExit, goExit,
+				pyExit == 0 && goExit == 0, fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut))
+		})
+	}
+
+	// Upstream 4.7.0 (#3774) installs under no_git_env so `git commit -a`,
+	// whose GIT_INDEX_FILE points at the host's index.lock, does not leak into
+	// the clone npm makes of git+file://. The parity target (4.6.x) predates
+	// that fix (it fails here with "unable to read <sha>"), so this row grades
+	// only this binary and reports Python's exit for information. hook-impl
+	// also scrubs GIT_INDEX_FILE process-wide, so this row stays green without
+	// the NoGitEnv in the node backend; TestNodeInstallEnvironmentRunsNpmWithoutGitEnv
+	// is what pins that.
+	t.Run("hook installed during git commit -a", func(t *testing.T) {
+		dir, rev := nodeHookRepo(t, "")
+		cfg := nodeHookConfig(dir, rev)
+		hostPath := os.Getenv("PATH")
+		commitA := func(bin string) (string, int) {
+			// This binary's installed hook script execs `pre-commit` from PATH;
+			// Python's execs its own interpreter.
+			t.Setenv("PATH", filepath.Dir(bin)+string(os.PathListSeparator)+hostPath)
+			repo := initTestRepo(t, cfg, "fine\n")
+			for _, args := range [][]string{{"config", "commit.gpgsign", "false"}, {"commit", "-qm", "init", "--no-verify"}} {
+				if out, code := runCmd(t, repo, "git", args...); code != 0 {
+					t.Fatalf("git %v failed:\n%s", args, out)
+				}
+			}
+			t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+			if out, code := runCmd(t, repo, bin, "install"); code != 0 {
+				t.Fatalf("%s install failed:\n%s", bin, out)
+			}
+			if err := os.WriteFile(filepath.Join(repo, "test.txt"), []byte("still fine\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return runCmd(t, repo, "git", "commit", "-a", "-m", "edit")
+		}
+		pyOut, pyExit := commitA(pyBin)
+		goOut, goExit := commitA(goBinary)
+		addExitResult(
+			"run",
+			"node: hook installs during git commit -a",
+			pyExit,
+			goExit,
+			goExit == 0 &&
+				strings.Contains(goOut, "no BAD"),
+			fmt.Sprintf("py (4.6.x, informational):\n%s\ngo:\n%s", pyOut, goOut),
+		)
+	})
+}
