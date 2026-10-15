@@ -18,8 +18,17 @@ import (
 
 // RunCommand is a helper to run a command and capture output.
 func RunCommand(ctx context.Context, dir, name string, args ...string) (int, []byte, error) {
+	return RunCommandEnv(ctx, dir, nil, name, args...)
+}
+
+// RunCommandEnv is RunCommand with env overrides appended to the current
+// process environment, so they win over any inherited value of the same key.
+func RunCommandEnv(ctx context.Context, dir string, env []string, name string, args ...string) (int, []byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

@@ -39,6 +39,9 @@ file was introduced; the full notes are on the
   instead of failing the push; a push that includes the root commit runs on
   all files; and with several refs on stdin the first one with something to
   check wins. A legacy pre-push hook still sees git's ref lines. (#103)
+- `julia`: hooks install and run with `JULIA_DEPOT_PATH` inside the hook
+  env, as upstream 4.6.1 does, so packages and precompile caches no longer
+  land in the shared depot. (#104)
 - Releases no longer pass `target_commitish`, which made creating a release
   fail with a 403 when its range touched `.github/workflows`. (#95)
 

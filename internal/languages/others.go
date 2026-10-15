@@ -198,6 +198,18 @@ func (j *Julia) HealthCheck(prefix, version string) error {
 	return nil
 }
 
+// juliaEnv builds the env overrides for installing and running a julia hook,
+// matching upstream's julia get_env_patch (4.6.1, pre-commit/pre-commit#3711).
+// The depot lives inside the hook env so installed packages and precompile
+// caches stay with it instead of leaking into a shared ~/.julia. The trailing
+// separator leaves an empty entry, which julia expands to its default depots,
+// so the bundled stdlib and its precompile caches remain available.
+func juliaEnv(envDir string) []string {
+	return []string{
+		"JULIA_DEPOT_PATH=" + filepath.Join(envDir, "depot") + string(os.PathListSeparator),
+	}
+}
+
 func (j *Julia) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	envDir := filepath.Join(prefix, j.EnvironmentDir()+"-"+version)
 
@@ -213,6 +225,7 @@ Pkg.instantiate()
 
 	cmd := exec.Command("julia", "--startup-file=no", "-e", installScript)
 	cmd.Dir = prefix
+	cmd.Env = append(cmd.Environ(), juliaEnv(envDir)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("julia install failed: %s: %w", string(out), err)
 	}
@@ -239,7 +252,7 @@ func (j *Julia) Run(
 	allArgs = append(allArgs, args...)
 	allArgs = append(allArgs, fileArgs...)
 
-	return RunCommand(ctx, workDir, "julia", allArgs...)
+	return RunCommandEnv(ctx, workDir, juliaEnv(envDir), "julia", allArgs...)
 }
 
 // Swift implements the Language interface for Swift hooks.
