@@ -22,6 +22,17 @@ file was introduced; the full notes are on the
   byte-compatible port of CPython's MT19937 seeding, `getrandbits` and
   `shuffle` now reproduces it, skipping `require_serial`, `fail` and `pygrep`
   hooks as upstream does. (#120)
+- Every command upstream runs inside a repository (`autoupdate`, `hook-impl`,
+  `install`, `install-hooks`, `migrate-config`, `run`, `try-repo`,
+  `uninstall`) now changes to the repository root first and rewrites
+  `--config` relative to it, as upstream's `_adjust_args_and_chdir` does;
+  `run` and `try-repo` do the same for `--files` and
+  `--commit-msg-filename`, and `try-repo` for a local repository path. Run
+  from a subdirectory, these commands now find the root's config instead of
+  failing to load it, and a printed config path is root-relative
+  (`-c ../alt.yaml` reports `alt.yaml`). Outside a repository, or inside
+  `.git`, they fail with upstream's `An error has occurred: FatalError: ...`
+  and a log in the store. (#109)
 
 - The first install of a remote hook repo no longer prints git's own output.
   The store clones the way upstream's `Store.clone` does: `git init`, then a

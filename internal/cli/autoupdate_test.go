@@ -26,7 +26,11 @@ func TestAutoupdateRejectsUnknownRepo(t *testing.T) {
         entry: x
         language: system
 `
-	path := filepath.Join(t.TempDir(), "cfg.yaml")
+	// autoupdate changes to the repository root and reports the config
+	// relative to it, so the test needs a repository of its own.
+	root := tempRepo(t)
+	t.Chdir(root)
+	path := filepath.Join(root, "cfg.yaml")
 	if err := os.WriteFile(path, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +56,7 @@ func TestAutoupdateRejectsUnknownRepo(t *testing.T) {
 	if code != 1 {
 		t.Errorf("exit = %d, want 1", code)
 	}
-	want := "repos (a, local, zz) were not found in " + path + "\n"
+	want := "repos (a, local, zz) were not found in cfg.yaml\n"
 	if string(got) != want {
 		t.Errorf("stdout = %q, want %q", got, want)
 	}

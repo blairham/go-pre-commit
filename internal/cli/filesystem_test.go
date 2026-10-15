@@ -150,6 +150,7 @@ func TestValidateManifestCommand_InvalidFile(t *testing.T) {
 // --- MigrateConfigCommand tests ---
 
 func TestMigrateConfigCommand_ShaToRev(t *testing.T) {
+	t.Chdir(tempRepo(t)) // migrate-config changes to the repository root
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	content := `repos:
@@ -198,6 +199,7 @@ func TestMigrateConfigCommand_ShaToRev(t *testing.T) {
 }
 
 func TestMigrateConfigCommand_PythonVenvToLanguage(t *testing.T) {
+	t.Chdir(tempRepo(t)) // migrate-config changes to the repository root
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	content := `repos:
@@ -238,6 +240,7 @@ func TestMigrateConfigCommand_PythonVenvToLanguage(t *testing.T) {
 }
 
 func TestMigrateConfigCommand_AlreadyUpToDate(t *testing.T) {
+	t.Chdir(tempRepo(t)) // migrate-config changes to the repository root
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	content := `repos:
@@ -272,6 +275,7 @@ func TestMigrateConfigCommand_AlreadyUpToDate(t *testing.T) {
 }
 
 func TestMigrateConfigCommand_MissingFile(t *testing.T) {
+	t.Chdir(tempRepo(t)) // migrate-config changes to the repository root
 	cmd := &MigrateConfigCommand{Meta: &Meta{}}
 	code := cmd.Run([]string{"--config", "/nonexistent/config.yaml"})
 	if code != 1 {
@@ -280,6 +284,7 @@ func TestMigrateConfigCommand_MissingFile(t *testing.T) {
 }
 
 func TestMigrateConfigCommand_StageNameMigration(t *testing.T) {
+	t.Chdir(tempRepo(t)) // migrate-config changes to the repository root
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	content := `repos:
