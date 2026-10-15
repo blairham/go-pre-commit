@@ -4,11 +4,13 @@
 package cli
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	flags "github.com/jessevdk/go-flags"
@@ -62,8 +64,21 @@ func (c *HookImplCommand) Run(args []string) int {
 		}
 	}
 
+	// pre-push refs arrive on stdin, and both the legacy hook and the ref
+	// translation below need them, so read it once up front (upstream's
+	// _run_legacy does the same). Handing the legacy hook os.Stdin itself
+	// would let it consume the refs before we see them.
+	var stdin []byte
+	if opts.HookType == "pre-push" {
+		var err error
+		if stdin, err = readPrePushStdin(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+	}
+
 	// Run legacy hook first (e.g., .pre-commit.legacy).
-	if err := runLegacyHook(opts.HookType, opts.HookDir, remaining); err != nil {
+	if err := runLegacyHook(opts.HookType, opts.HookDir, remaining, stdin); err != nil {
 		output.Warn("Legacy hook failed: %v", err)
 	}
 
@@ -85,23 +100,21 @@ func (c *HookImplCommand) Run(args []string) int {
 
 	case "pre-push":
 		// Args: <remote-name> <remote-url>
-		if len(remaining) >= 2 {
-			runArgs = append(runArgs, "--remote-name", remaining[0])
-			runArgs = append(runArgs, "--remote-url", remaining[1])
+		if len(remaining) != 2 {
+			fmt.Fprintf(os.Stderr, "hook-impl for pre-push expected 2 arguments but got %d: %q\n", len(remaining), remaining)
+			return 1
 		}
-		// Read stdin for refs (pre-push receives ref info on stdin).
-		for _, line := range readPrePushStdin() {
-			parts := strings.Fields(line)
-			if len(parts) >= 4 {
-				localRef := parts[1]
-				remoteRef := parts[3]
-				z40 := "0000000000000000000000000000000000000000"
-				if localRef != z40 && remoteRef != z40 {
-					runArgs = append(runArgs, "--from-ref", remoteRef, "--to-ref", localRef)
-				}
-				runArgs = append(runArgs, "--local-branch", parts[0], "--remote-branch", parts[2])
-			}
+		pushArgs, err := prePushArgs("", remaining[0], remaining[1], stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
 		}
+		if pushArgs == nil {
+			// Nothing being pushed needs checking (only deletions, or
+			// commits the remote already has): upstream runs no hooks.
+			return 0
+		}
+		runArgs = append(runArgs, pushArgs...)
 
 	case "commit-msg":
 		if len(remaining) >= 1 {
@@ -177,26 +190,112 @@ func (c *HookImplCommand) Synopsis() string {
 	return "Implementation of git hooks (internal use only)"
 }
 
-// readPrePushStdin reads ref info from stdin for pre-push hooks.
-func readPrePushStdin() []string {
-	info, _ := os.Stdin.Stat()
-	if info.Mode()&os.ModeCharDevice != 0 {
-		return nil // No piped input.
+// readPrePushStdin reads the ref lines git feeds a pre-push hook on stdin.
+func readPrePushStdin() ([]byte, error) {
+	info, err := os.Stdin.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice != 0 {
+		return nil, nil //nolint:nilerr // no piped input: nothing to read
 	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("reading pre-push refs from stdin: %w", err)
+	}
+	return data, nil
+}
 
-	var lines []string
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line != "" {
-			lines = append(lines, line)
+// z40 is the all-zeros object name git uses for a ref that does not exist on
+// one side of a push.
+const z40 = "0000000000000000000000000000000000000000"
+
+// prePushArgs is a port of upstream's _pre_push_ns (hook_impl.py). For each
+// `<local ref> <local sha> <remote ref> <remote sha>` line git passes on
+// stdin it decides which commits are being pushed:
+//
+//   - a deletion (local sha all zeros) is skipped;
+//   - when the remote sha is a commit we have, check remote_sha..local_sha;
+//   - otherwise (a new branch, or a remote tip we never fetched) walk the
+//     commits not on any ref of <remote>; none means nothing new is pushed and
+//     the line is skipped, a root commit among them means the whole tree is
+//     new (--all-files), else check from the first new commit's parent.
+//
+// The first line that yields something wins. A nil result with a nil error
+// means nothing needs checking, and upstream then runs no hooks at all.
+// dir is the repository to run git in ("" for the current directory).
+func prePushArgs(dir, remoteName, remoteURL string, stdin []byte) ([]string, error) {
+	for _, line := range strings.Split(string(stdin), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) < 4 {
+			continue
 		}
+		// Upstream splits from the right (rsplit(maxsplit=3)), so only the
+		// local ref may contain whitespace.
+		n := len(parts)
+		localBranch := strings.Join(parts[:n-3], " ")
+		localSHA, remoteBranch, remoteSHA := parts[n-3], parts[n-2], parts[n-1]
+
+		common := []string{
+			"--remote-name", remoteName, "--remote-url", remoteURL,
+			"--remote-branch", remoteBranch, "--local-branch", localBranch,
+		}
+
+		if localSHA == z40 {
+			continue
+		}
+		if remoteSHA != z40 && revExists(dir, remoteSHA) {
+			return append([]string{"--from-ref", remoteSHA, "--to-ref", localSHA}, common...), nil
+		}
+
+		// Ancestors not found in the remote.
+		ancestors, err := gitOutput(dir, "rev-list", localSHA, "--topo-order", "--reverse",
+			"--not", "--remotes="+remoteName)
+		if err != nil {
+			return nil, err
+		}
+		if ancestors == "" {
+			continue
+		}
+		firstAncestor := strings.SplitN(ancestors, "\n", 2)[0]
+		roots, err := gitOutput(dir, "rev-list", "--max-parents=0", localSHA)
+		if err != nil {
+			return nil, err
+		}
+		if slices.Contains(strings.Split(roots, "\n"), firstAncestor) {
+			// Pushing the whole tree, root commit included.
+			return append([]string{"--all-files"}, common...), nil
+		}
+		source, err := gitOutput(dir, "rev-parse", firstAncestor+"^")
+		if err != nil {
+			return nil, err
+		}
+		return append([]string{"--from-ref", source, "--to-ref", localSHA}, common...), nil
 	}
-	return lines
+	return nil, nil
+}
+
+// revExists reports whether rev names a commit in the local object store,
+// as upstream's _rev_exists does with `git cat-file -e <rev>^{commit}`
+// (pre-commit 4.6.1, pre-commit/pre-commit#3726). Like upstream, git's
+// stderr is not captured.
+func revExists(dir, rev string) bool {
+	cmd := exec.Command("git", "cat-file", "-e", rev+"^{commit}")
+	cmd.Dir = dir
+	cmd.Env = git.NoGitEnv()
+	cmd.Stderr = os.Stderr
+	return cmd.Run() == nil
+}
+
+// gitOutput runs git in dir and returns its trimmed stdout.
+func gitOutput(dir string, args ...string) (string, error) {
+	if dir == "" {
+		return git.CmdOutput(args...)
+	}
+	return git.CmdOutputInDir(dir, args...)
 }
 
 // runLegacyHook runs the legacy hook script if it exists.
-func runLegacyHook(hookType, hookDir string, args []string) error {
+// stdin is what the hook itself was given on stdin when it had to be read up
+// front (pre-push); otherwise the legacy hook inherits ours.
+func runLegacyHook(hookType, hookDir string, args []string, stdin []byte) error {
 	legacyPath := filepath.Join(legacyHookDir(hookDir), hookType+".legacy")
 	if _, err := os.Stat(legacyPath); os.IsNotExist(err) {
 		return nil // No legacy hook.
@@ -204,6 +303,9 @@ func runLegacyHook(hookType, hookDir string, args []string) error {
 
 	cmd := exec.Command(legacyPath, args...)
 	cmd.Stdin = os.Stdin
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
