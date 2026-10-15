@@ -13,6 +13,8 @@ file was introduced; the full notes are on the
 
 ## [Unreleased]
 
+## [4.6.17] - 2026-10-15
+
 ### Changed
 
 - CI and releases run on the shared reusable workflows in
@@ -216,7 +218,8 @@ file was introduced; the full notes are on the
 - First release of the rewrite: Python parity for `run` and `uninstall`, the
   `/v4` module path, and a GoReleaser release workflow.
 
-[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.6.16...HEAD
+[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.6.17...HEAD
+[4.6.17]: https://github.com/blairham/go-pre-commit/compare/v4.6.16...v4.6.17
 [4.6.16]: https://github.com/blairham/go-pre-commit/compare/v4.6.15...v4.6.16
 [4.6.15]: https://github.com/blairham/go-pre-commit/compare/v4.6.14...v4.6.15
 [4.6.14]: https://github.com/blairham/go-pre-commit/compare/v4.6.13...v4.6.14
