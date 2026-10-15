@@ -42,6 +42,13 @@ file was introduced; the full notes are on the
 - `julia`: hooks install and run with `JULIA_DEPOT_PATH` inside the hook
   env, as upstream 4.6.1 does, so packages and precompile caches no longer
   land in the shared depot. (#104)
+- `language: node` hooks install the way upstream 4.7.0 does:
+  `npm install --allow-git=root --install-links -g git+file://<repo>` plus
+  `additional_dependencies`, replacing the local install → `npm pack` →
+  global install sequence that npm 12 breaks, and fixing hooks with a
+  `scripts.build` under npm 11. npm runs without the host's repository-pinning
+  `GIT_*` variables, so a hook installed during `git commit -a` or inside a
+  submodule works, and the env's own npm is used ahead of the host's. (#102)
 - Releases no longer pass `target_commitish`, which made creating a release
   fail with a 403 when its range touched `.github/workflows`. (#95)
 
