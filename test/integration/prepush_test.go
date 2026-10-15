@@ -102,13 +102,12 @@ func runHookImpl(t *testing.T, bin, dir, remote, stdin string) (string, int) {
 	return buf.String(), 0
 }
 
-// echoedFiles returns the sorted files the hook printed, or nil when the
-// hook never ran. Order is not compared: upstream shuffles file lists.
+// echoedFiles returns the files the hook printed, in the order it received
+// them, or nil when the hook never ran.
 func echoedFiles(out string) []string {
 	for _, line := range strings.Split(out, "\n") {
 		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "FILES"); ok {
 			files := strings.Fields(rest)
-			slices.Sort(files)
 			if files == nil {
 				files = []string{}
 			}
@@ -157,7 +156,8 @@ func TestPrePushHookImpl(t *testing.T) {
 			stdin: func(_, feat string) string {
 				return "refs/heads/feat " + feat + " refs/heads/feat " + z40 + "\n"
 			},
-			want: []string{".pre-commit-config.yaml", "a.txt", "b.txt", "c.txt"},
+			// Upstream's seeded shuffle of the sorted list (#120).
+			want: []string{"a.txt", ".pre-commit-config.yaml", "b.txt", "c.txt"},
 		},
 		{
 			name:   "multi-line stdin: first yielding line wins",

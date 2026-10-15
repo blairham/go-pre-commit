@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
@@ -693,5 +694,37 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 	}
 	if _, err := os.Stat(junk); !os.IsNotExist(err) {
 		t.Errorf("leftover env content survived the install (err=%v)", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// shuffledFileArgs
+// ---------------------------------------------------------------------------
+
+func TestShuffledFileArgs(t *testing.T) {
+	in := []string{".pre-commit-config.yaml", "a.txt", "b.txt", "c.txt"}
+	// Captured from upstream's lang_base._shuffled on CPython.
+	shuffled := []string{"a.txt", ".pre-commit-config.yaml", "b.txt", "c.txt"}
+
+	for _, tc := range []struct {
+		language      string
+		want          []string
+		requireSerial bool
+	}{
+		{"unsupported", shuffled, false},
+		{"python", shuffled, false},
+		{"docker_image", shuffled, false},
+		{"unsupported", in, true},
+		{"fail", in, false},
+		{"pygrep", in, false},
+	} {
+		orig := slices.Clone(in)
+		got := shuffledFileArgs(tc.language, tc.requireSerial, orig)
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s require_serial=%v: got %q, want %q", tc.language, tc.requireSerial, got, tc.want)
+		}
+		if !slices.Equal(orig, in) {
+			t.Errorf("%s: shuffled the caller's slice in place: %q", tc.language, orig)
+		}
 	}
 }

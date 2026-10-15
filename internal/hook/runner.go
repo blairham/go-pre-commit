@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,11 +27,28 @@ import (
 	"github.com/blairham/go-pre-commit/v4/internal/languages"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 	"github.com/blairham/go-pre-commit/v4/internal/pcre"
+	"github.com/blairham/go-pre-commit/v4/internal/pyrandom"
 	"github.com/blairham/go-pre-commit/v4/internal/xargs"
 )
 
-// FixedRandomSeed is used for deterministic file shuffling (matches Python).
+// FixedRandomSeed seeds the deterministic file shuffle, as upstream's
+// lang_base.FIXED_RANDOM_SEED does.
 const FixedRandomSeed = 1542676187
+
+// shuffledFileArgs returns the order upstream hands a hook its files in.
+// Upstream's lang_base.run_xargs shuffles a copy of file_args with
+// random.Random seeded by FIXED_RANDOM_SEED unless the hook is
+// require_serial, so batches fill evenly yet a hook sees a stable order.
+// The fail and pygrep languages never go through run_xargs (fail echoes
+// its files, pygrep calls xargs directly), so they keep the given order.
+func shuffledFileArgs(language string, requireSerial bool, fileArgs []string) []string {
+	if requireSerial || language == "fail" || language == "pygrep" || len(fileArgs) < 2 {
+		return fileArgs
+	}
+	shuffled := slices.Clone(fileArgs)
+	pyrandom.Shuffle(pyrandom.New(FixedRandomSeed), shuffled)
+	return shuffled
+}
 
 // RunOptions controls how hooks are run.
 type RunOptions struct {
@@ -403,6 +421,8 @@ func runHookXargs(
 	if len(fileArgs) == 0 {
 		return lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, nil, h.LanguageVersion)
 	}
+
+	fileArgs = shuffledFileArgs(h.Language, h.RequireSerial, fileArgs)
 
 	// Determine batch size and concurrency.
 	maxJobs := 1

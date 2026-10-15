@@ -13,6 +13,16 @@ file was introduced; the full notes are on the
 
 ## [Unreleased]
 
+### Fixed
+
+- Hooks receive their files in upstream's order. Upstream shuffles each
+  hook's file list with a fixed-seed `random.Random` before splitting it into
+  xargs batches, unless the hook is `require_serial`; this port never
+  shuffled, so order-sensitive hooks saw a different sequence. A
+  byte-compatible port of CPython's MT19937 seeding, `getrandbits` and
+  `shuffle` now reproduces it, skipping `require_serial`, `fail` and `pygrep`
+  hooks as upstream does. (#120)
+
 ## [4.7.0] - 2026-10-15
 
 ### Changed
