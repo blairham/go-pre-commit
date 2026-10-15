@@ -32,6 +32,13 @@ file was introduced; the full notes are on the
   once rather than once per index stage, via `git ls-files --deduplicate`
   (upstream 4.6.1, pre-commit/pre-commit#3727). This needs git 2.31 or
   later. (#106)
+- The pre-push hook now decides what to check the way upstream's
+  `_pre_push_ns` does. Pushing a new branch checks the commits being pushed
+  rather than the staged files; deleting a branch runs no hooks; a remote tip
+  that was never fetched falls back to checking the commits the remote lacks
+  instead of failing the push; a push that includes the root commit runs on
+  all files; and with several refs on stdin the first one with something to
+  check wins. A legacy pre-push hook still sees git's ref lines. (#103)
 - Releases no longer pass `target_commitish`, which made creating a release
   fail with a 403 when its range touched `.github/workflows`. (#95)
 
