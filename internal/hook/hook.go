@@ -43,6 +43,12 @@ type Hook struct {
 	RepoDir string // Local clone directory.
 }
 
+// IsLocal reports whether the hook comes from a `repo: local` block —
+// upstream's `hook.src == 'local'`.
+func (h *Hook) IsLocal() bool {
+	return h.Repo == "local"
+}
+
 // InstallKey returns a unique key for deduplication of hook environments.
 func (h *Hook) InstallKey() string {
 	deps := strings.Join(h.AdditionalDependencies, ",")

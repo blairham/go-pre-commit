@@ -1815,3 +1815,110 @@ func TestRemoteRepoFirstInstall(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tests: language: julia (#118)
+// ---------------------------------------------------------------------------
+
+// juliaHookScript prints its arguments and fails on any file containing BAD.
+const juliaHookScript = `println("args: ", join(ARGS, " "))
+bad = filter(f -> !startswith(f, "--") && occursin("BAD", read(f, String)), ARGS)
+foreach(f -> println("bad file: ", f), bad)
+exit(isempty(bad) ? 0 : 1)
+`
+
+func TestJuliaHooks(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+	if _, err := exec.LookPath("julia"); err != nil {
+		if os.Getenv("PARITY_REQUIRE") != "" {
+			t.Fatal("PARITY_REQUIRE is set but julia is not installed")
+		}
+		t.Skip("julia is not installed")
+	}
+
+	// Each tool gets its own cache, so neither reuses the other's install.
+	// JULIA_PROJECT is set to prove both unset it (upstream's get_env_patch).
+	t.Setenv("JULIA_PROJECT", "/nonexistent")
+	runBoth := func(t *testing.T, cfg string, files map[string]string) (pyOut, goOut string, pyExit, goExit int) {
+		t.Helper()
+		var repos [2]string
+		for i := range repos {
+			repos[i] = initTestRepo(t, cfg, "fine\n")
+			for name, content := range files {
+				path := filepath.Join(repos[i], name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runCmd(t, repos[i], "git", "add", "-A")
+		}
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		pyOut, pyExit = runCmd(t, repos[0], pyBin, "run", "--all-files", "--color=never")
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		goOut, goExit = runCmd(t, repos[1], goBinary, "run", "--all-files", "--color=never")
+		return pyOut, goOut, pyExit, goExit
+	}
+	check := func(t *testing.T, name, cfg string, files map[string]string, wantArgs string) {
+		t.Helper()
+		files["bad.txt"] = "BAD\n"
+		pyOut, goOut, pyExit, goExit := runBoth(t, cfg, files)
+		detail := fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut)
+		addExitResult("run", "julia: "+name+", rejects bad input", pyExit, goExit,
+			pyExit != 0 && goExit != 0 &&
+				strings.Contains(pyOut, wantArgs) && strings.Contains(goOut, wantArgs) &&
+				strings.Contains(goOut, "bad file: bad.txt"),
+			detail)
+		compareHookStatuses(t, "run", pyOut, goOut, 1)
+
+		delete(files, "bad.txt")
+		pyOut, goOut, pyExit, goExit = runBoth(t, cfg, files)
+		addExitResult("run", "julia: "+name+", passes good input", pyExit, goExit,
+			pyExit == 0 && goExit == 0, fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut))
+	}
+
+	// A remote hook's script is relative to the hook repo, and its
+	// Project.toml is copied into the environment.
+	t.Run("remote hook", func(t *testing.T) {
+		dir := t.TempDir()
+		for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}, {"config", "commit.gpgsign", "false"}} {
+			runCmd(t, dir, "git", args...)
+		}
+		files := map[string]string{
+			"bin/hook.jl":      juliaHookScript,
+			"Project.toml":     "name = \"JuliaHook\"\nuuid = \"5b1d6a3e-2f8c-4c1a-9d0e-7a3b2c1d0e9f\"\nversion = \"0.1.0\"\n",
+			"src/JuliaHook.jl": "module JuliaHook\nend\n",
+			".pre-commit-hooks.yaml": "-   id: no-bad-jl\n    name: no BAD (julia)\n    entry: bin/hook.jl --tag=remote\n" +
+				"    language: julia\n    files: \\.txt$\n",
+		}
+		for name, content := range files {
+			path := filepath.Join(dir, name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runCmd(t, dir, "git", "add", "-A")
+		if out, code := runCmd(t, dir, "git", "commit", "-qm", "hook"); code != 0 {
+			t.Fatalf("committing the hook repo failed:\n%s", out)
+		}
+		rev, _ := runCmd(t, dir, "git", "rev-parse", "HEAD")
+		cfg := fmt.Sprintf(
+			"repos:\n-   repo: %s\n    rev: %s\n    hooks:\n    -   id: no-bad-jl\n",
+			dir,
+			strings.TrimSpace(rev),
+		)
+		check(t, "remote hook", cfg, map[string]string{}, "args: --tag=remote bad.txt")
+	})
+
+	// A local hook's script is left as written, relative to the working tree.
+	t.Run("local hook", func(t *testing.T) {
+		cfg := "repos:\n-   repo: local\n    hooks:\n    -   id: no-bad-jl\n        name: no BAD (julia)\n" +
+			"        entry: tools/hook.jl --tag=local\n        language: julia\n        files: \\.txt$\n"
+		check(t, "local hook", cfg, map[string]string{"tools/hook.jl": juliaHookScript}, "args: --tag=local bad.txt")
+	})
+}

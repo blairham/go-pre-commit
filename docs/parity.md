@@ -97,14 +97,15 @@ and the README's flat list does not tell you which is which. This table does.
 | `ruby` | — | ❌ none | ✅ (Windows job) |
 | `rust` | — | ❌ none | ✅ (Windows job) |
 | `conda`, `coursier`, `dart`, `dotnet`, `haskell`, `lua`, `perl`, `r` | — | ❌ none of their own¹ | — |
-| `julia`, `swift` | — | ❌ none | — |
+| `julia` | ✅ (remote and local) | ✅ 5 | ✅ |
+| `swift` | — | ❌ none | — |
 
 ¹ These are instances of the shared `SimpleLanguage` machinery in
 `internal/languages/configlang.go`, which does have 17 tests. Those tests cover
 the machinery, not any individual language's install or health-check commands.
 
 Read that table as: **if your hooks are Python, system, script, pygrep or fail,
-this is well-trodden.** If they are Julia or Swift, you are likely the first
+this is well-trodden.** If they are Swift, you are likely the first
 person to run that path, and an issue is genuinely useful. Nothing in the lower
 rows is known broken — it is untested, which is a different and more honest
 claim than "supported".

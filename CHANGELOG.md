@@ -33,6 +33,19 @@ file was introduced; the full notes are on the
   (`-c ../alt.yaml` reports `alt.yaml`). Outside a repository, or inside
   `.git`, they fail with upstream's `An error has occurred: FatalError: ...`
   and a log in the store. (#109)
+- `language: julia` is ported from upstream 4.7.0. Hooks now run their
+  script: the entry's first word was dropped, so julia saw the hook's own
+  arguments as options and failed. The script resolves against the hook repo
+  for a remote hook and is left as written for `repo: local`. The env sets
+  `JULIA_LOAD_PATH` and unsets `JULIA_PROJECT`, as upstream's does. Install
+  copies the hook's `(Julia)Project.toml` and `(Julia)Manifest.toml` (or starts
+  from an empty `Project.toml`) and instantiates it with upstream's script,
+  where it used to `Pkg.develop` the hook repo and fail on any repo without a
+  project file. The environment directory is upstream's `juliaenv-<version>`;
+  a julia hook installed by an earlier release is reinstalled once, and its
+  old `julia_env-*` directory stays in the cache until the repo is gc'd. CI now
+  installs and runs a real julia hook, remote and local, against Python
+  pre-commit. (#118)
 
 - The first install of a remote hook repo no longer prints git's own output.
   The store clones the way upstream's `Store.clone` does: `git init`, then a

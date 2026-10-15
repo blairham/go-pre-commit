@@ -45,6 +45,25 @@ func EnvPath(prefix string, lang Language, version string) string {
 	return filepath.Join(prefix, lang.EnvironmentDir()+"-"+version)
 }
 
+type localHookKey struct{}
+
+// WithLocalHook records on ctx whether the hook about to run comes from a
+// `repo: local` block — upstream's run_hook `is_local` keyword, which
+// `pre_commit/commands/run.py` sets to `hook.src == 'local'`. It travels on
+// the context rather than through Run so only the backends that read it (julia
+// resolves the entry's script against the prefix only for a remote hook) need
+// to know about it.
+func WithLocalHook(ctx context.Context, local bool) context.Context {
+	return context.WithValue(ctx, localHookKey{}, local)
+}
+
+// isLocalHook reports what WithLocalHook recorded; a context without the
+// value is a remote hook, as upstream's default is.
+func isLocalHook(ctx context.Context) bool {
+	local, ok := ctx.Value(localHookKey{}).(bool)
+	return ok && local
+}
+
 var (
 	registry   = make(map[string]Language)
 	registryMu sync.RWMutex

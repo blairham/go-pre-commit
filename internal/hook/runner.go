@@ -418,6 +418,7 @@ func runHookXargs(
 	workDir string,
 	jobs int,
 ) (int, []byte, error) {
+	ctx = languages.WithLocalHook(ctx, h.IsLocal())
 	if len(fileArgs) == 0 {
 		return lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, nil, h.LanguageVersion)
 	}

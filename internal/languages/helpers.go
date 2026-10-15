@@ -52,27 +52,33 @@ func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs, env 
 		return -1, nil, fmt.Errorf("empty entry")
 	}
 
-	cmdArgs := make([]string, 0, len(parts)-1+len(args)+len(fileArgs))
-	cmdArgs = append(cmdArgs, parts[1:]...)
-	cmdArgs = append(cmdArgs, args...)
-	cmdArgs = append(cmdArgs, fileArgs...)
+	argv := make([]string, 0, len(parts)+len(args)+len(fileArgs))
+	argv = append(argv, parts...)
+	argv = append(argv, args...)
+	argv = append(argv, fileArgs...)
+	return runHookArgv(ctx, dir, argv, env, nil)
+}
 
+// runHookArgv runs an already-split hook command line. env overrides are
+// applied over the current process environment, and the keys in unset are
+// removed from it first — upstream's envcontext UNSET.
+func runHookArgv(ctx context.Context, dir string, argv, env, unset []string) (int, []byte, error) {
 	// exec.Command resolves the binary at call-time using the CURRENT process
 	// PATH, not the custom env we pass in.  Since the binary may only exist
 	// inside a virtualenv bin dir (e.g. a pip-installed console script), we
 	// resolve it ourselves using the custom env's PATH first – matching the
 	// Python implementation where envcontext patches os.environ before exec.
-	resolvedBin, err := lookPathInEnv(parts[0], env)
+	resolvedBin, err := lookPathInEnv(argv[0], env)
 	if err != nil {
-		resolvedBin = parts[0]
+		resolvedBin = argv[0]
 	}
 
-	cmd := exec.CommandContext(ctx, resolvedBin, cmdArgs...)
+	cmd := exec.CommandContext(ctx, resolvedBin, argv[1:]...)
 	cmd.Dir = dir
 	// Custom env vars go last: exec keeps the last value of a repeated key
 	// (case-insensitively on Windows), so this is what replaces os.environ's
 	// PATH for the child, as Python's envcontext does. First, they lost.
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(environWithout(os.Environ(), unset), env...)
 
 	// Under color, upstream runs the hook in a pty so it sees a terminal and
 	// colors its own output; otherwise stdout and stderr share one pipe.
@@ -95,6 +101,29 @@ func RunHookCommand(ctx context.Context, dir, entry string, args, fileArgs, env 
 		}
 	}
 	return exitCode, out, nil
+}
+
+// environWithout returns environ minus the given keys, compared
+// case-insensitively on Windows where environment names are.
+func environWithout(environ, keys []string) []string {
+	if len(keys) == 0 {
+		return environ
+	}
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		name, _, _ := strings.Cut(kv, "=")
+		drop := false
+		for _, k := range keys {
+			if name == k || (runtime.GOOS == "windows" && strings.EqualFold(name, k)) {
+				drop = true
+				break
+			}
+		}
+		if !drop {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 // ParseEntry splits an entry string respecting quotes.
