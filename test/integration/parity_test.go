@@ -1754,3 +1754,64 @@ func TestNodeHooks(t *testing.T) {
 		)
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Tests: first install of a remote repo (#117)
+// ---------------------------------------------------------------------------
+
+// The first run against a remote repo clones it into the store. Upstream
+// captures every git command it runs for that, so the whole of what a user
+// sees is the "[INFO] Initializing environment" line and the hook results.
+// This compares that output byte for byte, which is what the exit-code rows
+// cannot see: git's clone chatter and its "fatal: Remote branch <sha> not
+// found" from a shallow clone that cannot take a sha both exit 0.
+func TestRemoteRepoFirstInstall(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}, {"config", "commit.gpgsign", "false"}} {
+		runCmd(t, dir, "git", args...)
+	}
+	manifest := "-   id: no-bad\n    name: no BAD\n    entry: BAD\n    language: pygrep\n"
+	if err := os.WriteFile(filepath.Join(dir, ".pre-commit-hooks.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runCmd(t, dir, "git", "add", "-A")
+	if out, code := runCmd(t, dir, "git", "commit", "-qm", "hook"); code != 0 {
+		t.Fatalf("committing the hook repo failed:\n%s", out)
+	}
+	// A second commit, so the sha pinned below is not the branch tip a full
+	// clone would land on by default.
+	sha, _ := runCmd(t, dir, "git", "rev-parse", "HEAD")
+	sha = strings.TrimSpace(sha)
+	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runCmd(t, dir, "git", "add", "-A")
+	if out, code := runCmd(t, dir, "git", "commit", "-qm", "more"); code != 0 {
+		t.Fatalf("committing the hook repo failed:\n%s", out)
+	}
+
+	cfg := fmt.Sprintf("repos:\n-   repo: %s\n    rev: %s\n    hooks:\n    -   id: no-bad\n", dir, sha)
+	for _, tc := range []struct {
+		name, content string
+		exit          int
+	}{
+		{"sha rev", "fine\n", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pyRepo := initTestRepo(t, cfg, tc.content)
+			goRepo := initTestRepo(t, cfg, tc.content)
+			t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+			pyOut, pyExit := runCmd(t, pyRepo, pyBin, "run", "--all-files", "--color=never")
+			t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+			goOut, goExit := runCmd(t, goRepo, goBinary, "run", "--all-files", "--color=never")
+
+			addExitResult("run", "first install: "+tc.name, pyExit, goExit,
+				pyExit == tc.exit && goExit == tc.exit, fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut))
+			// The repos differ only by their temp dir, which no line names.
+			addOutputResult("run", "first install output: "+tc.name, pyOut == goOut,
+				fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut))
+		})
+	}
+}

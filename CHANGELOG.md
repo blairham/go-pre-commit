@@ -23,6 +23,16 @@ file was introduced; the full notes are on the
   `shuffle` now reproduces it, skipping `require_serial`, `fail` and `pygrep`
   hooks as upstream does. (#120)
 
+- The first install of a remote hook repo no longer prints git's own output.
+  The store clones the way upstream's `Store.clone` does: `git init`, then a
+  shallow fetch of exactly the pinned `rev` (so a commit sha is fetched at
+  depth 1 instead of failing `git clone --branch` and falling back to a full
+  clone), submodules at depth 1, and a fetch of all tags only when that
+  fails. git's output is captured and shown only in the error when a clone
+  fails, as upstream's `CalledProcessError` reports it, and
+  `[INFO] Initializing environment for <repo>.` is printed as upstream prints
+  it. A parity row compares the first-install output byte for byte. (#117)
+
 ## [4.7.0] - 2026-10-15
 
 ### Changed

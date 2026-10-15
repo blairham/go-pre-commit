@@ -7,6 +7,7 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	gitutil "github.com/blairham/go-pre-commit/v4/internal/git"
+	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 
 // Store manages the cache of cloned hook repositories.
@@ -109,13 +111,14 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 		return path, nil
 	}
 
+	output.Info("Initializing environment for %s.", repo)
+
 	dest := filepath.Join(s.dir, cloneDirName(repo, rev))
 
 	// The path is derived from repo+rev, so a directory left behind by a failed
-	// clone or a partial GC sits exactly where this clone wants to go — and
-	// `git clone` refuses a non-empty target. Clear it first, and if it will not
-	// clear, say so plainly rather than letting git fail with "destination path
-	// already exists" on every run from here on.
+	// clone or a partial GC sits exactly where this clone wants to go. Clear it
+	// first, and if it will not clear, say so plainly rather than failing on
+	// every run from here on.
 	if err := fsutil.RemoveAll(dest); err != nil {
 		return "", fmt.Errorf(
 			"failed to clear stale cache directory %s (remove it manually to recover): %w",
@@ -123,23 +126,14 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 		)
 	}
 
-	// Try shallow clone first.
-	err = gitutil.ShallowClone(repo, dest, rev)
-	if err != nil {
-		// Fall back to full clone.
+	if err := cloneInto(dest, repo, rev); err != nil {
+		// Upstream's clean_path_on_failure.
 		if rmErr := fsutil.RemoveAll(dest); rmErr != nil {
-			return "", fmt.Errorf(
-				"failed to clear %s after an unsuccessful shallow clone: %w", dest, rmErr,
-			)
+			return "", errors.Join(err, fmt.Errorf(
+				"failed to clear %s after an unsuccessful clone: %w", dest, rmErr,
+			))
 		}
-		err = gitutil.Clone(repo, dest)
-		if err != nil {
-			return "", fmt.Errorf("failed to clone %s: %w", repo, err)
-		}
-		if err := gitutil.Checkout(dest, rev); err != nil {
-			_ = fsutil.RemoveAll(dest)
-			return "", fmt.Errorf("failed to checkout %s at %s: %w", repo, rev, err)
-		}
+		return "", err
 	}
 
 	// Save to database.
@@ -148,6 +142,46 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 	}
 
 	return dest, nil
+}
+
+// cloneInto is upstream's Store.clone strategy: an empty repository whose
+// origin is repo, then a shallow fetch of exactly rev. Fetching the ref, rather
+// than `git clone --branch`, is what lets a commit sha be fetched shallowly;
+// only when that fails (a server that will not serve an unadvertised sha, say)
+// does it fall back to fetching every tag and checking rev out. git's output
+// is captured throughout and reaches the user only in the error.
+func cloneInto(dest, repo, rev string) error {
+	if err := gitutil.InitRepo(dest, repo); err != nil {
+		return err
+	}
+	git := func(args ...string) error { return gitutil.RunCaptured(dest, args...) }
+	if err := shallowClone(rev, git); err != nil {
+		return completeClone(rev, git)
+	}
+	return nil
+}
+
+// shallowClone is upstream's Store._shallow_clone.
+func shallowClone(rev string, git func(...string) error) error {
+	const cfg = "protocol.version=2"
+	if err := git("-c", cfg, "fetch", "origin", rev, "--depth=1"); err != nil {
+		return err
+	}
+	if err := git("checkout", "FETCH_HEAD"); err != nil {
+		return err
+	}
+	return git("-c", cfg, "submodule", "update", "--init", "--recursive", "--depth=1")
+}
+
+// completeClone is upstream's Store._complete_clone.
+func completeClone(rev string, git func(...string) error) error {
+	if err := git("fetch", "origin", "--tags"); err != nil {
+		return err
+	}
+	if err := git("checkout", rev); err != nil {
+		return err
+	}
+	return git("submodule", "update", "--init", "--recursive")
 }
 
 // GetPath returns the cached path for a repo+rev, or empty string if not cached.
