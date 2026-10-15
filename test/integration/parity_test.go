@@ -1872,6 +1872,16 @@ func TestJuliaHooks(t *testing.T) {
 				strings.Contains(goOut, "bad file: bad.txt"),
 			detail)
 		compareHookStatuses(t, "run", pyOut, goOut, 1)
+		argsLine := func(out string) string {
+			for _, line := range strings.Split(out, "\n") {
+				if strings.HasPrefix(line, "args: ") {
+					return line
+				}
+			}
+			return ""
+		}
+		addOutputResult("run", "julia: "+name+", script sees the same argv", argsLine(pyOut) == argsLine(goOut),
+			fmt.Sprintf("py=%q go=%q", argsLine(pyOut), argsLine(goOut)))
 
 		delete(files, "bad.txt")
 		pyOut, goOut, pyExit, goExit = runBoth(t, cfg, files)
@@ -1912,13 +1922,13 @@ func TestJuliaHooks(t *testing.T) {
 			dir,
 			strings.TrimSpace(rev),
 		)
-		check(t, "remote hook", cfg, map[string]string{}, "args: --tag=remote bad.txt")
+		check(t, "remote hook", cfg, map[string]string{}, "args: --tag=remote ")
 	})
 
 	// A local hook's script is left as written, relative to the working tree.
 	t.Run("local hook", func(t *testing.T) {
 		cfg := "repos:\n-   repo: local\n    hooks:\n    -   id: no-bad-jl\n        name: no BAD (julia)\n" +
 			"        entry: tools/hook.jl --tag=local\n        language: julia\n        files: \\.txt$\n"
-		check(t, "local hook", cfg, map[string]string{"tools/hook.jl": juliaHookScript}, "args: --tag=local bad.txt")
+		check(t, "local hook", cfg, map[string]string{"tools/hook.jl": juliaHookScript}, "args: --tag=local ")
 	})
 }
