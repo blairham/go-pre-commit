@@ -4,6 +4,7 @@
 package git
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -769,5 +770,72 @@ func TestHeadRev(t *testing.T) {
 	}
 	if got != strings.TrimSpace(string(want)) {
 		t.Errorf("HeadRev = %q, want %q", got, strings.TrimSpace(string(want)))
+	}
+}
+
+// The message is upstream's CalledProcessError.__bytes__, byte for byte.
+func TestCalledProcessErrorMatchesUpstream(t *testing.T) {
+	e := &CalledProcessError{
+		Cmd:        []string{"/usr/bin/git", "checkout", "it's"},
+		ReturnCode: 1,
+		Stderr:     []byte("error: one\nerror: two\n\n"),
+	}
+	want := "command: ('/usr/bin/git', 'checkout', \"it's\")\n" +
+		"return code: 1\n" +
+		"stdout: (none)\n" +
+		"stderr:\n    error: one\n    error: two"
+	if got := e.Error(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestPyRepr(t *testing.T) {
+	for in, want := range map[string]string{
+		"plain":   `'plain'`,
+		"it's":    `"it's"`,
+		`a'b"c`:   `'a\'b"c'`,
+		`back\sl`: `'back\\sl'`,
+		"nl\n":    `'nl\n'`,
+		"\x01":    `'\x01'`,
+	} {
+		if got := pyRepr(in); got != want {
+			t.Errorf("pyRepr(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+// RunCaptured keeps git's output out of the terminal and hands it back in a
+// *CalledProcessError on failure.
+func TestRunCapturedReturnsOutputOnFailure(t *testing.T) {
+	err := RunCaptured(t.TempDir(), "rev-parse", "--verify", "no-such-ref")
+	var cpe *CalledProcessError
+	if !errors.As(err, &cpe) {
+		t.Fatalf("got %T %v, want *CalledProcessError", err, err)
+	}
+	if cpe.ReturnCode == 0 || len(cpe.Stderr) == 0 {
+		t.Errorf("want a non-zero code and git's stderr, got %d %q", cpe.ReturnCode, cpe.Stderr)
+	}
+	if !filepath.IsAbs(cpe.Cmd[0]) {
+		t.Errorf("command should name the resolved git, got %q", cpe.Cmd[0])
+	}
+}
+
+// InitRepo makes an empty repository whose origin is the absolute path of a
+// local remote, without the user's template.
+func TestInitRepo(t *testing.T) {
+	remote := t.TempDir()
+	dest := filepath.Join(t.TempDir(), "clone")
+	if err := InitRepo(dest, remote); err != nil {
+		t.Fatal(err)
+	}
+	out, err := CmdOutputInDir(dest, "remote", "get-url", "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != remote {
+		t.Errorf("origin = %q, want %q", out, remote)
+	}
+	if _, err := os.Stat(filepath.Join(dest, ".git", "hooks")); !os.IsNotExist(err) {
+		t.Errorf("--template= should leave no hooks directory, stat err = %v", err)
 	}
 }

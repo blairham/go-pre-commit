@@ -6,6 +6,7 @@ package git
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -282,9 +283,116 @@ func Clone(url, dest string, args ...string) error {
 	return cmd.Run()
 }
 
-// ShallowClone clones a repository with depth 1.
-func ShallowClone(url, dest, ref string) error {
-	return Clone(url, dest, "--depth", "1", "--branch", ref, "--single-branch", "-c", "protocol.version=2")
+// NoFSMonitor is upstream's git.NO_FS_MONITOR: config that keeps git's
+// builtin fsmonitor daemon from being started for a throwaway repository.
+var NoFSMonitor = []string{"-c", "core.useBuiltinFSMonitor=false"}
+
+// CalledProcessError is a failed command whose output was captured rather
+// than shown, the way upstream's util.CalledProcessError carries it. Its
+// message is upstream's byte for byte, so git's own explanation of a failure
+// reaches the user only in the error.
+type CalledProcessError struct {
+	Cmd        []string
+	Stdout     []byte
+	Stderr     []byte
+	ReturnCode int
+}
+
+func (e *CalledProcessError) Error() string {
+	indentOrNone := func(part []byte) string {
+		if len(part) == 0 {
+			return " (none)"
+		}
+		return strings.TrimRight("\n    "+strings.ReplaceAll(string(part), "\n", "\n    "), " \t\r\n\v\f")
+	}
+	quoted := make([]string, len(e.Cmd))
+	for i, a := range e.Cmd {
+		quoted[i] = pyRepr(a)
+	}
+	cmd := "(" + strings.Join(quoted, ", ")
+	if len(quoted) == 1 {
+		cmd += ","
+	}
+	cmd += ")"
+	return fmt.Sprintf("command: %s\nreturn code: %d\nstdout:%s\nstderr:%s",
+		cmd, e.ReturnCode, indentOrNone(e.Stdout), indentOrNone(e.Stderr))
+}
+
+// pyRepr renders s the way Python's repr renders a str, which is how
+// upstream prints each argument of a failed command.
+func pyRepr(s string) string {
+	quote := byte('\'')
+	if strings.Contains(s, "'") && !strings.Contains(s, "\"") {
+		quote = '"'
+	}
+	var b strings.Builder
+	b.WriteByte(quote)
+	for _, r := range s {
+		switch {
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r == rune(quote):
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r == '\t':
+			b.WriteString(`\t`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte(quote)
+	return b.String()
+}
+
+// RunCaptured runs git in dir under NoGitEnv with its output captured, as
+// upstream's cmd_output_b does. A non-zero exit is a *CalledProcessError
+// holding what git printed; on success the output is discarded.
+func RunCaptured(dir string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = NoGitEnv()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	// Upstream reports the resolved executable, not the bare name.
+	return &CalledProcessError{
+		Cmd:        append([]string{cmd.Path}, args...),
+		ReturnCode: exitErr.ExitCode(),
+		Stdout:     stdout.Bytes(),
+		Stderr:     stderr.Bytes(),
+	}
+}
+
+// InitRepo ports upstream's git.init_repo: an empty repository at path, with
+// no template (so the user's template hooks cannot recurse into it), whose
+// origin is remote. A remote that is a local directory is made absolute, since
+// the commands that follow run from inside path.
+func InitRepo(path, remote string) error {
+	if info, err := os.Stat(remote); err == nil && info.IsDir() {
+		if abs, err := filepath.Abs(remote); err == nil {
+			remote = abs
+		}
+	}
+	initArgs := append(append([]string{}, NoFSMonitor...), "init", "--template=", path)
+	if err := RunCaptured("", initArgs...); err != nil {
+		return err
+	}
+	remoteArgs := append(append([]string{}, NoFSMonitor...), "remote", "add", "origin", remote)
+	return RunCaptured(path, remoteArgs...)
 }
 
 // Fetch runs git fetch in a directory.
