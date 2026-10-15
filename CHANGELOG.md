@@ -6,12 +6,14 @@ whose section is missing.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version numbers track upstream parity rather than semver of this codebase:
-`v4.6.x` targets feature parity with Python pre-commit 4.6. Sections up to and
+`v4.7.x` targets feature parity with Python pre-commit 4.7 (`v4.6.x` targeted 4.6). Sections up to and
 including 4.6.16 were reconstructed from the GitHub release notes when this
 file was introduced; the full notes are on the
 [releases page](https://github.com/blairham/go-pre-commit/releases).
 
 ## [Unreleased]
+
+## [4.7.0] - 2026-10-15
 
 ### Changed
 
@@ -226,7 +228,8 @@ file was introduced; the full notes are on the
 - First release of the rewrite: Python parity for `run` and `uninstall`, the
   `/v4` module path, and a GoReleaser release workflow.
 
-[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.6.17...HEAD
+[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.7.0...HEAD
+[4.7.0]: https://github.com/blairham/go-pre-commit/compare/v4.6.17...v4.7.0
 [4.6.17]: https://github.com/blairham/go-pre-commit/compare/v4.6.16...v4.6.17
 [4.6.16]: https://github.com/blairham/go-pre-commit/compare/v4.6.15...v4.6.16
 [4.6.15]: https://github.com/blairham/go-pre-commit/compare/v4.6.14...v4.6.15
