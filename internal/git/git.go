@@ -224,8 +224,11 @@ func GetStagedFiles() ([]string, error) {
 }
 
 // GetAllFiles returns all tracked files in the repository.
+//
+// --deduplicate (git >= 2.31) lists a path once even when an unresolved merge
+// conflict leaves it in the index at several stages, as upstream 4.6.1 does.
 func GetAllFiles() ([]string, error) {
-	out, err := hostOutput("", "ls-files", "-z")
+	out, err := hostOutput("", "ls-files", "-z", "--deduplicate")
 	if err != nil {
 		return nil, err
 	}
