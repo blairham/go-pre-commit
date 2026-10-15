@@ -84,6 +84,15 @@ func (c *TryRepoCommand) Run(args []string) int {
 
 	output.SetColorModeFromString(opts.Color)
 
+	if err = adjustArgsAndChdir(rootArgs{
+		Config:            &opts.Config,
+		Files:             opts.Files,
+		CommitMsgFilename: &opts.CommitMsgFn,
+		Repo:              &remaining[0],
+	}); err != nil {
+		return fatalError(err)
+	}
+
 	repoURL := remaining[0]
 	var hookID string
 	if len(remaining) > 1 {

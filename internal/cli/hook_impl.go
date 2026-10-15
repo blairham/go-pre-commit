@@ -50,6 +50,10 @@ func (c *HookImplCommand) Run(args []string) int {
 
 	output.SetColorModeFromString(opts.Color)
 
+	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
+		return fatalError(err)
+	}
+
 	// Check if config exists when --skip-on-missing-config is set.
 	if opts.SkipOnMissingConfig {
 		if _, err := os.Stat(opts.Config); os.IsNotExist(err) {

@@ -43,6 +43,10 @@ func (c *AutoupdateCommand) Run(args []string) int {
 
 	output.SetColorModeFromString(opts.Color)
 
+	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
+		return fatalError(err)
+	}
+
 	cfg, err := config.LoadConfig(opts.Config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to load config: %v\n", err)

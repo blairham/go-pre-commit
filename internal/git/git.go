@@ -172,6 +172,56 @@ func GetRoot() (string, error) {
 	return CmdOutput("rev-parse", "--show-toplevel")
 }
 
+// FatalError is a failure upstream raises as its FatalError, worded as it
+// words it. Those messages end in punctuation, which errors.New strings
+// conventionally do not.
+type FatalError string
+
+func (e FatalError) Error() string { return string(e) }
+
+// The two failures upstream's git.get_root reports.
+const (
+	ErrNoRepository FatalError = "git failed. Is it installed, and are you in a Git repository directory?"
+	ErrInsideGitDir FatalError = "git toplevel unexpectedly empty! make sure you are not " +
+		"inside the `.git` directory of your repository."
+)
+
+// Toplevel ports upstream's git.get_root, which pre-commit's main uses to
+// find the directory it changes into before running any command that needs
+// a repository. It is relative to cwd, the physical working directory, and
+// deliberately not `--show-toplevel`: upstream notes that on Windows that
+// form exposes the volume behind a drive mapped with SUBST, and asks for
+// `--show-cdup` instead, which also means it must reject being run from
+// inside the .git directory, where the answer is empty.
+//
+// It runs git with the caller's environment as upstream's cmd_output does,
+// not NoGitEnv: a GIT_DIR or GIT_WORK_TREE the user exported is meant to
+// decide which repository this is.
+func Toplevel(cwd string) (string, error) {
+	run := func(args ...string) (string, error) {
+		var stdout bytes.Buffer
+		cmd := exec.Command("git", args...)
+		cmd.Dir = cwd
+		cmd.Stdout = &stdout
+		if err := cmd.Run(); err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(stdout.String()), nil
+	}
+	cdup, err := run("rev-parse", "--show-cdup")
+	if err != nil {
+		return "", ErrNoRepository
+	}
+	insideGitDir, err := run("rev-parse", "--is-inside-git-dir")
+	if err != nil {
+		return "", ErrNoRepository
+	}
+	if insideGitDir != "false" {
+		return "", ErrInsideGitDir
+	}
+	return filepath.Join(cwd, cdup), nil
+}
+
 // GetRootInDir returns the root directory of a git repository from a given directory.
 func GetRootInDir(dir string) (string, error) {
 	return CmdOutputInDir(dir, "rev-parse", "--show-toplevel")

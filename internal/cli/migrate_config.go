@@ -24,6 +24,10 @@ func (c *MigrateConfigCommand) Run(args []string) int {
 		return 1
 	}
 
+	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
+		return fatalError(err)
+	}
+
 	content, err := os.ReadFile(opts.Config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to read config: %v\n", err)

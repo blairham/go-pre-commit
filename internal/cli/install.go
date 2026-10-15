@@ -77,6 +77,15 @@ func (c *InstallCommand) Run(args []string) int {
 		return 1
 	}
 
+	// argparse rejects an unknown -t before main gets as far as the root.
+	if !validHookTypes(opts.HookTypes) {
+		return 1
+	}
+
+	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
+		return fatalError(err)
+	}
+
 	// Check for core.hooksPath.
 	warnIfCoreHooksPath()
 
@@ -94,11 +103,8 @@ func (c *InstallCommand) Run(args []string) int {
 	}
 
 	// Validate hook types.
-	for _, ht := range typesToInstall {
-		if _, ok := hookTypes[ht]; !ok {
-			fmt.Fprintf(os.Stderr, "Error: unknown hook type: %s. Choose from: %s\n", ht, strings.Join(sortedHookTypes(), ", "))
-			return 1
-		}
+	if !validHookTypes(typesToInstall) {
+		return 1
 	}
 
 	hooksDir, err := resolveHooksDir("")
@@ -209,6 +215,14 @@ func (c *UninstallCommand) Run(args []string) int {
 		return 1
 	}
 
+	if !validHookTypes(opts.HookTypes) {
+		return 1
+	}
+
+	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
+		return fatalError(err)
+	}
+
 	hooksDir, err := resolveHooksDir("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -218,13 +232,6 @@ func (c *UninstallCommand) Run(args []string) int {
 	typesToUninstall := opts.HookTypes
 	if len(typesToUninstall) == 0 {
 		typesToUninstall = []string{"pre-commit"}
-	}
-
-	for _, ht := range typesToUninstall {
-		if _, ok := hookTypes[ht]; !ok {
-			fmt.Fprintf(os.Stderr, "Error: unknown hook type: %s. Choose from: %s\n", ht, strings.Join(sortedHookTypes(), ", "))
-			return 1
-		}
 	}
 
 	exit := 0
@@ -293,6 +300,10 @@ func (c *InstallHooksCommand) Run(args []string) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
+	}
+
+	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
+		return fatalError(err)
 	}
 
 	if err := installAllHookEnvironments(opts.Config); err != nil {
@@ -370,4 +381,16 @@ func warnIfCoreHooksPath() {
 			strings.TrimSpace(out),
 		)
 	}
+}
+
+// validHookTypes reports whether every type is one pre-commit knows, naming
+// the first that is not, as argparse's choices= does.
+func validHookTypes(types []string) bool {
+	for _, ht := range types {
+		if _, ok := hookTypes[ht]; !ok {
+			fmt.Fprintf(os.Stderr, "Error: unknown hook type: %s. Choose from: %s\n", ht, strings.Join(sortedHookTypes(), ", "))
+			return false
+		}
+	}
+	return true
 }

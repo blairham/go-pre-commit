@@ -92,6 +92,14 @@ func (c *RunCommand) Run(args []string) int {
 		return 1
 	}
 
+	if err = adjustArgsAndChdir(rootArgs{
+		Config:            &opts.Config,
+		Files:             opts.Files,
+		CommitMsgFilename: &opts.CommitMsgFn,
+	}); err != nil {
+		return fatalError(err)
+	}
+
 	// Load config.
 	cfg, err := config.LoadConfig(opts.Config)
 	if err != nil {
