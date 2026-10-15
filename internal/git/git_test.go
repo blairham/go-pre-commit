@@ -407,6 +407,51 @@ func TestGetAllFiles(t *testing.T) {
 	}
 }
 
+// TestGetAllFiles_MergeConflictListedOnce mirrors upstream 4.6.1
+// (pre-commit/pre-commit#3727): during an unresolved merge conflict the index
+// holds a conflicted path at stages 1, 2 and 3, and a plain `git ls-files`
+// prints it once per stage. run --all-files must pass it to hooks once.
+func TestGetAllFiles_MergeConflictListedOnce(t *testing.T) {
+	dir := initTestRepo(t)
+
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil && args[0] != "merge" {
+			t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	write := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "conflict.txt"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("base\n")
+	git("add", "conflict.txt")
+	git("commit", "-m", "base")
+	git("checkout", "-b", "other")
+	write("other\n")
+	git("commit", "-am", "other")
+	git("checkout", "-")
+	write("ours\n")
+	git("commit", "-am", "ours")
+	git("merge", "--no-ff", "other") // expected to fail with a conflict
+
+	t.Chdir(dir)
+
+	files, err := GetAllFiles()
+	if err != nil {
+		t.Fatalf("GetAllFiles failed: %v", err)
+	}
+	want := []string{"README.md", "conflict.txt"}
+	if strings.Join(files, ",") != strings.Join(want, ",") {
+		t.Errorf("expected %v, got %v", want, files)
+	}
+}
+
 // --- GetStagedFiles tests ---
 
 func TestGetStagedFiles_None(t *testing.T) {

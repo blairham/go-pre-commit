@@ -28,6 +28,10 @@ file was introduced; the full notes are on the
 - `autoupdate --repo` with a repo the config does not name prints
   `repos (...) were not found in <config>` and exits 1 before updating
   anything, as upstream 4.6.1 does, instead of silently ignoring it. (#105)
+- `run --all-files` passes a file with an unresolved merge conflict to hooks
+  once rather than once per index stage, via `git ls-files --deduplicate`
+  (upstream 4.6.1, pre-commit/pre-commit#3727). This needs git 2.31 or
+  later. (#106)
 - Releases no longer pass `target_commitish`, which made creating a release
   fail with a 403 when its range touched `.github/workflows`. (#95)
 
