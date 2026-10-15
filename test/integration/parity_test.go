@@ -220,10 +220,10 @@ func printParityReport() int {
 // ---------------------------------------------------------------------------
 
 // parityTarget is the Python pre-commit minor line this project claims parity
-// with, and it is the meaning of our own version number: v4.6.x means "behaves
-// like Python pre-commit 4.6.x". Comparing against any other line measures
+// with, and it is the meaning of our own version number: v4.7.x means "behaves
+// like Python pre-commit 4.7.x". Comparing against any other line measures
 // something we are not claiming, so resolvePython refuses to do it.
-const parityTarget = "4.6"
+const parityTarget = "4.7"
 
 // pythonInfo describes the counterpart binary a parity run measured against.
 // It goes into the JSON report because a parity percentage without the version
@@ -1712,12 +1712,11 @@ func TestNodeHooks(t *testing.T) {
 
 	// Upstream 4.7.0 (#3774) installs under no_git_env so `git commit -a`,
 	// whose GIT_INDEX_FILE points at the host's index.lock, does not leak into
-	// the clone npm makes of git+file://. The parity target (4.6.x) predates
-	// that fix (it fails here with "unable to read <sha>"), so this row grades
-	// only this binary and reports Python's exit for information. hook-impl
-	// also scrubs GIT_INDEX_FILE process-wide, so this row stays green without
-	// the NoGitEnv in the node backend; TestNodeInstallEnvironmentRunsNpmWithoutGitEnv
-	// is what pins that.
+	// the clone npm makes of git+file://. 4.6.x failed here with "unable to
+	// read <sha>"; from the 4.7 target on, both sides must install and pass.
+	// hook-impl also scrubs GIT_INDEX_FILE process-wide, so this row stays
+	// green without the NoGitEnv in the node backend;
+	// TestNodeInstallEnvironmentRunsNpmWithoutGitEnv is what pins that.
 	t.Run("hook installed during git commit -a", func(t *testing.T) {
 		dir, rev := nodeHookRepo(t, "")
 		cfg := nodeHookConfig(dir, rev)
@@ -1748,9 +1747,10 @@ func TestNodeHooks(t *testing.T) {
 			"node: hook installs during git commit -a",
 			pyExit,
 			goExit,
-			goExit == 0 &&
+			pyExit == 0 && goExit == 0 &&
+				strings.Contains(pyOut, "no BAD") &&
 				strings.Contains(goOut, "no BAD"),
-			fmt.Sprintf("py (4.6.x, informational):\n%s\ngo:\n%s", pyOut, goOut),
+			fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut),
 		)
 	})
 }

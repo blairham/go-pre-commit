@@ -11,7 +11,7 @@ go-pre-commit is a Go reimplementation of [pre-commit](https://github.com/pre-co
 - **CLI framework:** `mitchellh/cli` for dispatch, `jessevdk/go-flags` for flag parsing
 - **Entry point:** `main.go` → `internal/cli.Run()`
 
-**Versioning tracks upstream parity, not semver of this codebase.** `v4.6.0` means feature parity with Python pre-commit 4.6.0. When adding features, diff against the [upstream CHANGELOG](https://github.com/pre-commit/pre-commit) rather than inventing behavior — divergence from Python pre-commit is a bug, not a feature.
+**Versioning tracks upstream parity, not semver of this codebase.** `v4.7.0` means feature parity with Python pre-commit 4.7.0. When adding features, diff against the [upstream CHANGELOG](https://github.com/pre-commit/pre-commit) rather than inventing behavior — divergence from Python pre-commit is a bug, not a feature.
 
 ## Quick Reference
 
@@ -82,7 +82,7 @@ test/integration/        # Parity tests against real Python pre-commit (build ta
 | `CI / Detect changed files` | Skips the code jobs for prose-only PRs (inside the jobs, never a `paths:` filter) |
 | `CI / Build and test (ubuntu-latest)` | `make test` |
 | `CI / Fuzz` | Every Fuzz target, on pushes to main and weekly |
-| `Parity with Python pre-commit` | Differential suite against real Python pre-commit 4.6.2 |
+| `Parity with Python pre-commit` | Differential suite against real Python pre-commit 4.7.0 |
 | `Build` | `make build` |
 | `Action (ubuntu/macos/windows)` | Runs `action.yml` from the checkout (`uses: ./`): installs the *released* binary and runs a pygrep and a python hook |
 | `Hooks from source (windows-latest)` | Builds this checkout on Windows and runs a python, node, golang, ruby and rust hook, each against input it must reject |

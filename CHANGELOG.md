@@ -13,6 +13,14 @@ file was introduced; the full notes are on the
 
 ## [Unreleased]
 
+### Changed
+
+- The parity target moves to Python pre-commit 4.7.0: the differential suite
+  pins and measures against it, and `v4.7.x` means parity with upstream 4.7.
+  4.7.0's one change (node hooks install without the host's `GIT_*`
+  variables) shipped in 4.6.17 with #102; its `git commit -a` parity row now
+  grades both sides instead of only this one. (#107)
+
 ## [4.6.17] - 2026-10-15
 
 ### Changed
