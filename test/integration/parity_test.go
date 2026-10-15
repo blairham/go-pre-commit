@@ -1450,6 +1450,30 @@ func TestAutoupdate(t *testing.T) {
 			pyRev == goRev,
 			fmt.Sprintf("py=%s go=%s", pyRev, goRev))
 	})
+
+	// Upstream 4.6.1: a --repo the config does not name fails before
+	// anything is updated, listing the missing repos sorted (#105).
+	t.Run("mistyped --repo alongside a valid one", func(t *testing.T) {
+		pyRepo := initTestRepo(t, standardCfg, "test\n")
+		goRepo := initTestRepo(t, standardCfg, "test\n")
+		args := []string{
+			"autoupdate", "--color=never",
+			"--repo", "https://github.com/pre-commit/pre-commit-hookz",
+			"--repo", "https://github.com/pre-commit/pre-commit-hooks",
+		}
+
+		pyOut, pyErr, pyExit := runSplit(t, pyRepo, pyBin, args...)
+		goOut, goErr, goExit := runSplit(t, goRepo, goBinary, args...)
+		addExitResult("autoupdate", "mistyped --repo exits 1", pyExit, goExit,
+			pyExit == goExit && goExit == 1, "")
+		addOutputResult("autoupdate", "mistyped --repo output",
+			pyOut == goOut && pyErr == goErr,
+			fmt.Sprintf("py=%q/%q go=%q/%q", pyOut, pyErr, goOut, goErr))
+
+		goCfg := readFile(filepath.Join(goRepo, ".pre-commit-config.yaml"))
+		addFSResult("autoupdate", "mistyped --repo leaves config alone",
+			goCfg == standardCfg, "")
+	})
 }
 
 func extractRev(cfg string) string {

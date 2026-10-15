@@ -25,6 +25,9 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `autoupdate --repo` with a repo the config does not name prints
+  `repos (...) were not found in <config>` and exits 1 before updating
+  anything, as upstream 4.6.1 does, instead of silently ignoring it. (#105)
 - Releases no longer pass `target_commitish`, which made creating a release
   fail with a 403 when its range touched `.github/workflows`. (#95)
 
