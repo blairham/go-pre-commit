@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 )
@@ -17,9 +18,50 @@ import (
 // Node implements the Language interface for Node.js hooks.
 type Node struct{}
 
-func (n *Node) Name() string              { return "node" }
-func (n *Node) EnvironmentDir() string    { return "node_env" }
-func (n *Node) GetDefaultVersion() string { return "default" }
+// Name is the language's name in a hook manifest.
+func (n *Node) Name() string { return "node" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR.
+func (n *Node) EnvironmentDir() string { return "node_env" }
+
+// GetDefaultVersion is upstream node.get_default_version (4.7.0), cached for
+// the process as upstream's lru_cache does.
+func (n *Node) GetDefaultVersion() string { return nodeDefaultVersionOnce() }
+
+var nodeDefaultVersionOnce = sync.OnceValue(func() string {
+	return nodeDefaultVersion(runtime.GOOS)
+})
+
+// nodeDefaultVersion is "system" when the host's node and npm are real
+// installs (exeExists: on PATH, not a version manager's shim, not inside the
+// home directory), so nodeenv symlinks them instead of downloading a node.
+// Otherwise, and always on Windows where nodeenv cannot do `-n system`, it is
+// "default": nodeenv's own prebuilt node. A shimmed node is a trampoline into
+// whatever version the manager resolves, and its npm is not one the hook was
+// installed against; upstream refuses to reuse it.
+func nodeDefaultVersion(goos string) string {
+	if goos == "windows" {
+		return "default"
+	}
+	if exeExists("node") && exeExists("npm") {
+		return "system"
+	}
+	return "default"
+}
+
+// nodeenvArgs is upstream's nodeenv command line: `default` resolves through
+// get_default_version, and only a version other than `default` is passed as
+// -n, so a `default` env gets nodeenv's own prebuilt node.
+func nodeenvArgs(envDir, version, defaultVersion string) []string {
+	if version == "default" {
+		version = defaultVersion
+	}
+	args := []string{"--prebuilt", "--clean-src", envDir}
+	if version != "default" {
+		args = append(args, "-n", version)
+	}
+	return args
+}
 
 func (n *Node) HealthCheck(prefix, version string) error {
 	envDir := filepath.Join(prefix, n.EnvironmentDir()+"-"+version)
@@ -64,16 +106,7 @@ func (n *Node) InstallEnvironment(prefix, version string, additionalDeps []strin
 	envDir := filepath.Join(prefix, n.EnvironmentDir()+"-"+version)
 
 	// Create the nodeenv ("system" symlinks the host node into the env).
-	// nodeenv cannot do `-n system` on Windows, so there, as upstream, the
-	// default is no -n at all: nodeenv's own default prebuilt node.
-	args := []string{"--prebuilt", "--clean-src", envDir}
-	switch {
-	case version != "default":
-		args = append(args, "-n", version)
-	case runtime.GOOS != "windows":
-		args = append(args, "-n", "system")
-	}
-	cmd := exec.Command("nodeenv", args...)
+	cmd := exec.Command("nodeenv", nodeenvArgs(envDir, version, nodeDefaultVersion(runtime.GOOS))...)
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("nodeenv failed: %s: %w", string(out), err)

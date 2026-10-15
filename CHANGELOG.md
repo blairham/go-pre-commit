@@ -57,6 +57,15 @@ file was introduced; the full notes are on the
   `[INFO] Initializing environment for <repo>.` is printed as upstream prints
   it. A parity row compares the first-install output byte for byte. (#117)
 
+- `language: node`'s default version follows upstream: `system` only when
+  `node` and `npm` are both real installs on `PATH` (not in a version
+  manager's `shims` directory, and not under the home directory unless that
+  is `/`), otherwise `default`, which nodeenv installs with no `-n`, i.e. its
+  own prebuilt node. Every non-Windows install used to symlink the host's
+  node, so on a machine whose node and npm are asdf shims the hook install
+  failed with `EALLOWGIT` where Python pre-commit passes. Ports upstream's
+  `lang_base.exe_exists`. (#119)
+
 ## [4.7.0] - 2026-10-15
 
 ### Changed
