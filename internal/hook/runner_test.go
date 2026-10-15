@@ -644,10 +644,18 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 	repoDir := t.TempDir()
 
 	// Minimal installable golang hook repo.
-	if err := os.WriteFile(filepath.Join(repoDir, "go.mod"), []byte("module example.com/hookrepo\n\ngo 1.21\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(repoDir, "go.mod"),
+		[]byte("module example.com/hookrepo\n\ngo 1.21\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repoDir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(repoDir, "main.go"),
+		[]byte("package main\n\nfunc main() {}\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 

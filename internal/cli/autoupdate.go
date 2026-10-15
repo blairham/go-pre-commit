@@ -26,10 +26,10 @@ type AutoupdateCommand struct {
 type autoupdateFlags struct {
 	GlobalFlags
 	BleedingEdge bool     `long:"bleeding-edge" description:"Update to the bleeding edge of the default branch instead of the latest tagged version."`
-	Freeze       bool     `long:"freeze" description:"Store the current commit SHA alongside the tag as rev."`
-	Repo         []string `long:"repo" description:"Only update this repository. May be specified multiple times."`
-	Jobs         int      `short:"j" long:"jobs" default:"1" description:"Number of threads to use."`
-	DryRun       bool     `long:"dry-run" description:"Show what would be updated without writing changes."`
+	Freeze       bool     `long:"freeze"        description:"Store the current commit SHA alongside the tag as rev."`
+	Repo         []string `long:"repo"          description:"Only update this repository. May be specified multiple times."`
+	Jobs         int      `long:"jobs"          description:"Number of threads to use."                                                               short:"j" default:"1"`
+	DryRun       bool     `long:"dry-run"       description:"Show what would be updated without writing changes."`
 }
 
 func (c *AutoupdateCommand) Run(args []string) int {
@@ -267,6 +267,6 @@ func getHEAD(repoDir string) (string, error) {
 	return git.GetHeadSHA(repoDir)
 }
 
-func resolveToCommit(repoDir string, ref string) (string, error) {
+func resolveToCommit(repoDir, ref string) (string, error) {
 	return git.CmdOutputInDir(repoDir, "rev-parse", ref+"^{}")
 }

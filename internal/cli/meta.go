@@ -15,6 +15,6 @@ type Meta struct {
 
 // GlobalFlags are flags available to all commands.
 type GlobalFlags struct {
-	Color  string `long:"color" default:"auto" description:"Whether to use color in output. Options: auto, always, never."`
-	Config string `long:"config" short:"c" default:".pre-commit-config.yaml" description:"Path to alternate config file."`
+	Color  string `long:"color"  default:"auto"                    description:"Whether to use color in output. Options: auto, always, never."`
+	Config string `long:"config" default:".pre-commit-config.yaml" description:"Path to alternate config file."                                short:"c"`
 }

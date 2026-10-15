@@ -84,7 +84,12 @@ func (h *Hook) MatchesStage(stage config.Stage) bool {
 }
 
 // MergeManifest creates a Hook by merging config overrides onto a manifest hook.
-func MergeManifest(manifest *config.ManifestHook, hookCfg *config.HookConfig, repoCfg *config.RepoConfig, globalCfg *config.Config) *Hook {
+func MergeManifest(
+	manifest *config.ManifestHook,
+	hookCfg *config.HookConfig,
+	repoCfg *config.RepoConfig,
+	globalCfg *config.Config,
+) *Hook {
 	h := &Hook{
 		ID:                      manifest.ID,
 		Name:                    manifest.Name,

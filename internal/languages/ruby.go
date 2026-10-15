@@ -73,7 +73,13 @@ func (r *Ruby) InstallEnvironment(prefix, version string, additionalDeps []strin
 	return nil
 }
 
-func (r *Ruby) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (r *Ruby) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
 	gemHome := filepath.Join(envDir, "gems")
 	binDir := filepath.Join(gemHome, "bin")

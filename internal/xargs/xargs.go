@@ -54,7 +54,7 @@ func NewExecutor() *Executor {
 // Run executes a command with batched arguments.
 // cmd is the base command, args are split into batches.
 // env is additional environment variables, dir is the working directory.
-func (e *Executor) Run(ctx context.Context, cmd []string, args []string, env []string, dir string) (*BatchResult, error) {
+func (e *Executor) Run(ctx context.Context, cmd, args, env []string, dir string) (*BatchResult, error) {
 	if len(cmd) == 0 {
 		return nil, fmt.Errorf("empty command")
 	}
@@ -105,7 +105,13 @@ func (e *Executor) batchArgs(args []string) [][]string {
 	return batches
 }
 
-func (e *Executor) runSequential(ctx context.Context, cmd []string, batches [][]string, env []string, dir string) (*BatchResult, error) {
+func (e *Executor) runSequential(
+	ctx context.Context,
+	cmd []string,
+	batches [][]string,
+	env []string,
+	dir string,
+) (*BatchResult, error) {
 	br := &BatchResult{}
 
 	for _, batch := range batches {
@@ -122,7 +128,14 @@ func (e *Executor) runSequential(ctx context.Context, cmd []string, batches [][]
 	return br, nil
 }
 
-func (e *Executor) runParallel(ctx context.Context, cmd []string, batches [][]string, env []string, dir string, jobs int) (*BatchResult, error) {
+func (e *Executor) runParallel(
+	ctx context.Context,
+	cmd []string,
+	batches [][]string,
+	env []string,
+	dir string,
+	jobs int,
+) (*BatchResult, error) {
 	br := &BatchResult{
 		Results: make([]Result, len(batches)),
 	}
@@ -175,7 +188,7 @@ func (e *Executor) runParallel(ctx context.Context, cmd []string, batches [][]st
 	return br, nil
 }
 
-func (e *Executor) runBatch(ctx context.Context, cmdParts []string, args []string, env []string, dir string) (*Result, error) {
+func (e *Executor) runBatch(ctx context.Context, cmdParts, args, env []string, dir string) (*Result, error) {
 	fullArgs := make([]string, 0, len(cmdParts)-1+len(args))
 	fullArgs = append(fullArgs, cmdParts[1:]...)
 	fullArgs = append(fullArgs, args...)

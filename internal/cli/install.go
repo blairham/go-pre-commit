@@ -63,10 +63,10 @@ type InstallCommand struct {
 
 type installFlags struct {
 	GlobalFlags
-	HookTypes    []string `short:"t" long:"hook-type" description:"The hook type(s) to install. May be specified multiple times."`
-	AllowMissing bool     `long:"allow-missing-config" description:"Allow the hook installation to succeed when no config is found."`
-	Overwrite    bool     `short:"f" long:"overwrite" description:"Overwrite existing hooks."`
-	InstallHooks bool     `long:"install-hooks" description:"Install hook environments for all hooks in the config."`
+	HookTypes    []string `short:"t" long:"hook-type"            description:"The hook type(s) to install. May be specified multiple times."`
+	AllowMissing bool     `          long:"allow-missing-config" description:"Allow the hook installation to succeed when no config is found."`
+	Overwrite    bool     `short:"f" long:"overwrite"            description:"Overwrite existing hooks."`
+	InstallHooks bool     `          long:"install-hooks"        description:"Install hook environments for all hooks in the config."`
 }
 
 func (c *InstallCommand) Run(args []string) int {
@@ -132,7 +132,12 @@ func (c *InstallCommand) Run(args []string) int {
 					// Back up the legacy hook.
 					legacyFile := hookFile + ".legacy"
 					if err := os.Rename(hookFile, legacyFile); err != nil {
-						fmt.Fprintf(os.Stderr, "Error: existing hook %s found and cannot be backed up: %v\nuse --overwrite to replace it\n", hookFile, err)
+						fmt.Fprintf(
+							os.Stderr,
+							"Error: existing hook %s found and cannot be backed up: %v\nuse --overwrite to replace it\n",
+							hookFile,
+							err,
+						)
 						return 1
 					}
 					output.Info("Moving existing hook %s to %s", hookFile, legacyFile)

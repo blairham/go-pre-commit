@@ -80,7 +80,7 @@ func TagsForFile(path string) map[string]bool {
 // types are ANDed: all must match.
 // typesOr are ORed: at least one must match.
 // excludeTypes: none must match.
-func MatchesTypes(tags map[string]bool, types []string, typesOr []string, excludeTypes []string) bool {
+func MatchesTypes(tags map[string]bool, types, typesOr, excludeTypes []string) bool {
 	// Check exclude types first.
 	for _, t := range excludeTypes {
 		if tags[t] {

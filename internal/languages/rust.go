@@ -69,7 +69,13 @@ func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []strin
 	return nil
 }
 
-func (r *Rust) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (r *Rust) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
 	binDir := filepath.Join(envDir, "bin")
 	env := []string{

@@ -123,7 +123,13 @@ func npmInstallGlobal(prefix string, env, pkgs []string) error {
 	return nil
 }
 
-func (n *Node) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (n *Node) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	envDir := filepath.Join(prefix, n.EnvironmentDir()+"-"+version)
 	env := nodeEnvVars(envDir)
 	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)

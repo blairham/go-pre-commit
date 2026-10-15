@@ -66,7 +66,13 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 	return nil
 }
 
-func (p *Python) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (p *Python) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	envDir := filepath.Join(prefix, p.EnvironmentDir()+"-"+version)
 	env := []string{
 		PrependPath(venvBinDir(envDir)),

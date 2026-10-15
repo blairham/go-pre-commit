@@ -220,7 +220,13 @@ Pkg.instantiate()
 	return nil
 }
 
-func (j *Julia) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (j *Julia) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	envDir := filepath.Join(prefix, j.EnvironmentDir()+"-"+version)
 
 	parts := ParseEntry(entry)
@@ -274,7 +280,13 @@ func (s *Swift) InstallEnvironment(prefix, version string, additionalDeps []stri
 	return nil
 }
 
-func (s *Swift) Run(ctx context.Context, prefix, workDir, entry string, args, fileArgs []string, version string) (int, []byte, error) {
+// Run implements Language.
+func (s *Swift) Run(
+	ctx context.Context,
+	prefix, workDir, entry string,
+	args, fileArgs []string,
+	version string,
+) (int, []byte, error) {
 	envDir := filepath.Join(prefix, s.EnvironmentDir()+"-"+version)
 	binDir := filepath.Join(envDir, "bin")
 	env := []string{PrependPath(binDir)}
