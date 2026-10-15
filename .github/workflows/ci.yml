@@ -79,6 +79,23 @@ jobs:
         # the line our version number claims parity with. The harness
         # rejects any other line, so a bump here is a deliberate parity decision.
         run: pip install --require-hashes -r .github/requirements/parity.txt
+      - name: Install Julia
+        if: needs.changes.outputs.code == 'true'
+        # For the julia rows (#118): a remote and a `repo: local` hook, each
+        # installed and run by both tools. The official tarball, pinned by its
+        # published sha256, so the runner image cannot change what is graded.
+        env:
+          JULIA_VERSION: '1.12.6'
+          JULIA_SHA256: bbabf3bef19421a9dbd24a767d807606ab85e444323b5a1c73ffe293fa3d079a
+        run: |
+          tarball="julia-${JULIA_VERSION}-linux-x86_64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://julialang-s3.julialang.org/bin/linux/x64/${JULIA_VERSION%.*}/$tarball"
+          echo "$JULIA_SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/julia"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/julia" --strip-components=1
+          echo "$RUNNER_TEMP/julia/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/julia/bin/julia" --version
       - name: Run parity tests
         if: needs.changes.outputs.code == 'true'
         # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
