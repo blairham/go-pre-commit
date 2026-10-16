@@ -106,6 +106,9 @@ func TestMarkConfigUsedAndDedup(t *testing.T) {
 	}
 
 	configPath := filepath.Join(dir, ".pre-commit-config.yaml")
+	if err := os.WriteFile(configPath, []byte("repos: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	// Mark same config twice.
 	if err := s.MarkConfigUsed(configPath); err != nil {
 		t.Fatal(err)
@@ -138,11 +141,14 @@ func TestGetTrackedConfigs(t *testing.T) {
 		t.Fatalf("expected 0 configs initially, got %d", len(configs))
 	}
 
-	if err := s.MarkConfigUsed("/a"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.MarkConfigUsed("/b"); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"a", "b"} {
+		p := filepath.Join(dir, name)
+		if err = os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.MarkConfigUsed(p); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	configs, err = s.GetTrackedConfigs()
@@ -266,5 +272,67 @@ func TestDBPersistence(t *testing.T) {
 	}
 	if len(configs) != 1 || configs[0] != "/some/config" {
 		t.Fatalf("unexpected configs: %v", configs)
+	}
+}
+
+// Upstream's mark_config_used stores os.path.realpath(path) and skips a path
+// that does not exist.
+func TestMarkConfigUsedRealpathAndMissing(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(filepath.Join(dir, "store"))
+
+	realPath := filepath.Join(dir, "real.yaml")
+	if err = os.WriteFile(realPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.yaml")
+	if err = os.Symlink(realPath, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	for _, p := range []string{link, realPath, filepath.Join(dir, "missing.yaml")} {
+		if err = s.MarkConfigUsed(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	configs, err := s.GetTrackedConfigs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(configs) != 1 || configs[0] != realPath {
+		t.Fatalf("tracked configs = %q, want only %q", configs, realPath)
+	}
+}
+
+func TestForgetConfigs(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	var paths []string
+	for _, name := range []string{"a", "b", "c"} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.MarkConfigUsed(p); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	configs, err := s.GetTrackedConfigs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ForgetConfigs([]string{configs[0], configs[2]}); err != nil {
+		t.Fatal(err)
+	}
+	left, err := s.GetTrackedConfigs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 1 || left[0] != configs[1] {
+		t.Fatalf("tracked configs = %q, want only %q (of %q)", left, configs[1], paths)
 	}
 }

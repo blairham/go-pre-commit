@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -193,8 +195,55 @@ func (s *Store) GetPath(repo, rev string) string {
 	return path
 }
 
-// MarkConfigUsed records that a config file is actively using this store.
+// MarkConfigUsed records that a config file is using this store, so gc keeps
+// every repo it references. It ports upstream's Store.mark_config_used: the
+// path is made real (symlinks resolved) before it is stored, a config that
+// does not exist is not recorded, and a store the user cannot write to is
+// left alone rather than reported -- upstream skips a readonly store.
 func (s *Store) MarkConfigUsed(configPath string) error {
+	absPath, err := filepath.Abs(configPath)
+	if err != nil {
+		return err
+	}
+	// Upstream's os.path.exists: a config that is not there is not recorded.
+	if _, statErr := os.Stat(absPath); statErr != nil {
+		return nil
+	}
+	realPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	unlock, err := s.acquireLock()
+	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return nil
+		}
+		return err
+	}
+	defer unlock()
+
+	db, err := s.loadDB()
+	if err != nil {
+		return err
+	}
+	if slices.Contains(db.ConfigsUsed, realPath) {
+		return nil
+	}
+	db.ConfigsUsed = append(db.ConfigsUsed, realPath)
+	return s.saveDB(db)
+}
+
+// ForgetConfigs drops configs from the tracked list. gc calls it for every
+// tracked config that no longer loads, as upstream's _gc deletes its dead
+// configs rows.
+func (s *Store) ForgetConfigs(dead []string) error {
+	if len(dead) == 0 {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -208,21 +257,9 @@ func (s *Store) MarkConfigUsed(configPath string) error {
 	if err != nil {
 		return err
 	}
-
-	// Resolve to absolute path.
-	absPath, err := filepath.Abs(configPath)
-	if err != nil {
-		absPath = configPath
-	}
-
-	// Check if already recorded.
-	for _, c := range db.ConfigsUsed {
-		if c == absPath {
-			return nil
-		}
-	}
-
-	db.ConfigsUsed = append(db.ConfigsUsed, absPath)
+	db.ConfigsUsed = slices.DeleteFunc(db.ConfigsUsed, func(c string) bool {
+		return slices.Contains(dead, c)
+	})
 	return s.saveDB(db)
 }
 

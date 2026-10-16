@@ -9,10 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/blairham/go-pre-commit/v4/internal/git"
+	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
 // tempRepo makes a git repository with a sub/ directory and alt.yaml and
@@ -232,5 +234,32 @@ func TestAutoupdateFromSubdirectory(t *testing.T) {
 		if code != 1 || string(got) != tc.want {
 			t.Errorf("autoupdate %v from sub/: exit %d, stdout %q; want exit 1, %q", tc.args, code, got, tc.want)
 		}
+	}
+}
+
+// Upstream's main follows _adjust_args_and_chdir with
+// store.mark_config_used(args.config): the config, realpath'd, is recorded
+// in the store so gc keeps what it uses. A config that does not exist is not.
+func TestAdjustArgsAndChdir_MarksConfigUsed(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("PRE_COMMIT_HOME", home)
+	root := tempRepo(t)
+	t.Chdir(filepath.Join(root, "sub"))
+
+	for _, c := range []string{"../alt.yaml", "../nope.yaml"} {
+		config := c
+		if err := adjustArgsAndChdir(rootArgs{Config: &config}); err != nil {
+			t.Fatal(err)
+		}
+		t.Chdir(filepath.Join(root, "sub"))
+	}
+
+	got, err := store.New(home).GetTrackedConfigs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(root, "alt.yaml")}
+	if !slices.Equal(got, want) {
+		t.Errorf("tracked configs = %q, want %q", got, want)
 	}
 }
