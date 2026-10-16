@@ -86,6 +86,21 @@ file was introduced; the full notes are on the
   fails, naming the file, when the pattern is nowhere in a file, rather than
   when it is found. `--ignore-case` and argparse's abbreviations of the long
   options are accepted. (#127)
+- `autoupdate` and `try-repo` run upstream 4.7.0's git commands with git's
+  output captured, so `Cloning into ...`, `--filter is ignored` and similar
+  no longer reach the terminal. `autoupdate` fetches each repo's `HEAD` and
+  tags blobless into an empty repository, as upstream's `RevInfo.update`
+  does; it prints upstream's `[repo] updating X -> Y` and `already up to
+  date!` lines, picks the tag that looks like a version when a moving tag
+  shares its commit, takes a tag on `HEAD` under `--bleeding-edge`, refuses
+  an update that drops a hook the config uses (exit 1), and rewrites each
+  `rev:` line by position in its own quoting, keeping comments other than
+  `# frozen:`. `try-repo` follows upstream's `_repo_ref`: a local repository
+  is cloned at its `HEAD` like a remote one, and only when it has
+  uncommitted changes to tracked files is a shadow repository committed with
+  them (untracked files are no longer copied in). A git command that fails
+  is now upstream's `An unexpected error has occurred: CalledProcessError:
+  ...` with exit 3. (#134)
 - Hooks receive their files in upstream's order. Upstream shuffles each
   hook's file list with a fixed-seed `random.Random` before splitting it into
   xargs batches, unless the hook is `require_serial`; this port never

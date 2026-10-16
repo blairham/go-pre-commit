@@ -839,3 +839,100 @@ func TestInitRepo(t *testing.T) {
 		t.Errorf("--template= should leave no hooks directory, stat err = %v", err)
 	}
 }
+
+// upstream's head_rev passes --exit-code, so a remote without a HEAD is a
+// failure rather than empty output, and the failure is a CalledProcessError.
+func TestHeadRevFailureIsCalledProcessError(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "nope")
+	_, err := HeadRev(missing)
+	var cpe *CalledProcessError
+	if !errors.As(err, &cpe) {
+		t.Fatalf("err = %v, want *CalledProcessError", err)
+	}
+	if got := cpe.Cmd[1:]; strings.Join(got, " ") != "ls-remote --exit-code "+missing+" HEAD" {
+		t.Errorf("cmd = %q", got)
+	}
+}
+
+func TestHasDiff(t *testing.T) {
+	dir := initTestRepo(t)
+	if HasDiff(dir, "HEAD") {
+		t.Error("clean repo reported a diff")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !HasDiff(dir, "HEAD") {
+		t.Error("modified file not reported")
+	}
+	if HasDiff(filepath.Join(dir, "nope"), "HEAD") {
+		t.Error("a failing git diff (not exit 1) reported a diff")
+	}
+}
+
+func TestPathAndStagedFilesIn(t *testing.T) {
+	dir := initTestRepo(t)
+	if got, err := Path(dir, "index"); err != nil || got != filepath.Join(dir, ".git", "index") {
+		t.Errorf("Path = %q, %v", got, err)
+	}
+
+	for name, content := range map[string]string{"new": "n", "README.md": "m\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RunCaptured(dir, "add", "new", "README.md"); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunCaptured(dir, "rm", "-q", "--cached", "README.md"); err != nil {
+		t.Fatal(err)
+	}
+	files, err := StagedFilesIn(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A staged deletion is left out, as upstream's --diff-filter does.
+	if strings.Join(files, ",") != "new" {
+		t.Errorf("StagedFilesIn = %q, want [new]", files)
+	}
+}
+
+func TestBestCandidateTag(t *testing.T) {
+	dir := initTestRepo(t)
+	head, err := GetHeadSHA(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := BestCandidateTag(head, dir); got != head {
+		t.Errorf("untagged: got %q, want the rev back", got)
+	}
+	for _, tag := range []string{"latest", "v1.2.0"} {
+		if err := RunCaptured(dir, "-c", "tag.gpgsign=false", "tag", tag); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _ := BestCandidateTag("latest", dir); got != "v1.2.0" {
+		t.Errorf("got %q, want the tag with a '.'", got)
+	}
+}
+
+func TestCommit(t *testing.T) {
+	dir := initTestRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "x"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunCaptured(dir, "add", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Commit(dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := OutputCaptured(dir, "log", "-1", "--format=%an <%ae>|%cn <%ce>|%s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const who = "pre-commit <asottile+pre-commit@umich.edu>"
+	if want := who + "|" + who + "|init\n"; got != want {
+		t.Errorf("commit = %q, want %q", got, want)
+	}
+}

@@ -4,7 +4,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -154,8 +156,30 @@ func storeDirForLog() string {
 	return dir
 }
 
+// unexpectedError reports err the way upstream's error_handler reports any
+// exception that is not a FatalError, with its exit code, 3. A failed git
+// command is upstream's CalledProcessError; anything else is named by the
+// nearest Python equivalent.
+func unexpectedError(err error) int {
+	name := "Exception"
+	var cpe *git.CalledProcessError
+	var pathErr *fs.PathError
+	switch {
+	case errors.As(err, &cpe):
+		name = "CalledProcessError"
+	case errors.As(err, &pathErr):
+		name = "OSError"
+	}
+	writeErrorLog(storeDirForLog(), "An unexpected error has occurred: "+name+": "+err.Error())
+	return 3
+}
+
 func writeFatalError(storeDir, msg string) {
-	line := "An error has occurred: FatalError: " + msg
+	writeErrorLog(storeDir, "An error has occurred: FatalError: "+msg)
+}
+
+// writeErrorLog prints line, then writes upstream's pre-commit.log for it.
+func writeErrorLog(storeDir, line string) {
 	fmt.Println(line)
 
 	gitVersion := "unknown"

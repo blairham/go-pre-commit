@@ -4,11 +4,10 @@
 package cli
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -58,7 +57,9 @@ type tryRepoFlags struct {
 	Jobs            int      `long:"jobs"                          description:"Number of jobs to run in parallel."                            short:"j"`
 }
 
-func (c *TryRepoCommand) Run(args []string) int {
+// Run is upstream's try_repo: it resolves the repository and ref, prints the
+// config it generated, and runs that config's hooks.
+func (c *TryRepoCommand) Run(args []string) (code int) {
 	var opts tryRepoFlags
 	remaining, err := flags.ParseArgs(&opts, expandFilesFlag(args))
 	if err != nil {
@@ -99,100 +100,57 @@ func (c *TryRepoCommand) Run(args []string) int {
 		hookID = remaining[1]
 	}
 
-	// Determine ref.
-	tryRef := opts.Ref
-	if tryRef == "" {
-		tryRef = "HEAD"
+	// As upstream: everything, the shadow repository included, lives in one
+	// throwaway directory that is also the store, rather than ~/.cache.
+	tempdir, err := os.MkdirTemp("", "tmp")
+	if err != nil {
+		return unexpectedError(err)
+	}
+	// Upstream's TemporaryDirectory: a cleanup that fails is an error too.
+	defer func() {
+		if rmErr := fsutil.RemoveAll(tempdir); rmErr != nil && code == 0 {
+			code = unexpectedError(rmErr)
+		}
+	}()
+
+	repo, ref, err := tryRepoRef(tempdir, repoURL, opts.Ref)
+	if err != nil {
+		return unexpectedError(err)
 	}
 
-	s := store.New("")
-
-	// Build a temporary config.
-	tryConfig := &config.Config{
-		Repos: []config.RepoConfig{
-			{
-				Repo: repoURL,
-				Rev:  tryRef,
-			},
-		},
-	}
-
-	// If it's a local path, create a shadow clone with uncommitted changes.
-	var hooks []*hook.Hook
-	var cleanupDir string
-	if isLocalPath(repoURL) {
-		var repoDir string
-		repoDir, cleanupDir, err = shadowCloneLocal(repoURL, tryRef)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to prepare local repo: %v\n", err)
-			return 1
-		}
-		if cleanupDir != "" {
-			defer func() { _ = fsutil.RemoveAll(cleanupDir) }()
-		}
-
-		manifestPath := filepath.Join(repoDir, config.ManifestFile)
-		var manifest []config.ManifestHook
-		manifest, err = config.LoadManifest(manifestPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to load manifest from %s: %v\n", repoDir, err)
-			return 1
-		}
-		for i := range manifest {
-			h := hook.FromManifestHook(&manifest[i])
-			h.Repo = repoURL
-			h.RepoDir = repoDir
-			hooks = append(hooks, h)
-		}
+	s := store.New(tempdir)
+	var hookCfgs []config.HookConfig
+	if hookID != "" {
+		hookCfgs = []config.HookConfig{{ID: hookID}}
 	} else {
-		// As upstream: an unspecified ref is the remote's HEAD commit, the
-		// store is a throwaway one rather than ~/.cache/pre-commit, and the
-		// config names the hook asked for or every hook in the manifest.
-		rev := opts.Ref
-		if rev == "" {
-			rev, err = git.HeadRev(repoURL)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: failed to resolve HEAD of %s: %v\n", repoURL, err)
-				return 1
-			}
+		repoPath, cloneErr := s.Clone(repo, ref)
+		if cloneErr != nil {
+			return unexpectedError(cloneErr)
 		}
-		tmpStore, err := os.MkdirTemp("", "pre-commit-try-repo-")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		manifest, loadErr := config.LoadManifest(filepath.Join(repoPath, config.ManifestFile))
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to load manifest from %s: %v\n", repo, loadErr)
 			return 1
 		}
-		defer func() { _ = fsutil.RemoveAll(tmpStore) }()
-		s = store.New(tmpStore)
-
-		var hookCfgs []config.HookConfig
-		if hookID != "" {
-			hookCfgs = []config.HookConfig{{ID: hookID}}
-		} else {
-			repoPath, cloneErr := s.Clone(repoURL, rev)
-			if cloneErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: failed to clone %s: %v\n", repoURL, cloneErr)
-				return 1
-			}
-			manifest, loadErr := config.LoadManifest(filepath.Join(repoPath, config.ManifestFile))
-			if loadErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: failed to load manifest from %s: %v\n", repoURL, loadErr)
-				return 1
-			}
-			for _, m := range manifest {
-				hookCfgs = append(hookCfgs, config.HookConfig{ID: m.ID})
-			}
-			sort.Slice(hookCfgs, func(i, j int) bool { return hookCfgs[i].ID < hookCfgs[j].ID })
+		for _, m := range manifest {
+			hookCfgs = append(hookCfgs, config.HookConfig{ID: m.ID})
 		}
-		tryConfig.Repos[0].Rev = rev
-		tryConfig.Repos[0].Hooks = hookCfgs
-		printTryConfig(repoURL, rev, hookCfgs)
+		sort.Slice(hookCfgs, func(i, j int) bool { return hookCfgs[i].ID < hookCfgs[j].ID })
+	}
+	tryConfig := &config.Config{
+		Repos: []config.RepoConfig{{Repo: repo, Rev: ref, Hooks: hookCfgs}},
+	}
+	printTryConfig(repo, ref, hookCfgs)
 
-		resolver := repository.NewResolver(s, tryConfig)
-		hooks, err = resolver.ResolveAll(context.Background(), tryConfig)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to resolve hooks: %v\n", err)
-			return 1
+	resolver := repository.NewResolver(s, tryConfig)
+	hooks, err := resolver.ResolveAll(context.Background(), tryConfig)
+	if err != nil {
+		var cpe *git.CalledProcessError
+		if errors.As(err, &cpe) {
+			return unexpectedError(cpe)
 		}
+		fmt.Fprintf(os.Stderr, "Error: failed to resolve hooks: %v\n", err)
+		return 1
 	}
 
 	// Determine files.
@@ -321,123 +279,88 @@ func (c *TryRepoCommand) Synopsis() string {
 	return "Try the hooks in a repository"
 }
 
-func isLocalPath(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
+// tryRepoRef is upstream's try_repo._repo_ref. An explicit ref is used as
+// given. Otherwise the ref is the repository's HEAD, and a local repository
+// with uncommitted changes to tracked files is copied into a shadow repository
+// under tmpdir with those changes committed, so the hooks run as edited.
+// Untracked files are not included, as upstream does not include them.
+func tryRepoRef(tmpdir, repo, ref string) (string, string, error) {
+	if ref != "" {
+		return repo, ref, nil
+	}
+	ref, err := git.HeadRev(repo)
+	if err != nil {
+		return "", "", err
+	}
+	if _, statErr := os.Stat(repo); statErr != nil || !git.HasDiff(repo, "HEAD") {
+		return repo, ref, nil
+	}
 
-// shadowCloneLocal creates a shadow clone of a local repository so that
-// uncommitted changes (staged and unstaged) are included when testing hooks.
-// This matches Python pre-commit's try-repo behavior for local repos.
-// Returns (repoDir, cleanupDir, error). cleanupDir should be removed when done.
-func shadowCloneLocal(localPath, ref string) (string, string, error) {
-	// Resolve to absolute path.
-	absPath, err := filepath.Abs(localPath)
+	output.Warn("Creating temporary repo with uncommitted changes...")
+
+	shadow := filepath.Join(tmpdir, "shadow-repo")
+	err = git.RunCaptured("", "clone", repo, shadow)
+	if err == nil {
+		err = git.RunCaptured(shadow, "checkout", ref, "-b", "_pc_tmp")
+	}
 	if err != nil {
 		return "", "", err
 	}
 
-	// Check if it's a git repo.
-	if !git.IsInsideWorkTreeInDir(absPath) {
-		// Not a git repo, just use directly.
-		return absPath, "", nil
-	}
-
-	// Check for any staged or unstaged changes.
-	hasStagedChanges, _ := git.HasStagedChanges(absPath)
-	hasUnstagedChanges, _ := git.HasUnstagedChanges(absPath)
-
-	if !hasStagedChanges && !hasUnstagedChanges {
-		// No local changes, use directly.
-		return absPath, "", nil
-	}
-
-	// Create a shadow clone to capture uncommitted changes.
-	tmpDir, err := os.MkdirTemp("", "pre-commit-try-repo-*")
+	idx, err := git.Path(shadow, "index")
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create temp dir: %w", err)
+		return "", "", err
 	}
-
-	// Clone the local repo.
-	if err := git.Clone(absPath, tmpDir, "--no-checkout"); err != nil {
-		_ = fsutil.RemoveAll(tmpDir)
-		return "", "", fmt.Errorf("failed to clone local repo: %w", err)
+	objs, err := git.Path(shadow, "objects")
+	if err != nil {
+		return "", "", err
 	}
+	env := append(git.NoGitEnv(), "GIT_INDEX_FILE="+idx, "GIT_OBJECT_DIRECTORY="+objs)
 
-	// Checkout the target ref.
-	if err := git.Checkout(tmpDir, ref); err != nil {
-		_ = fsutil.RemoveAll(tmpDir)
-		return "", "", fmt.Errorf("failed to checkout %s: %w", ref, err)
+	staged, err := git.StagedFilesIn(repo)
+	if err != nil {
+		return "", "", err
 	}
-
-	// Apply staged changes.
-	if hasStagedChanges {
-		diffCmd := exec.Command("git", "diff", "--staged", "--binary")
-		diffCmd.Dir = absPath
-		patch, err := diffCmd.Output()
-		if err == nil && len(patch) > 0 {
-			applyCmd := exec.Command("git", "apply", "--allow-empty")
-			applyCmd.Dir = tmpDir
-			applyCmd.Stdin = bytes.NewReader(patch)
-			_ = applyCmd.Run()
+	// Upstream's xargs, whose exit status it does not check.
+	var cpe *git.CalledProcessError
+	for _, batch := range argBatches(staged) {
+		err = git.RunCapturedEnv(repo, env, append([]string{"add", "--"}, batch...)...)
+		if err != nil && !errors.As(err, &cpe) {
+			return "", "", err
 		}
 	}
-
-	// Apply unstaged changes.
-	if hasUnstagedChanges {
-		diffCmd := exec.Command("git", "diff", "--binary")
-		diffCmd.Dir = absPath
-		patch, err := diffCmd.Output()
-		if err == nil && len(patch) > 0 {
-			applyCmd := exec.Command("git", "apply", "--allow-empty")
-			applyCmd.Dir = tmpDir
-			applyCmd.Stdin = bytes.NewReader(patch)
-			_ = applyCmd.Run()
-		}
+	err = git.RunCapturedEnv(repo, env, "add", "-u")
+	if err == nil {
+		err = git.Commit(shadow)
+	}
+	if err != nil {
+		return "", "", err
 	}
 
-	// Also copy untracked files.
-	untrackedCmd := exec.Command("git", "ls-files", "--others", "--exclude-standard", "-z")
-	untrackedCmd.Dir = absPath
-	untrackedOut, err := untrackedCmd.Output()
-	if err == nil && len(untrackedOut) > 0 {
-		for _, f := range splitNullTerminated(string(untrackedOut)) {
-			src := filepath.Join(absPath, f)
-			dst := filepath.Join(tmpDir, f)
-			os.MkdirAll(filepath.Dir(dst), 0o755)
-			data, err := os.ReadFile(src)
-			if err == nil {
-				os.WriteFile(dst, data, 0o644)
-			}
-		}
+	rev, err := git.HeadRev(shadow)
+	if err != nil {
+		return "", "", err
 	}
-
-	return tmpDir, tmpDir, nil
+	return shadow, rev, nil
 }
 
-func splitNullTerminated(s string) []string {
-	var result []string
-	for _, part := range splitByNull(s) {
-		if part != "" {
-			result = append(result, part)
+// argBatches splits files into command lines that stay well under the
+// platform's argument limit, as upstream's xargs partitions them.
+func argBatches(files []string) [][]string {
+	const maxLen = 32 * 1024
+	var batches [][]string
+	var cur []string
+	size := 0
+	for _, f := range files {
+		if len(cur) > 0 && size+len(f)+1 > maxLen {
+			batches = append(batches, cur)
+			cur, size = nil, 0
 		}
+		cur = append(cur, f)
+		size += len(f) + 1
 	}
-	return result
-}
-
-func splitByNull(s string) []string {
-	var parts []string
-	current := ""
-	for _, c := range s {
-		if c == 0 {
-			parts = append(parts, current)
-			current = ""
-		} else {
-			current += string(c)
-		}
+	if len(cur) > 0 {
+		batches = append(batches, cur)
 	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-	return parts
+	return batches
 }
