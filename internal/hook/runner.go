@@ -407,9 +407,14 @@ func filterFiles(files []string, h *Hook) []string {
 	return matched
 }
 
-// runHookXargs runs a hook using xargs-style batching and concurrency.
-// All execution goes through lang.Run to ensure language-specific environment
-// setup (e.g. virtualenv PATH for Python hooks).
+// runHookXargs runs a hook the way upstream's lang_base.run_xargs and
+// xargs.xargs do: the files are partitioned into runs of at most
+// max(4, ceil(files/jobs)) arguments that also fit the platform's command
+// length, the partitions run on min(partitions, jobs) workers, and their
+// output is concatenated in partition order with the exit code of largest
+// magnitude. jobs is 1 for a require_serial hook. All execution goes through
+// lang.Run so language-specific environment setup (e.g. a virtualenv's PATH)
+// applies to every partition.
 func runHookXargs(
 	ctx context.Context,
 	lang languages.Language,
@@ -419,53 +424,53 @@ func runHookXargs(
 	jobs int,
 ) (int, []byte, error) {
 	ctx = languages.WithLocalHook(ctx, h.IsLocal())
-	if len(fileArgs) == 0 {
-		return lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, nil, h.LanguageVersion)
+	// fail never reaches xargs upstream, and pygrep runs in-process here, so
+	// a partition would only split output that upstream prints in one piece.
+	if len(fileArgs) == 0 || h.Language == "fail" || h.Language == "pygrep" {
+		return lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, fileArgs, h.LanguageVersion)
 	}
 
 	fileArgs = shuffledFileArgs(h.Language, h.RequireSerial, fileArgs)
 
-	// Determine batch size and concurrency.
-	maxJobs := 1
+	concurrency := 1
 	if !h.RequireSerial {
-		maxJobs = targetConcurrency(jobs, len(fileArgs))
+		concurrency = targetConcurrency(jobs)
 	}
 
-	// Batch the file arguments.
-	batches := batchFileArgs(fileArgs, xargs.DefaultMaxBatchSize())
+	cmd := hookCommand(h)
+	partitions, err := xargs.Partition(cmd, fileArgs, concurrency, xargs.MaxLength(cmd))
+	if err != nil {
+		return -1, nil, err
+	}
 
-	type batchResult struct {
-		exitCode int
-		output   []byte
+	type partitionResult struct {
 		err      error
+		output   []byte
+		exitCode int
+	}
+	results := make([]partitionResult, len(partitions))
+	run := func(i int) {
+		exitCode, out, err := lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, partitions[i], h.LanguageVersion)
+		results[i] = partitionResult{exitCode: exitCode, output: out, err: err}
 	}
 
-	results := make([]batchResult, len(batches))
-
-	if maxJobs <= 1 || len(batches) <= 1 {
-		// Sequential execution.
-		for i, batch := range batches {
-			exitCode, out, err := lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, batch, h.LanguageVersion)
-			results[i] = batchResult{exitCode: exitCode, output: out, err: err}
+	if threads := min(len(partitions), concurrency); threads <= 1 {
+		for i := range partitions {
+			run(i)
 		}
 	} else {
-		// Parallel execution.
 		var wg sync.WaitGroup
-		sem := make(chan struct{}, maxJobs)
-		for i, batch := range batches {
-			wg.Add(1)
-			go func(idx int, files []string) {
-				defer wg.Done()
+		sem := make(chan struct{}, threads)
+		for i := range partitions {
+			wg.Go(func() {
 				sem <- struct{}{}
 				defer func() { <-sem }()
-				exitCode, out, err := lang.Run(ctx, h.RepoDir, workDir, h.Entry, h.Args, files, h.LanguageVersion)
-				results[idx] = batchResult{exitCode: exitCode, output: out, err: err}
-			}(i, batch)
+				run(i)
+			})
 		}
 		wg.Wait()
 	}
 
-	// Aggregate results.
 	var allOutput []byte
 	exitCode := 0
 	for _, r := range results {
@@ -473,57 +478,46 @@ func runHookXargs(
 			return -1, allOutput, r.err
 		}
 		allOutput = append(allOutput, r.output...)
-		if r.exitCode != 0 {
+		if absInt(r.exitCode) > absInt(exitCode) {
 			exitCode = r.exitCode
 		}
 	}
-
 	return exitCode, allOutput, nil
 }
 
-// batchFileArgs splits file arguments into batches.
-func batchFileArgs(files []string, maxBatchSize int) [][]string {
-	if maxBatchSize <= 0 || len(files) <= maxBatchSize {
-		return [][]string{files}
+func absInt(n int) int {
+	if n < 0 {
+		return -n
 	}
-	var batches [][]string
-	for i := 0; i < len(files); i += maxBatchSize {
-		end := i + maxBatchSize
-		if end > len(files) {
-			end = len(files)
-		}
-		batches = append(batches, files[i:end])
-	}
-	return batches
+	return n
 }
 
-// targetConcurrency returns the target number of parallel jobs.
-// Matches Python pre-commit: min(cpu_count, max(1, fileCount/4)) when jobs is unset.
-// An explicit jobs value overrides the file-count cap.
-func targetConcurrency(jobs, fileCount int) int {
-	if os.Getenv("PRE_COMMIT_NO_CONCURRENCY") != "" {
+// hookCommand approximates the command upstream partitions a hook's files
+// against: the split entry plus args, with the executable resolved on PATH
+// as parse_shebang.normalize_cmd resolves it. Only its length matters, and
+// only when a partition nears the platform's command-length limit.
+func hookCommand(h *Hook) []string {
+	cmd := append(languages.ParseEntry(h.Entry), h.Args...)
+	if len(cmd) > 0 && !strings.ContainsAny(cmd[0], `/\`) {
+		if exe, err := exec.LookPath(cmd[0]); err == nil {
+			cmd[0] = exe
+		}
+	}
+	return cmd
+}
+
+// targetConcurrency is the number of partitions a non-serial hook targets.
+// It is upstream's lang_base.target_concurrency (PRE_COMMIT_NO_CONCURRENCY,
+// then TRAVIS, then the CPU count) unless --jobs gave an explicit count,
+// which PRE_COMMIT_NO_CONCURRENCY still overrides.
+func targetConcurrency(jobs int) int {
+	if _, ok := os.LookupEnv("PRE_COMMIT_NO_CONCURRENCY"); ok {
 		return 1
 	}
 	if jobs > 0 {
 		return jobs
 	}
-	n := runtime.NumCPU()
-	if os.Getenv("TRAVIS") != "" {
-		n = 2
-	}
-	if n < 1 {
-		n = 1
-	}
-	if fileCount > 0 {
-		capped := fileCount / 4
-		if capped < 1 {
-			capped = 1
-		}
-		if capped < n {
-			n = capped
-		}
-	}
-	return n
+	return xargs.TargetConcurrency()
 }
 
 // worktreeDiff returns the working tree's diff against the host index, the

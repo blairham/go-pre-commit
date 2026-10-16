@@ -36,12 +36,6 @@ type Executor struct {
 	TargetConcurrency int
 }
 
-// DefaultMaxBatchSize returns the default maximum number of file arguments per batch.
-// A value of 0 means unlimited (all files in one batch).
-func DefaultMaxBatchSize() int {
-	return 0
-}
-
 // NewExecutor creates an Executor with default settings.
 func NewExecutor() *Executor {
 	return &Executor{

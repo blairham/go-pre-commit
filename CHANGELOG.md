@@ -101,6 +101,17 @@ file was introduced; the full notes are on the
   them (untracked files are no longer copied in). A git command that fails
   is now upstream's `An unexpected error has occurred: CalledProcessError:
   ...` with exit 3. (#134)
+- Hooks run in upstream's xargs partitions instead of one invocation. The
+  files are split into runs of at most `max(4, ceil(files / jobs))`
+  arguments, each also short enough for the platform's command-length limit
+  (ARG_MAX less the environment, clamped to 4096..131072 bytes; 30720 UTF-16
+  units on Windows, about 7 KB for a `.bat`/`.cmd`), and run on
+  `min(partitions, jobs)` workers with their output joined in partition
+  order and the exit code of largest magnitude. `jobs` is the CPU count, 2
+  under `TRAVIS`, and 1 under `PRE_COMMIT_NO_CONCURRENCY` or for a
+  `require_serial` hook; `run --jobs` still overrides it. A hook that prints
+  once per invocation now prints as often as upstream's does, and a large
+  file list no longer risks exceeding the OS argument limit. (#132)
 - Hooks receive their files in upstream's order. Upstream shuffles each
   hook's file list with a fixed-seed `random.Random` before splitting it into
   xargs batches, unless the hook is `require_serial`; this port never
