@@ -4,6 +4,7 @@
 package config
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -636,62 +637,92 @@ func TestDefaultConfig(t *testing.T) {
 
 // --- WarnMutableRev tests ---
 
+// captureStdout runs fn with os.Stdout redirected and returns what it wrote,
+// with color forced off so the bytes are upstream's uncolored log line.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	t.Setenv("PRE_COMMIT_COLOR", "never")
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+	fn()
+	w.Close()
+	data, err := io.ReadAll(r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func TestWarnMutableRev(t *testing.T) {
-	// WarnMutableRev writes to stderr for mutable refs.
-	// We capture stderr to verify the warning is emitted.
-	mutableRefs := []string{"main", "master", "develop", "HEAD"}
-	for _, ref := range mutableRefs {
-		t.Run(ref, func(t *testing.T) {
-			// Redirect stderr.
-			oldStderr := os.Stderr
-			r, w, err := os.Pipe()
-			if err != nil {
-				t.Fatal(err)
+	const repo = "https://github.com/example/repo"
+	want := "[WARNING] The 'rev' field of repo 'https://github.com/example/repo' " +
+		"appears to be a mutable reference (moving tag / branch).  Mutable " +
+		"references are never updated after first install and are not " +
+		"supported.  See https://pre-commit.com/#using-the-latest-version-for-a-repository " +
+		"for more details.  Hint: `pre-commit autoupdate` often fixes this.\n"
+
+	// Upstream's rule: warn when there is no '.' and the rev is not all hex.
+	cases := []struct {
+		rev  string
+		warn bool
+	}{
+		{"main", true},
+		{"master", true},
+		{"HEAD", true},
+		{"stable", true},
+		{"v1", true},
+		{"v1.2.3", false},
+		{"1.0", false},
+		{"release.candidate", false},
+		{"deadbeef", false},
+		{"DEADBEEF", false},
+		{"0123456789abcdef0123456789abcdef01234567", false},
+		{"cafe-1", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rev, func(t *testing.T) {
+			got := captureStdout(t, func() { WarnMutableRev(repo, tc.rev) })
+			if tc.warn && got != want {
+				t.Errorf("rev %q:\n got: %q\nwant: %q", tc.rev, got, want)
 			}
-			os.Stderr = w
-
-			WarnMutableRev("https://github.com/example/repo", ref)
-
-			w.Close()
-			os.Stderr = oldStderr
-
-			buf := make([]byte, 4096)
-			n, _ := r.Read(buf)
-			r.Close()
-			output := string(buf[:n])
-
-			if !strings.Contains(output, "WARNING") {
-				t.Errorf("expected WARNING in output for ref %q, got: %q", ref, output)
-			}
-			if !strings.Contains(output, "mutable reference") {
-				t.Errorf("expected 'mutable reference' in output for ref %q, got: %q", ref, output)
+			if !tc.warn && got != "" {
+				t.Errorf("rev %q: expected no warning, got %q", tc.rev, got)
 			}
 		})
 	}
+}
 
-	// Non-mutable refs should produce no warning.
-	t.Run("pinned_ref_no_warning", func(t *testing.T) {
-		oldStderr := os.Stderr
-		r, w, err := os.Pipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		os.Stderr = w
+func TestWarnMutableRevQuotesRepoLikePython(t *testing.T) {
+	got := captureStdout(t, func() { WarnMutableRev("/tmp/it's", "v1") })
+	if !strings.Contains(got, `repo "/tmp/it's" appears`) {
+		t.Errorf("repo not rendered as Python repr: %q", got)
+	}
+}
 
-		WarnMutableRev("https://github.com/example/repo", "v1.2.3")
-
-		w.Close()
-		os.Stderr = oldStderr
-
-		buf := make([]byte, 4096)
-		n, _ := r.Read(buf)
-		r.Close()
-		output := string(buf[:n])
-
-		if len(output) > 0 {
-			t.Errorf("expected no output for pinned ref, got: %q", output)
-		}
-	})
+func TestLoadConfigWarnsMutableRevForPathRepo(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".pre-commit-config.yaml")
+	cfg := "repos:\n" +
+		"-   repo: /some/path\n    rev: v1\n    hooks:\n    -   id: a\n" +
+		"-   repo: local\n    hooks:\n    -   id: b\n        name: b\n        entry: b\n        language: system\n" +
+		"-   repo: https://example.com/r\n    rev: v1.0.0\n    hooks:\n    -   id: c\n"
+	if err := os.WriteFile(path, []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	got := captureStdout(t, func() { _, err = LoadConfig(path) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(got, "[WARNING]"); n != 1 || !strings.Contains(got, "'/some/path'") {
+		t.Errorf("want exactly one warning, for /some/path; got %q", got)
+	}
 }
 
 // --- AllStages / AllHookTypes tests ---

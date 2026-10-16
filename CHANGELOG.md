@@ -15,6 +15,11 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- The mutable-`rev` warning is upstream's. It fired only for a `rev` of
+  exactly `master`, `main`, `develop` or `HEAD`, on stderr, in this port's own
+  words; it now fires for any `rev` with no `.` that is not all hex (so `v1`
+  and `stable` warn, as do path repos), with upstream's wording, as a
+  `[WARNING]` line on stdout. (#135)
 - Hooks receive their files in upstream's order. Upstream shuffles each
   hook's file list with a fixed-seed `random.Random` before splitting it into
   xargs batches, unless the hook is `require_serial`; this port never
