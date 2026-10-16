@@ -193,7 +193,7 @@ func (c *RunCommand) Run(args []string) int {
 
 	// Install environments (unless --no-install).
 	if !opts.NoInstall {
-		if err := hook.InstallEnvironments(context.Background(), hooks); err != nil {
+		if err := hook.InstallEnvironments(context.Background(), hooks, s.ExclusiveLock); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to install environments: %v\n", err)
 			return 1
 		}

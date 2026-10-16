@@ -344,7 +344,7 @@ func installAllHookEnvironments(cfgPath string) error {
 		return fmt.Errorf("failed to resolve hooks: %w", err)
 	}
 
-	return hook.InstallEnvironments(context.Background(), hooks)
+	return hook.InstallEnvironments(context.Background(), hooks, s.ExclusiveLock)
 }
 
 func resolveHooksDir(hookDir string) (string, error) {

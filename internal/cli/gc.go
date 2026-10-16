@@ -6,6 +6,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	flags "github.com/jessevdk/go-flags"
@@ -81,6 +82,7 @@ func (c *GCCommand) Run(args []string) int {
 				}
 			default:
 				usedRepos[repo.Repo+"@"+repo.Rev] = true
+				markDepsClonesUsed(s, repo, usedRepos)
 			}
 		}
 	}
@@ -113,4 +115,35 @@ Options:
 
 func (c *GCCommand) Synopsis() string {
 	return "Clean unused cached repos"
+}
+
+// markDepsClonesUsed is the dependency half of upstream's _mark_used_repos: a
+// hook whose additional_dependencies (its own, or else the manifest's) are
+// non-empty runs from a clone of its own, recorded under DBRepoName, and that
+// clone is in use too. Like upstream, it needs the repo's manifest to know the
+// manifest's dependencies, so a repo that is not cloned marks nothing more.
+func markDepsClonesUsed(s *store.Store, repo config.RepoConfig, used map[string]bool) {
+	path := s.GetPath(repo.Repo, repo.Rev)
+	if path == "" {
+		return
+	}
+	manifest, err := config.LoadManifest(filepath.Join(path, config.ManifestFile))
+	if err != nil {
+		return
+	}
+	byID := make(map[string]*config.ManifestHook, len(manifest))
+	for i := range manifest {
+		byID[manifest[i].ID] = &manifest[i]
+	}
+	for _, h := range repo.Hooks {
+		mh, ok := byID[h.ID]
+		if !ok {
+			continue
+		}
+		deps := h.AdditionalDependencies
+		if deps == nil {
+			deps = mh.AdditionalDependencies
+		}
+		used[store.DBRepoName(repo.Repo, deps)+"@"+repo.Rev] = true
+	}
 }

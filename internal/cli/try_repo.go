@@ -233,7 +233,7 @@ func (c *TryRepoCommand) Run(args []string) int {
 	// Upstream's try_repo hands off to run, which installs each hook's
 	// environment first; without this every python, node or golang hook
 	// errors with its executable not found.
-	if err := hook.InstallEnvironments(context.Background(), hooks); err != nil {
+	if err := hook.InstallEnvironments(context.Background(), hooks, s.ExclusiveLock); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to install environments: %v\n", err)
 		return 1
 	}

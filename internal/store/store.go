@@ -87,13 +87,36 @@ func cloneDirName(repo, rev string) string {
 	return fmt.Sprintf("repo%x", hash[:8])
 }
 
+// DBRepoName is upstream's Store.db_repo_name: the name a clone is recorded
+// under, which encodes the additional_dependencies installed into it — the
+// repo on its own, or `repo:dep1,dep2`. Hooks of one repo that declare
+// different dependencies therefore get separate clones, and with them separate
+// environments, instead of sharing one directory and each rewriting the
+// other's install state on every run.
+func DBRepoName(repo string, deps []string) string {
+	if len(deps) == 0 {
+		return repo
+	}
+	return repo + ":" + strings.Join(deps, ",")
+}
+
 // Clone clones a hook repository and returns the local path.
 func (s *Store) Clone(repo, rev string) (string, error) {
+	return s.CloneWithDeps(repo, rev, nil)
+}
+
+// CloneWithDeps is upstream's Store.clone(repo, ref, deps): the clone that
+// backs hooks of repo@rev declaring deps as their additional_dependencies. It
+// is recorded under DBRepoName(repo, deps), so each distinct dependency set
+// has a clone of its own; with no deps it is the plain clone.
+func (s *Store) CloneWithDeps(repo, rev string, deps []string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	name := DBRepoName(repo, deps)
+
 	// Check if already cloned.
-	if path, err := s.lookup(repo, rev); err == nil {
+	if path, err := s.lookup(name, rev); err == nil {
 		return path, nil
 	}
 
@@ -109,13 +132,13 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 	defer unlock()
 
 	// Double-check after acquiring lock (another process may have cloned).
-	if path, err := s.lookup(repo, rev); err == nil {
+	if path, err := s.lookup(name, rev); err == nil {
 		return path, nil
 	}
 
-	output.Info("Initializing environment for %s.", repo)
+	output.Info("Initializing environment for %s.", name)
 
-	dest := filepath.Join(s.dir, cloneDirName(repo, rev))
+	dest := filepath.Join(s.dir, cloneDirName(name, rev))
 
 	// The path is derived from repo+rev, so a directory left behind by a failed
 	// clone or a partial GC sits exactly where this clone wants to go. Clear it
@@ -139,7 +162,7 @@ func (s *Store) Clone(repo, rev string) (string, error) {
 	}
 
 	// Save to database.
-	if err := s.save(repo, rev, dest); err != nil {
+	if err := s.save(name, rev, dest); err != nil {
 		return "", err
 	}
 
@@ -446,6 +469,13 @@ func (s *Store) save(repo, rev, path string) error {
 	}
 	s.cache[s.cacheKey(repo, rev)] = path
 	return nil
+}
+
+// ExclusiveLock is upstream's Store.exclusive_lock: the store-wide file lock
+// that serializes work on the store across pre-commit processes. It returns
+// the function that releases it.
+func (s *Store) ExclusiveLock() (func(), error) {
+	return s.acquireLock()
 }
 
 // acquireLock acquires file-level locking for concurrent process safety.

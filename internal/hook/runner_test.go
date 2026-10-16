@@ -681,7 +681,7 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 		Language:        "golang",
 		LanguageVersion: "default",
 	}
-	if err := InstallEnvironments(context.Background(), []*Hook{h}); err != nil {
+	if err := InstallEnvironments(context.Background(), []*Hook{h}, nil); err != nil {
 		t.Fatalf("InstallEnvironments over a stateless leftover env: %v", err)
 	}
 
@@ -726,5 +726,48 @@ func TestShuffledFileArgs(t *testing.T) {
 		if !slices.Equal(orig, in) {
 			t.Errorf("%s: shuffled the caller's slice in place: %q", tc.language, orig)
 		}
+	}
+}
+
+// Upstream's install_hook_envs takes the store's exclusive lock and asks again
+// what needs installing once it holds it: another process may have finished
+// the same install while this one waited. Installing anyway put two processes
+// into one environment directory at once.
+func TestInstallEnvironmentsRechecksUnderLock(t *testing.T) {
+	repoDir := t.TempDir() // no go.mod: an install attempt here would fail
+	h := &Hook{
+		ID:              "hookrepo",
+		Repo:            "example.com/hookrepo",
+		RepoDir:         repoDir,
+		Language:        "golang",
+		LanguageVersion: "default",
+	}
+	envPath := filepath.Join(repoDir, "go_env-default")
+
+	locked, unlocked := 0, 0
+	lock := func() (func(), error) {
+		locked++
+		// The other process finishes while this one waits for the lock.
+		if err := os.MkdirAll(envPath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(envPath, installStateFile), []byte(h.InstallKey()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return func() { unlocked++ }, nil
+	}
+	if err := InstallEnvironments(context.Background(), []*Hook{h}, lock); err != nil {
+		t.Fatalf("InstallEnvironments should find the env installed once it holds the lock: %v", err)
+	}
+	if locked != 1 || unlocked != 1 {
+		t.Errorf("lock taken %d times and released %d, want 1 and 1", locked, unlocked)
+	}
+
+	// Nothing to install: the lock is not taken at all.
+	if err := InstallEnvironments(context.Background(), []*Hook{h}, lock); err != nil {
+		t.Fatal(err)
+	}
+	if locked != 1 {
+		t.Errorf("an installed env should not take the lock, taken %d times", locked)
 	}
 }

@@ -589,7 +589,43 @@ type installTask struct {
 
 // InstallEnvironments installs environments for all provided hooks.
 // Installs are run in parallel since each operates on a separate directory.
-func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
+//
+// lock, when non-nil, is the store's exclusive lock, taken around the
+// installs as upstream's install_hook_envs does. Without it two pre-commit
+// processes sharing a store (two commits in sibling worktrees) each install
+// into the same environment directory at once, and one's cleanup removes the
+// other's half-built module cache.
+func InstallEnvironments(_ context.Context, hooks []*Hook, lock func() (func(), error)) error {
+	tasks, err := environmentsToInstall(hooks)
+	if err != nil || len(tasks) == 0 {
+		return err
+	}
+	if lock != nil {
+		unlock, err := lock()
+		if err != nil {
+			return fmt.Errorf("failed to acquire store lock: %w", err)
+		}
+		defer unlock()
+		// Another process may have already completed this work.
+		if tasks, err = environmentsToInstall(hooks); err != nil || len(tasks) == 0 {
+			return err
+		}
+	}
+	for _, t := range tasks {
+		// Leftovers at the path (a stale install state, a partial install)
+		// are removed before installing, as upstream's _hook_install does.
+		envPath := languages.EnvPath(t.hook.RepoDir, t.lang, t.hook.LanguageVersion)
+		if err := fsutil.RemoveAll(envPath); err != nil {
+			return fmt.Errorf("failed to clear %s before installing: %w", envPath, err)
+		}
+	}
+	return installTasks(tasks)
+}
+
+// environmentsToInstall is upstream's _need_installed: one task per distinct
+// install key whose environment is not already installed with the same
+// dependencies.
+func environmentsToInstall(hooks []*Hook) ([]installTask, error) {
 	// Deduplicate and filter to only hooks that need installation.
 	seen := make(map[string]bool)
 	var tasks []installTask
@@ -603,7 +639,7 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 
 		lang, err := languages.Get(h.Language)
 		if err != nil {
-			return fmt.Errorf("unsupported language %q for hook %q: %w", h.Language, h.ID, err)
+			return nil, fmt.Errorf("unsupported language %q for hook %q: %w", h.Language, h.ID, err)
 		}
 
 		if lang.EnvironmentDir() == "" {
@@ -617,35 +653,25 @@ func InstallEnvironments(ctx context.Context, hooks []*Hook) error {
 
 		envPath := languages.EnvPath(envDir, lang, h.LanguageVersion)
 		stateFile := filepath.Join(envPath, installStateFile)
-		expectedState := h.InstallKey()
-
-		if data, err := os.ReadFile(stateFile); err == nil {
-			if string(data) == expectedState {
-				continue // Already installed with same deps.
-			}
-			// State mismatch — deps changed, need reinstall.
-			// A golang/cargo env is read-only; plain os.RemoveAll would leave it
-			// behind and the stale env would be reused despite the state mismatch.
-			_ = fsutil.RemoveAll(envPath)
-		} else if _, statErr := os.Stat(envPath); statErr == nil {
-			// Env dir exists but carries no valid state: a partial install, an
-			// interrupted run, or a CI cache restore that dropped the state
-			// file. Installing OVER such leftovers is not safe — golang's
-			// `go install ./...` runs in the hook repo with the env (and its
-			// module cache) nested inside it, so a pre-populated pkg/mod makes
-			// the pattern walk fail with "directory … outside main module".
-			// Python pre-commit removes an existing env before every install
-			// (repository.py _hook_install); mirror that for stateless leftovers.
-			_ = fsutil.RemoveAll(envPath)
+		if data, err := os.ReadFile(stateFile); err == nil && string(data) == h.InstallKey() {
+			continue // Already installed with same deps.
 		}
-
+		// A state mismatch (deps changed), or an env dir with no valid state
+		// (a partial install, an interrupted run, or a CI cache restore that
+		// dropped the state file): either way it is reinstalled, and the
+		// caller clears the directory first. Installing OVER such leftovers
+		// is not safe — golang's `go install ./...` runs in the hook repo with
+		// the env (and its module cache) nested inside it, so a pre-populated
+		// pkg/mod makes the pattern walk fail with "directory … outside main
+		// module"; and a golang/cargo env is read-only, so fsutil.RemoveAll is
+		// what clears it.
 		tasks = append(tasks, installTask{hook: h, lang: lang})
 	}
+	return tasks, nil
+}
 
-	if len(tasks) == 0 {
-		return nil
-	}
-
+// installTasks runs the installs and writes each one's install state.
+func installTasks(tasks []installTask) error {
 	// Run installs in parallel with bounded concurrency.
 	maxWorkers := runtime.NumCPU()
 	if maxWorkers > len(tasks) {

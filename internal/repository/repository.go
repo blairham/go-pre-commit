@@ -238,6 +238,19 @@ func (r *Resolver) resolveRemoteRepo(ctx context.Context, repo *config.RepoConfi
 		if err := checkAdditionalDependencies(h); err != nil {
 			return nil, err
 		}
+		// Upstream's _cloned_repository_hooks gives each hook the prefix
+		// store.clone(repo, rev, additional_dependencies): a hook with
+		// dependencies of its own gets a clone of its own to build its
+		// environment in. Sharing repoDir instead puts two dependency sets
+		// in one environment directory, where each install overwrites the
+		// other's state and the next run reinstalls both.
+		if len(h.AdditionalDependencies) > 0 {
+			depsDir, err := r.Store.CloneWithDeps(repo.Repo, repo.Rev, h.AdditionalDependencies)
+			if err != nil {
+				return nil, fmt.Errorf("cloning %s@%s: %w", repo.Repo, repo.Rev, err)
+			}
+			h.RepoDir = depsDir
+		}
 		hooks = append(hooks, h)
 	}
 

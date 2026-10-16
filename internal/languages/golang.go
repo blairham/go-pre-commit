@@ -9,6 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+
+	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
+	"github.com/blairham/go-pre-commit/v4/internal/git"
 )
 
 // Golang implements the Language interface for Go hooks.
@@ -28,21 +32,30 @@ func (g *Golang) HealthCheck(prefix, version string) error {
 	return nil
 }
 
-// goInstallEnv builds the env overrides for installing a golang hook env.
-// GOTOOLCHAIN defaults to "local" so a hook repo's go.mod can't pull in a
-// different toolchain — unless the caller set GOTOOLCHAIN explicitly. CI pins
-// a repo-matching toolchain (e.g. GOTOOLCHAIN=go1.26.4) so hooks whose module
-// requires a newer Go than the one on PATH can still build; forcing "local"
-// over that pin makes such installs unbuildable.
+// goInstallEnv is the environment upstream's golang.install_environment
+// (4.7.0) gives `go install` for a system Go: the caller's environment
+// without git's variables (no_git_env) and GOPATH pointed at the hook env.
+// Nothing else is touched — GOPROXY, GOFLAGS, GOMODCACHE and GOTOOLCHAIN
+// reach `go install` exactly as the caller set them, so it resolves modules
+// the way the same command run by hand does.
+//
+// Upstream removes GOBIN so the binaries land in GOPATH/bin. This sets GOBIN
+// to GOPATH/bin instead, which is the same directory, because removing it is
+// not enough wherever something else supplies one: asdf's go shim exports
+// GOBIN into the go command when it is unset, and `go env -w GOBIN` lives in
+// a file the environment cannot remove. Either one sends the binaries out of
+// the env, and the hook's entry is then not found.
 func goInstallEnv(envDir string) []string {
-	env := []string{
-		fmt.Sprintf("GOPATH=%s", envDir),
-		fmt.Sprintf("GOBIN=%s", filepath.Join(envDir, "bin")),
+	base := git.NoGitEnv()
+	env := make([]string, 0, len(base)+2)
+	for _, kv := range base {
+		k, _, _ := strings.Cut(kv, "=")
+		if k == "GOBIN" || k == "GOPATH" {
+			continue
+		}
+		env = append(env, kv)
 	}
-	if os.Getenv("GOTOOLCHAIN") == "" {
-		env = append(env, "GOTOOLCHAIN=local")
-	}
-	return env
+	return append(env, "GOPATH="+envDir, "GOBIN="+filepath.Join(envDir, "bin"))
 }
 
 func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []string) error {
@@ -51,10 +64,9 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 	env := goInstallEnv(envDir)
 
 	// Install the hook package.
-	args := []string{"install", "./..."}
-	cmd := exec.Command("go", args...)
+	cmd := exec.Command("go", "install", "./...")
 	cmd.Dir = prefix
-	cmd.Env = append(cmd.Environ(), env...)
+	cmd.Env = env
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("go install failed: %s: %w", string(out), err)
 	}
@@ -63,13 +75,15 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 	for _, dep := range additionalDeps {
 		cmd := exec.Command("go", "install", dep)
 		cmd.Dir = prefix
-		cmd.Env = append(cmd.Environ(), env...)
+		cmd.Env = env
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("go install %s failed: %s: %w", dep, string(out), err)
 		}
 	}
 
-	return nil
+	// As upstream: the module cache under GOPATH/pkg is not needed once the
+	// binaries are built, so it is removed to save disk space.
+	return fsutil.RemoveAll(filepath.Join(envDir, "pkg"))
 }
 
 // Run implements Language.
@@ -79,11 +93,10 @@ func (g *Golang) Run(
 	args, fileArgs []string,
 	version string,
 ) (int, []byte, error) {
+	// upstream's get_env_patch for a system Go: only PATH changes. GOPATH is
+	// left as the caller has it, so a hook that runs the go tool (govulncheck,
+	// say) uses the caller's module cache rather than refilling the env's.
 	envDir := filepath.Join(prefix, g.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	env := []string{
-		PrependPath(binDir),
-		fmt.Sprintf("GOPATH=%s", envDir),
-	}
+	env := []string{PrependPath(filepath.Join(envDir, "bin"))}
 	return RunHookCommand(ctx, workDir, entry, args, fileArgs, env)
 }
