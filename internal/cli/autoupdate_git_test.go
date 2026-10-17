@@ -287,3 +287,48 @@ func TestYAMLScalar(t *testing.T) {
 		}
 	}
 }
+
+// Upstream's autoupdate runs migrate_config first, and a config whose rev
+// lines it cannot find is re-dumped by PyYAML. "has been migrated" is a
+// print(), so into a pipe it follows the update lines. Expected output and
+// files captured from pre-commit 4.7.0.
+func TestAutoupdateMigratesFirst(t *testing.T) {
+	hooks, _ := hooksRepo(t)
+	t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+
+	for _, tc := range []struct{ name, in, want string }{
+		{
+			name: "list config with sha",
+			in:   "-   repo: %s\n    sha: v1.0.0\n    hooks:\n    -   id: no-todo\n",
+			want: "repos:\n-   repo: %s\n    rev: v1.1.0\n    hooks:\n    -   id: no-todo\n",
+		},
+		{
+			name: "flow config reformatted",
+			in:   "repos: [{repo: %s, rev: v1.0.0, hooks: [{id: no-todo, args: [--x, 'y z', 'yes'], stages: [commit]}]}]\n",
+			want: "repos:\n-   repo: %s\n    rev: v1.1.0\n    hooks:\n    -   id: no-todo\n        args:\n" +
+				"        - --x\n        - y z\n        - 'yes'\n        stages:\n        - pre-commit\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := tempRepo(t)
+			t.Chdir(root)
+			cfg := filepath.Join(root, ".pre-commit-config.yaml")
+			if err := os.WriteFile(cfg, []byte(fmt.Sprintf(tc.in, hooks)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var code int
+			stdout, stderr := captureOutput(t, func() { code = (&AutoupdateCommand{}).Run([]string{"--color=never"}) })
+			if code != 0 {
+				t.Errorf("exit = %d, want 0", code)
+			}
+			wantOut := "[" + hooks + "] updating v1.0.0 -> v1.1.0\nConfiguration has been migrated.\n"
+			if stdout != wantOut || stderr != "" {
+				t.Errorf("stdout = %q, stderr = %q; want stdout %q and no stderr", stdout, stderr, wantOut)
+			}
+			got, _ := os.ReadFile(cfg)
+			if want := fmt.Sprintf(tc.want, hooks); string(got) != want {
+				t.Errorf("config:\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+}

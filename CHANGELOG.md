@@ -150,6 +150,20 @@ file was introduced; the full notes are on the
   language that installs no environment is refused in upstream's words, as
   `additional_dependencies` already was. Existing environments under the old
   names are not reused: each is reinstalled once under its new name. (#138)
+- `migrate-config` is a port of upstream's: it rewrites a bare list config
+  under `repos:` (indented only when it must be), and renames `sha:` to
+  `rev:`, `python_venv` to `python` and the old stage names only where
+  upstream's schema paths reach them, splicing each over its source text so
+  quotes, comments and the rest of the file are untouched. A file that is not
+  YAML is an `InvalidConfigError`, a missing one an unexpected error (exit
+  3), and an unchanged config says "Configuration is already migrated." It
+  used to substitute text anywhere in the file. `autoupdate` now runs it
+  first, as upstream does; into a pipe its "has been migrated" line follows
+  the update lines, where Python's buffered `print()` puts it. A config whose
+  `rev:` lines cannot be found is re-dumped as PyYAML dumps it (block style,
+  sequences not indented under their key, PyYAML's quoting, escaping and
+  80-column folding) rather than as yaml.v3 does, so the reformatted file is
+  upstream's byte for byte. (#160)
 - `language: fail` lists the files it failed on, as upstream's `fail.py`
   does: the entry, a blank line, then one file per line. It printed only the
   entry. (#128)

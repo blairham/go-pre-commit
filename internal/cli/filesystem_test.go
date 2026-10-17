@@ -269,8 +269,8 @@ func TestMigrateConfigCommand_AlreadyUpToDate(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
-	if !strings.Contains(out, "already up to date") {
-		t.Errorf("expected 'already up to date' in output, got %q", out)
+	if out != "Configuration is already migrated.\n" {
+		t.Errorf("expected upstream's 'already migrated' line, got %q", out)
 	}
 }
 
