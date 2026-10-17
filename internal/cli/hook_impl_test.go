@@ -159,3 +159,50 @@ func TestPrePushArgs(t *testing.T) {
 		})
 	}
 }
+
+// Upstream's _validate_config, measured against pre-commit 4.7.0: the skip
+// message exits with the legacy hook's status, the other fails.
+func TestValidateHookConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("PRE_COMMIT_ALLOW_NO_CONFIG", "")
+	noConfig := "No .pre-commit-config.yaml file was found\n" +
+		"- To temporarily silence this, run `PRE_COMMIT_ALLOW_NO_CONFIG=1 git ...`\n" +
+		"- To permanently silence this, install pre-commit with the --allow-missing-config option\n" +
+		"- To uninstall pre-commit run `pre-commit uninstall`\n"
+	skipping := "`.pre-commit-config.yaml` config file not found. Skipping `pre-commit`.\n"
+	var stop bool
+	validate := func(retv int, skip bool) func() int {
+		return func() int {
+			var exit int
+			exit, stop = validateHookConfig(retv, ".pre-commit-config.yaml", skip)
+			return exit
+		}
+	}
+
+	out, code := runStdout(t, validate(0, false))
+	wantOut(t, "missing config", out, code, noConfig, 1)
+	out, code = runStdout(t, validate(3, true))
+	wantOut(t, "--skip-on-missing-config", out, code, skipping, 3)
+	t.Setenv("PRE_COMMIT_ALLOW_NO_CONFIG", "1")
+	out, code = runStdout(t, validate(0, false))
+	wantOut(t, "PRE_COMMIT_ALLOW_NO_CONFIG", out, code, skipping, 0)
+
+	// A directory is not a config file (os.path.isfile).
+	if err := os.Mkdir(".pre-commit-config.yaml", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, code = runStdout(t, validate(0, true))
+	wantOut(t, "config is a directory", out, code, skipping, 0)
+
+	if err := os.Remove(".pre-commit-config.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".pre-commit-config.yaml", []byte("repos: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _ = runStdout(t, validate(0, false))
+	if out != "" || stop {
+		t.Errorf("with a config: stop=%v out=%q", stop, out)
+	}
+}

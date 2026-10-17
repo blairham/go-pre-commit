@@ -1059,8 +1059,8 @@ func TestShlexQuote(t *testing.T) {
 		"it's":                      `'it'"'"'s'`,
 		"$HOME":                     "'$HOME'",
 	} {
-		if got := shlexQuote(in); got != want {
-			t.Errorf("shlexQuote(%q) = %q, want %q", in, got, want)
+		if got := ShlexQuote(in); got != want {
+			t.Errorf("ShlexQuote(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
