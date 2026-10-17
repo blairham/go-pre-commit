@@ -15,6 +15,14 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `language: rust` honors `language_version` as upstream's `rust.py` does.
+  For anything but `system`, the install gets the toolchain through rustup
+  (`default` is `stable`), downloading rustup-init into the env when there is
+  no rustup, and the hook runs with `RUSTUP_TOOLCHAIN` set. Additional
+  dependencies are split as upstream splits them: `cli:name[:version]` is
+  `cargo install`ed into the env, and any other is a library crate added to
+  the hook's Cargo.toml with `cargo add name@spec`; before, every one was
+  `cargo install`ed. (#166)
 - `validate-config` and `validate-manifest` print nothing for a valid file,
   as upstream does, instead of `Config file(s) are valid.` /
   `Manifest file(s) are valid.`. A failure is printed to stdout in cfgv's
