@@ -287,8 +287,9 @@ func TestMigrateConfigCommand_MissingFile(t *testing.T) {
 	}()
 	cmd := &MigrateConfigCommand{Meta: &Meta{}}
 	code := cmd.Run([]string{"--config", "/nonexistent/config.yaml"})
-	if code != 1 {
-		t.Fatalf("expected exit code 1, got %d", code)
+	// Upstream's open() raises FileNotFoundError, which is unexpected: 3.
+	if code != 3 {
+		t.Fatalf("expected exit code 3, got %d", code)
 	}
 }
 
