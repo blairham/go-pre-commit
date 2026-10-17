@@ -15,6 +15,9 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `language: pygrep`'s `\s` matches a vertical tab, as upstream's bytes
+  pattern does (`[ \t\n\r\f\v]`), and `\S` does not, inside a character
+  class too. RE2's `\s`, which pcre compiled it to, leaves `\v` out. (#181)
 - `language: pygrep` matches bytes, as upstream's bytes pattern does: `.`, a
   negated class and a counted repeat step one byte at a time, so `^x.$` no
   longer matches `x٣` while `^x..$` does; `\xHH` and octal escapes name
