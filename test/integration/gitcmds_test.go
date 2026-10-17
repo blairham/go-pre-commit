@@ -83,6 +83,7 @@ func TestAutoupdateFullOutput(t *testing.T) {
 	cases := []struct {
 		args                  []string
 		name, repo, rev, hook string
+		cfg                   string // a template taking only the repo, in place of tmpl
 	}{
 		{name: "local repo, comment kept", repo: hooks, rev: "v1.0.0  # keep", hook: "no-todo"},
 		{name: "local repo, --freeze", repo: hooks, rev: "v1.0.0", hook: "no-todo", args: []string{"--freeze"}},
@@ -97,10 +98,32 @@ func TestAutoupdateFullOutput(t *testing.T) {
 			name: "remote repo", repo: "https://github.com/pre-commit/pre-commit-hooks",
 			rev: "v4.0.0", hook: "check-yaml",
 		},
+		// autoupdate migrates the config first (#160).
+		{
+			name: "list config with sha is migrated first", repo: hooks,
+			cfg: "-   repo: %s\n    sha: v1.0.0\n    hooks:\n    -   id: no-todo\n",
+		},
+		{
+			name: "old stage names are migrated first", repo: hooks,
+			cfg: "repos:\n- repo: %s\n  rev: v1.0.0\n  hooks:\n  - id: no-todo\n    stages: [commit, push]\n",
+		},
+		// A config with no rev lines to rewrite is re-dumped by PyYAML.
+		{
+			name: "flow config is reformatted",
+			repo: hooks,
+			cfg:  "repos: [{repo: %s, rev: v1.0.0, hooks: [{id: no-todo, args: [--x, 'y z', 'yes', '1.0', caf\u00e9], stages: [commit]}]}]\n",
+		},
+		{
+			name: "flow list config is migrated and reformatted", repo: hooks,
+			cfg: "[{repo: %s, rev: v1.0.0, hooks: [{id: no-todo}]}]\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := fmt.Sprintf(tmpl, tc.repo, tc.rev, tc.hook)
+			if tc.cfg != "" {
+				cfg = fmt.Sprintf(tc.cfg, tc.repo)
+			}
 			pyRepo := initTestRepo(t, cfg, "")
 			goRepo := initTestRepo(t, cfg, "")
 			args := append([]string{"autoupdate", "--color=never"}, tc.args...)

@@ -4,7 +4,6 @@
 package cli
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -15,12 +14,11 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
+	"github.com/blairham/go-pre-commit/v4/internal/pyyaml"
 )
 
 // AutoupdateCommand implements the "autoupdate" command.
@@ -50,11 +48,12 @@ func (c *AutoupdateCommand) Run(args []string) int {
 		return fatalError(err)
 	}
 
-	// Upstream's autoupdate opens the config (in migrate_config) before it
-	// loads it, so a missing file is open()'s FileNotFoundError, not an
-	// InvalidConfigError.
-	if _, err = os.ReadFile(opts.Config); err != nil {
-		return reportError(err)
+	// Upstream's autoupdate migrates the config before it reads it. Its
+	// "has been migrated" is a print(), so into a pipe it comes out last.
+	stdout := newPyStdout()
+	defer stdout.Flush()
+	if code := migrateConfigExit(opts.Config, true, stdout.Print); code != 0 {
+		return code
 	}
 
 	cfg, err := config.LoadConfig(opts.Config)
@@ -401,49 +400,27 @@ func rewriteRevLines(original string, infos []*revInfo) (string, bool) {
 	return strings.Join(lines, ""), true
 }
 
-// yamlScalar renders s as upstream's yaml_dump with default_style does: in
-// the quote style the old rev used, and plain only where plain would still
-// read back as the same string (PyYAML single-quotes it otherwise).
+// yamlScalar is upstream's yaml_dump({'rev': s}, default_style=style)
+// cut after the key: s in the quote style the old rev used, where PyYAML can.
 func yamlScalar(s, style string) string {
-	switch style {
-	case "'":
-		return "'" + strings.ReplaceAll(s, "'", "''") + "'"
-	case `"`:
-		return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+	var ds byte
+	if style != "" {
+		ds = style[0]
 	}
-	out, err := yaml.Marshal(s)
-	if err != nil {
-		return s
-	}
-	if plain := strings.TrimSuffix(string(out), "\n"); plain == s {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+	v := &pyyaml.Value{Kind: pyyaml.Map, Pairs: []pyyaml.Pair{{
+		Key:   &pyyaml.Value{Kind: pyyaml.Str, Str: "rev"},
+		Value: &pyyaml.Value{Kind: pyyaml.Str, Str: s},
+	}}}
+	_, after, _ := strings.Cut(pyyaml.DumpStyle(v, ds), ":")
+	return strings.TrimSpace(after)
 }
 
-// reformatYAML re-dumps a config in block style with four-space indent, the
-// shape upstream's yaml_dump gives it.
+// reformatYAML is upstream's yaml_dump(yaml_load(original)): the config
+// re-dumped by PyYAML in block style with four-space indent.
 func reformatYAML(original []byte) ([]byte, error) {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(original, &doc); err != nil {
+	v, err := pyyaml.Load(universalNewlines(string(original)))
+	if err != nil {
 		return nil, err
 	}
-	clearStyle(&doc)
-	var b bytes.Buffer
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(4)
-	if err := enc.Encode(&doc); err != nil {
-		return nil, err
-	}
-	if err := enc.Close(); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
-}
-
-func clearStyle(n *yaml.Node) {
-	n.Style &^= yaml.FlowStyle
-	for _, c := range n.Content {
-		clearStyle(c)
-	}
+	return []byte(pyyaml.Dump(v)), nil
 }
