@@ -366,7 +366,11 @@ func LoadManifest(path string) ([]ManifestHook, error) {
 
 // Validate validates the config structure.
 func (c *Config) Validate() error {
-	if len(c.Repos) == 0 {
+	// Upstream's schema is cfgv.Required('repos', check_array(...)): only a
+	// missing key (or one that is not a list) fails; `repos: []` is a valid
+	// config with no hooks. YAML decodes `[]` to an empty, non-nil slice and a
+	// missing or null key to nil.
+	if c.Repos == nil {
 		return fmt.Errorf("'repos' is required")
 	}
 	for i, repo := range c.Repos {

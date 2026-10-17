@@ -778,6 +778,38 @@ func TestValidateConfig(t *testing.T) {
 	})
 }
 
+// TestEmptyRepos: upstream's schema is cfgv.Required('repos', check_array),
+// so `repos: []` is a valid config with no hooks, while a missing `repos`
+// key fails (#131).
+func TestEmptyRepos(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+
+	cmds := [][]string{
+		{"run", "--all-files"},
+		{"validate-config", ".pre-commit-config.yaml"},
+		{"install-hooks"},
+		{"autoupdate"},
+	}
+	for _, tc := range []struct {
+		name, cfg string
+		wantFail  bool
+	}{
+		{"repos: []", "repos: []\n", false},
+		{"missing repos", "fail_fast: true\n", true},
+	} {
+		for _, args := range cmds {
+			t.Run(tc.name+"/"+args[0], func(t *testing.T) {
+				pyRepo := initTestRepo(t, tc.cfg, "test\n")
+				goRepo := initTestRepo(t, tc.cfg, "test\n")
+				_, pyExit := runCmd(t, pyRepo, pyBin, args...)
+				_, goExit := runCmd(t, goRepo, goBinary, args...)
+				addExitResult(args[0], "config "+tc.name, pyExit, goExit,
+					pyExit == goExit && (goExit != 0) == tc.wantFail, "")
+			})
+		}
+	}
+}
+
 // warningLines returns the [WARNING] lines of out, which is how upstream's
 // logger reports config warnings.
 func warningLines(out string) []string {
