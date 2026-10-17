@@ -24,7 +24,7 @@ import (
 func writeReadOnlyEnv(t *testing.T, dir string) {
 	t.Helper()
 
-	modDir := filepath.Join(dir, "go_env-default", "pkg", "mod", "example.com", "dep@v1.0.0")
+	modDir := filepath.Join(dir, "golangenv-default", "pkg", "mod", "example.com", "dep@v1.0.0")
 	if err := os.MkdirAll(modDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestCloneClearsLeftoverDirectory(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(got, ".git")); err != nil {
 		t.Errorf("expected a real clone at %s: %v", got, err)
 	}
-	if _, err := os.Stat(filepath.Join(got, "go_env-default")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(got, "golangenv-default")); !os.IsNotExist(err) {
 		t.Errorf("stale environment should be gone, stat err = %v", err)
 	}
 }

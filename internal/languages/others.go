@@ -14,7 +14,7 @@ import (
 // condaLang is the Conda language backend.
 var condaLang = &SimpleLanguage{
 	LangName:   "conda",
-	EnvDirName: "conda_env",
+	EnvDirName: "conda",
 	HealthCheckFn: func(prefix, version string) error {
 		condaExe := condaExecutable()
 		cmd := exec.Command(condaExe, "--version")
@@ -67,7 +67,7 @@ func condaExecutable() string {
 // coursierLang is the Coursier (JVM) language backend.
 var coursierLang = &SimpleLanguage{
 	LangName:   "coursier",
-	EnvDirName: "coursier_env",
+	EnvDirName: "coursier",
 	HealthCheckFn: func(prefix, version string) error {
 		if _, err := exec.LookPath("cs"); err != nil {
 			if _, err := exec.LookPath("coursier"); err != nil {
@@ -89,7 +89,7 @@ var coursierLang = &SimpleLanguage{
 // dartLang is the Dart language backend.
 var dartLang = &SimpleLanguage{
 	LangName:     "dart",
-	EnvDirName:   "dart_env",
+	EnvDirName:   "dartenv",
 	HealthCmd:    []string{"dart", "--version"},
 	RunBinSubdir: "bin",
 	InstallFn: func(prefix, version, envDirName string, _ []string) error {
@@ -115,7 +115,7 @@ var dartLang = &SimpleLanguage{
 // dotnetLang is the .NET language backend.
 var dotnetLang = &SimpleLanguage{
 	LangName:   "dotnet",
-	EnvDirName: "dotnet_env",
+	EnvDirName: "dotnetenv",
 	HealthCmd:  []string{"dotnet", "--version"},
 	InstallCmd: func(envDir, prefix string) (string, []string) {
 		return "dotnet", []string{"tool", "install", "--tool-path", envDir, "--add-source", "."}
@@ -167,7 +167,7 @@ var perlLang = &SimpleLanguage{
 // rLang is the R language backend.
 var rLang = &SimpleLanguage{
 	LangName:   "r",
-	EnvDirName: "r_env",
+	EnvDirName: "renv",
 	HealthCmd:  []string{"Rscript", "--version"},
 	InstallCmd: func(envDir, prefix string) (string, []string) {
 		script := fmt.Sprintf(

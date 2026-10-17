@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/languages"
 	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
 
@@ -181,19 +182,11 @@ func MergeManifest(
 
 	// Apply global config defaults.
 	if globalCfg != nil {
-		if h.LanguageVersion == "" {
-			if v, ok := globalCfg.DefaultLanguageVersion[h.Language]; ok {
-				h.LanguageVersion = v
-			}
-		}
 		if len(h.Stages) == 0 && len(globalCfg.DefaultStages) > 0 {
 			h.Stages = globalCfg.DefaultStages
 		}
 	}
-
-	if h.LanguageVersion == "" {
-		h.LanguageVersion = "default"
-	}
+	resolveLanguageVersion(h, globalCfg)
 
 	return h
 }
@@ -267,19 +260,11 @@ func FromLocalConfig(hookCfg *config.HookConfig, globalCfg *config.Config) *Hook
 
 	// Apply global defaults.
 	if globalCfg != nil {
-		if h.LanguageVersion == "" {
-			if v, ok := globalCfg.DefaultLanguageVersion[h.Language]; ok {
-				h.LanguageVersion = v
-			}
-		}
 		if len(h.Stages) == 0 && len(globalCfg.DefaultStages) > 0 {
 			h.Stages = globalCfg.DefaultStages
 		}
 	}
-
-	if h.LanguageVersion == "" {
-		h.LanguageVersion = "default"
-	}
+	resolveLanguageVersion(h, globalCfg)
 
 	return h
 }
@@ -312,9 +297,29 @@ func FromManifestHook(manifest *config.ManifestHook) *Hook {
 	if len(h.Types) == 0 && len(h.TypesOr) == 0 {
 		h.Types = []string{"file"}
 	}
+	resolveLanguageVersion(h, nil)
+
+	return h
+}
+
+// resolveLanguageVersion is upstream's repository._hook (4.7.0): a
+// `language_version` of `default` (or none) becomes the config's
+// default_language_version for the language, and if that is `default` too,
+// the language's get_default_version — so the version the env directory is
+// named after, and the install and health check see, is the concrete one
+// upstream uses (`node_env-system`, `py_env-python3.12`, …).
+func resolveLanguageVersion(h *Hook, globalCfg *config.Config) {
 	if h.LanguageVersion == "" {
 		h.LanguageVersion = "default"
 	}
-
-	return h
+	if h.LanguageVersion == "default" && globalCfg != nil {
+		if v := globalCfg.DefaultLanguageVersion[h.Language]; v != "" {
+			h.LanguageVersion = v
+		}
+	}
+	if h.LanguageVersion == "default" {
+		if lang, err := languages.Get(h.Language); err == nil {
+			h.LanguageVersion = lang.GetDefaultVersion()
+		}
+	}
 }

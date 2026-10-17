@@ -44,16 +44,16 @@ func TestGoInstallEnvMatchesUpstream(t *testing.T) {
 	t.Setenv("GOMODCACHE", "/home/modcache")
 	t.Setenv("GOTOOLCHAIN", "go1.26.4")
 
-	env := goInstallEnv("/prefix/go_env-default", "system")
+	env := goInstallEnv("/prefix/golangenv-default", "system")
 
-	if v, _ := envValue(env, "GOPATH"); v != "/prefix/go_env-default" {
+	if v, _ := envValue(env, "GOPATH"); v != "/prefix/golangenv-default" {
 		t.Errorf("GOPATH = %q, want the env dir", v)
 	}
 	if n := slices.IndexFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "GOPATH=") }); n < 0 ||
 		slices.ContainsFunc(env[n+1:], func(kv string) bool { return strings.HasPrefix(kv, "GOPATH=") }) {
 		t.Errorf("env %v should carry exactly one GOPATH", env)
 	}
-	if v, _ := envValue(env, "GOBIN"); v != filepath.Join("/prefix/go_env-default", "bin") {
+	if v, _ := envValue(env, "GOBIN"); v != filepath.Join("/prefix/golangenv-default", "bin") {
 		t.Errorf("GOBIN = %q, want GOPATH/bin, where upstream's install puts the binaries", v)
 	}
 	if n := slices.IndexFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "GOBIN=") }); n < 0 ||
@@ -83,7 +83,7 @@ func TestGoInstallEnvLeavesUnsetToolchainUnset(t *testing.T) {
 	t.Setenv("GOTOOLCHAIN", "")
 	os.Unsetenv("GOTOOLCHAIN")
 
-	if v, ok := envValue(goInstallEnv("/prefix/go_env-default", "system"), "GOTOOLCHAIN"); ok {
+	if v, ok := envValue(goInstallEnv("/prefix/golangenv-default", "system"), "GOTOOLCHAIN"); ok {
 		t.Errorf("GOTOOLCHAIN = %q, want it left unset", v)
 	}
 }
@@ -109,7 +109,7 @@ func TestGolangRunLeavesGOPATHAlone(t *testing.T) {
 	if gopath != "/caller/gopath" {
 		t.Errorf("hook saw GOPATH=%q, want the caller's", gopath)
 	}
-	bin := filepath.Join(prefix, "go_env-system", "bin")
+	bin := filepath.Join(prefix, "golangenv-system", "bin")
 	if !strings.HasPrefix(path, bin+string(os.PathListSeparator)) {
 		t.Errorf("hook PATH %q should start with %s", path, bin)
 	}
@@ -132,7 +132,7 @@ func TestGolangInstallRemovesModuleCache(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	envDir := filepath.Join(prefix, "go_env-system")
+	envDir := filepath.Join(prefix, "golangenv-system")
 	if err := os.MkdirAll(filepath.Join(envDir, "pkg", "mod"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestGolangInstallDownloadsGo(t *testing.T) {
 			if err := (&Golang{}).InstallEnvironment(prefix, c.version, []string{"example.com/dep@v1"}); err != nil {
 				t.Fatalf("InstallEnvironment: %v", err)
 			}
-			envDir := filepath.Join(prefix, "go_env-"+c.version)
+			envDir := filepath.Join(prefix, "golangenv-"+c.version)
 			goroot := filepath.Join(envDir, ".go")
 			raw, err := os.ReadFile(record)
 			if err != nil {
@@ -256,7 +256,7 @@ func TestGolangInstallUnknownPlatform(t *testing.T) {
 func TestGoEnvPatch(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin")
 	sep := string(os.PathListSeparator)
-	env := "/p/go_env-x"
+	env := "/p/golangenv-x"
 	assertSliceEqual(t, goEnvPatch(env, "system"), []string{
 		"PATH=" + filepath.Join(env, "bin") + sep + "/usr/bin",
 	})
@@ -271,14 +271,14 @@ func TestGoEnvPatch(t *testing.T) {
 
 func TestGoInstallEnvDownloadedGo(t *testing.T) {
 	t.Setenv("GOTOOLCHAIN", "auto")
-	env := goInstallEnv("/p/go_env-default", "default")
+	env := goInstallEnv("/p/golangenv-default", "default")
 	if v, _ := envValue(env, "GOTOOLCHAIN"); v != "local" {
 		t.Errorf("GOTOOLCHAIN = %q, want local for a downloaded Go", v)
 	}
-	if v, _ := envValue(env, "GOROOT"); v != filepath.Join("/p/go_env-default", ".go") {
+	if v, _ := envValue(env, "GOROOT"); v != filepath.Join("/p/golangenv-default", ".go") {
 		t.Errorf("GOROOT = %q, want the download", v)
 	}
-	if v, _ := envValue(env, "PATH"); !strings.HasPrefix(v, filepath.Join("/p/go_env-default", ".go", "bin")) {
+	if v, _ := envValue(env, "PATH"); !strings.HasPrefix(v, filepath.Join("/p/golangenv-default", ".go", "bin")) {
 		t.Errorf("PATH = %q, want the download's bin first", v)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -35,13 +36,59 @@ func TestPythonEnvironmentDir(t *testing.T) {
 	}
 }
 
-// TestPythonGetDefaultVersion verifies the default version string.
-// The upstream get_default_version() returns a platform-specific string like
-// "python3.12"; our implementation returns the stable fallback "python3".
-func TestPythonGetDefaultVersion(t *testing.T) {
-	p := &Python{}
-	if got := p.GetDefaultVersion(); got != "python3" {
-		t.Errorf("GetDefaultVersion() = %q, want %q", got, "python3")
+// upstream's get_default_version, against a host interpreter and PATH: the
+// versioned name for the host's version first, then the major version, then
+// sys.executable's own name (never a bare python), else default.
+func TestPythonDefaultVersion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake interpreters are sh scripts")
+	}
+	for _, c := range []struct {
+		host  pythonHost
+		name  string
+		want  string
+		tools []string
+	}{
+		{name: "minor", tools: []string{"python3.12", "python3"}, host: pythonHost{exe: "/x/python3", major: "3", minor: "12"}, want: "python3.12"},
+		{name: "major", tools: []string{"python3"}, host: pythonHost{exe: "/x/python3", major: "3", minor: "12"}, want: "python3"},
+		{name: "other minor only", tools: []string{"python3.11"}, host: pythonHost{exe: "/x/python", major: "3", minor: "12"}, want: "default"},
+		{name: "sys.executable name", tools: []string{"pypy3"}, host: pythonHost{exe: "/x/pypy3", major: "3", minor: "10"}, want: "pypy3"},
+		{name: "no host", tools: []string{"python3.12"}, host: pythonHost{}, want: "default"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			fakeTools(t, dir, c.tools...)
+			t.Setenv("PATH", dir)
+			if got := pythonDefaultVersion(c.host); got != c.want {
+				t.Errorf("pythonDefaultVersion = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// upstream's norm_version: default, and any version the host already is,
+// leave virtualenv to its default interpreter; anything else is passed on.
+func TestNormPythonVersion(t *testing.T) {
+	host := pythonHost{exe: "/x/python3", major: "3", minor: "12"}
+	for version, want := range map[string]string{
+		"default":                "",
+		"python":                 "",
+		"python3":                "",
+		"python3.12":             "",
+		"python3.11":             "python3.11",
+		"python2":                "python2",
+		"pypy3":                  "pypy3",
+		"/opt/py/bin/python3.13": "/opt/py/bin/python3.13",
+	} {
+		if runtime.GOOS == "windows" {
+			break
+		}
+		if got := normPythonVersion(version, host); got != want {
+			t.Errorf("normPythonVersion(%q) = %q, want %q", version, got, want)
+		}
+	}
+	if got := normPythonVersion("python3.12", pythonHost{}); got != "python3.12" {
+		t.Errorf("without a host nothing matches: got %q", got)
 	}
 }
 

@@ -760,7 +760,7 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 	// Simulate the poisoned state: env dir with a populated module cache but
 	// no install_state_v2. The junk module has its own go.mod, which is what
 	// breaks the `./...` pattern walk when it survives into the install.
-	junk := filepath.Join(repoDir, "go_env-system", "pkg", "mod", "example.com", "junk@v1.0.0")
+	junk := filepath.Join(repoDir, "golangenv-system", "pkg", "mod", "example.com", "junk@v1.0.0")
 	if err := os.MkdirAll(junk, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -782,7 +782,7 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 		t.Fatalf("InstallEnvironments over a stateless leftover env: %v", err)
 	}
 
-	envPath := filepath.Join(repoDir, "go_env-system")
+	envPath := filepath.Join(repoDir, "golangenv-system")
 	if _, err := os.Stat(filepath.Join(envPath, "bin", "hookrepo")); err != nil {
 		t.Errorf("hook binary not installed: %v", err)
 	}
@@ -839,7 +839,7 @@ func TestInstallEnvironmentsRechecksUnderLock(t *testing.T) {
 		Language:        "golang",
 		LanguageVersion: "default",
 	}
-	envPath := filepath.Join(repoDir, "go_env-default")
+	envPath := filepath.Join(repoDir, "golangenv-default")
 
 	locked, unlocked := 0, 0
 	lock := func() (func(), error) {
