@@ -778,6 +778,58 @@ func TestValidateConfig(t *testing.T) {
 	})
 }
 
+// warningLines returns the [WARNING] lines of out, which is how upstream's
+// logger reports config warnings.
+func warningLines(out string) []string {
+	var lines []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "[WARNING]") {
+			lines = append(lines, l)
+		}
+	}
+	return lines
+}
+
+// TestMutableRevWarning compares upstream's WarnMutableRev: the rule (no '.'
+// and not hex), the wording, the [WARNING] prefix and the stream.
+func TestMutableRevWarning(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+
+	cases := []struct {
+		name, rev string
+		warns     bool
+	}{
+		{"branch", "main", true},
+		{"dotless tag", "v1", true},
+		{"dotted tag", "v1.2.3", false},
+		{"sha", "0123456789abcdef0123456789abcdef01234567", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			cfgPath := filepath.Join(tmp, ".pre-commit-config.yaml")
+			cfg := "repos:\n-   repo: https://github.com/pre-commit/pre-commit-hooks\n" +
+				"    rev: " + tc.rev + "\n    hooks:\n    -   id: trailing-whitespace\n"
+			if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			pyOut, pyErr, pyExit := runSplit(t, ".", pyBin, "validate-config", cfgPath)
+			goOut, goErr, goExit := runSplit(t, ".", goBinary, "validate-config", cfgPath)
+			pyW, goW := warningLines(pyOut), warningLines(goOut)
+			match := pyExit == goExit &&
+				strings.Join(pyW, "\n") == strings.Join(goW, "\n") &&
+				len(pyW) == map[bool]int{true: 1, false: 0}[tc.warns] &&
+				len(warningLines(pyErr)) == 0 && len(warningLines(goErr)) == 0
+			detail := ""
+			if !match {
+				detail = fmt.Sprintf("py stdout=%q stderr=%q; go stdout=%q stderr=%q", pyOut, pyErr, goOut, goErr)
+				t.Errorf("mutable-rev warning differs for rev %q: %s", tc.rev, detail)
+			}
+			addOutputResult("validate-config", "mutable-rev warning: "+tc.name, match, detail)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests: validate-manifest
 // ---------------------------------------------------------------------------

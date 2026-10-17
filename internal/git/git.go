@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 
 // NoGitEnv returns the current environment with GIT_* variables removed
@@ -370,35 +372,7 @@ func (e *CalledProcessError) Error() string {
 
 // pyRepr renders s the way Python's repr renders a str, which is how
 // upstream prints each argument of a failed command.
-func pyRepr(s string) string {
-	quote := byte('\'')
-	if strings.Contains(s, "'") && !strings.Contains(s, "\"") {
-		quote = '"'
-	}
-	var b strings.Builder
-	b.WriteByte(quote)
-	for _, r := range s {
-		switch {
-		case r == '\\':
-			b.WriteString(`\\`)
-		case r == rune(quote):
-			b.WriteByte('\\')
-			b.WriteRune(r)
-		case r == '\n':
-			b.WriteString(`\n`)
-		case r == '\r':
-			b.WriteString(`\r`)
-		case r == '\t':
-			b.WriteString(`\t`)
-		case r < 0x20 || r == 0x7f:
-			fmt.Fprintf(&b, `\x%02x`, r)
-		default:
-			b.WriteRune(r)
-		}
-	}
-	b.WriteByte(quote)
-	return b.String()
-}
+func pyRepr(s string) string { return output.PyRepr(s) }
 
 // RunCaptured runs git in dir under NoGitEnv with its output captured, as
 // upstream's cmd_output_b does. A non-zero exit is a *CalledProcessError

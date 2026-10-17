@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/blairham/go-pre-commit/v4/internal/output"
 	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
 
@@ -302,21 +303,35 @@ func splitDot(s string) []string {
 	return parts
 }
 
-// WarnMutableRev warns if a rev looks like a branch name rather than a tag/SHA.
-func WarnMutableRev(repo, rev string) {
-	// Check for common mutable rev patterns.
-	mutablePrefixes := []string{"master", "main", "develop", "HEAD"}
-	for _, prefix := range mutablePrefixes {
-		if rev == prefix {
-			fmt.Fprintf(os.Stderr,
-				"WARNING: The 'rev' field of repo %q appears to be a mutable reference (%q).\n"+
-					"Mutable references are never updated after first install and are not "+
-					"supported. Use `pre-commit autoupdate` to update to a pinned revision.\n",
-				repo, rev,
-			)
-			return
+// isHexRev reports whether rev matches upstream's ^[a-fA-F0-9]+$.
+func isHexRev(rev string) bool {
+	if rev == "" {
+		return false
+	}
+	for _, c := range rev {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
 		}
 	}
+	return true
+}
+
+// WarnMutableRev ports upstream's clientlib.WarnMutableRev: a rev with no
+// '.' that is not all hex looks like a moving tag or branch, so it is
+// reported through the logger, which prints a [WARNING] line on stdout.
+func WarnMutableRev(repo, rev string) {
+	if strings.Contains(rev, ".") || isHexRev(rev) {
+		return
+	}
+	output.Warn(
+		"The 'rev' field of repo %s appears to be a mutable reference "+
+			"(moving tag / branch).  Mutable references are never "+
+			"updated after first install and are not supported.  "+
+			"See https://pre-commit.com/#using-the-latest-version-for-a-repository "+
+			"for more details.  "+
+			"Hint: `pre-commit autoupdate` often fixes this.",
+		output.PyRepr(repo),
+	)
 }
 
 // LoadManifest reads and parses a .pre-commit-hooks.yaml file.
