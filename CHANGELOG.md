@@ -15,6 +15,10 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- A config with `repos: []` is valid, as it is upstream, where `repos` is
+  `cfgv.Required` over an array: `run`, `validate-config`, `autoupdate` and
+  `install-hooks` accept it instead of failing with `'repos' is required`. A
+  missing (or null) `repos` still fails. (#131)
 - The mutable-`rev` warning is upstream's. It fired only for a `rev` of
   exactly `master`, `main`, `develop` or `HEAD`, on stderr, in this port's own
   words; it now fires for any `rev` with no `.` that is not all hex (so `v1`

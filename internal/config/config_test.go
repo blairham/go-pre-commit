@@ -91,6 +91,32 @@ func TestLoadConfig_MissingRepos(t *testing.T) {
 	}
 }
 
+// Upstream's schema is cfgv.Required('repos', check_array(...)): an empty
+// list satisfies it, while a missing or null key does not.
+func TestLoadConfig_EmptyRepos(t *testing.T) {
+	for _, tc := range []struct {
+		content string
+		wantErr bool
+	}{
+		{"repos: []\n", false},
+		{"repos:\n", true},
+		{"fail_fast: true\n", true},
+	} {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(path, []byte(tc.content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := LoadConfig(path)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("LoadConfig(%q) error = %v, want error %v", tc.content, err, tc.wantErr)
+			continue
+		}
+		if err == nil && len(cfg.Repos) != 0 {
+			t.Errorf("LoadConfig(%q) repos = %v, want none", tc.content, cfg.Repos)
+		}
+	}
+}
+
 // --- Validate tests ---
 
 func TestValidate_MissingRepoField(t *testing.T) {
