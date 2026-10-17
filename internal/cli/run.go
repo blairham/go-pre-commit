@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 
 	flags "github.com/jessevdk/go-flags"
@@ -61,7 +60,6 @@ func (c *RunCommand) Run(args []string) int {
 	git.ScrubProcessEnv()
 
 	var opts runFlags
-	opts.Jobs = runtime.NumCPU()
 
 	p := flags.NewParser(&opts, flags.HelpFlag|flags.PassDoubleDash)
 	remaining, err := p.ParseArgs(expandFilesFlag(args))

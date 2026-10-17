@@ -5,10 +5,14 @@ package hook
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
@@ -119,101 +123,153 @@ func TestFilterFiles(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTargetConcurrency(t *testing.T) {
-	t.Run("respects jobs parameter", func(t *testing.T) {
-		got := targetConcurrency(4, 100)
-		if got != 4 {
-			t.Errorf("targetConcurrency(4, 100) = %d, want 4", got)
+	unset := func(t *testing.T, keys ...string) {
+		t.Helper()
+		for _, k := range keys {
+			t.Setenv(k, "")
+			os.Unsetenv(k)
+		}
+	}
+
+	t.Run("explicit jobs wins over TRAVIS and the CPU count", func(t *testing.T) {
+		unset(t, "PRE_COMMIT_NO_CONCURRENCY")
+		t.Setenv("TRAVIS", "1")
+		if got := targetConcurrency(8); got != 8 {
+			t.Errorf("targetConcurrency(8) = %d, want 8", got)
 		}
 	})
 
-	t.Run("explicit jobs ignores file-count cap", func(t *testing.T) {
-		got := targetConcurrency(8, 1)
-		if got != 8 {
-			t.Errorf("targetConcurrency(8, 1) = %d, want 8", got)
+	t.Run("unset jobs is upstream's CPU count", func(t *testing.T) {
+		unset(t, "PRE_COMMIT_NO_CONCURRENCY", "TRAVIS")
+		if got, want := targetConcurrency(0), runtime.NumCPU(); got != want {
+			t.Errorf("targetConcurrency(0) = %d, want %d", got, want)
 		}
 	})
 
-	t.Run("zero jobs falls back to CPU count", func(t *testing.T) {
-		got := targetConcurrency(0, 1000)
-		if got < 1 {
-			t.Errorf("targetConcurrency(0, 1000) = %d, want >= 1", got)
+	t.Run("TRAVIS caps unset jobs at 2", func(t *testing.T) {
+		unset(t, "PRE_COMMIT_NO_CONCURRENCY")
+		t.Setenv("TRAVIS", "")
+		if got := targetConcurrency(0); got != 2 {
+			t.Errorf("targetConcurrency(0) under TRAVIS = %d, want 2", got)
 		}
 	})
 
-	t.Run("zero jobs with no files returns CPU count", func(t *testing.T) {
-		got := targetConcurrency(0, 0)
-		if got < 1 {
-			t.Errorf("targetConcurrency(0, 0) = %d, want >= 1", got)
-		}
-	})
-
-	t.Run("file count caps concurrency at files/4", func(t *testing.T) {
-		// 1 file -> at most 1 worker.
-		if got := targetConcurrency(0, 1); got != 1 {
-			t.Errorf("targetConcurrency(0, 1) = %d, want 1", got)
-		}
-		// 3 files -> at most 1 worker (3/4 = 0, clamped to 1).
-		if got := targetConcurrency(0, 3); got != 1 {
-			t.Errorf("targetConcurrency(0, 3) = %d, want 1", got)
-		}
-		// 8 files -> at most min(cpu, 2) workers.
-		got := targetConcurrency(0, 8)
-		if got < 1 || got > 2 {
-			t.Errorf("targetConcurrency(0, 8) = %d, want in [1, 2]", got)
-		}
-	})
-
-	t.Run("NO_CONCURRENCY overrides everything", func(t *testing.T) {
-		t.Setenv("PRE_COMMIT_NO_CONCURRENCY", "1")
-		got := targetConcurrency(8, 100)
-		if got != 1 {
-			t.Errorf("targetConcurrency(8, 100) with NO_CONCURRENCY = %d, want 1", got)
+	t.Run("NO_CONCURRENCY overrides everything, even set empty", func(t *testing.T) {
+		t.Setenv("PRE_COMMIT_NO_CONCURRENCY", "")
+		if got := targetConcurrency(8); got != 1 {
+			t.Errorf("targetConcurrency(8) with NO_CONCURRENCY = %d, want 1", got)
 		}
 	})
 }
 
 // ---------------------------------------------------------------------------
-// batchFileArgs
+// runHookXargs partitioning
 // ---------------------------------------------------------------------------
 
-func TestBatchFileArgs(t *testing.T) {
-	t.Run("single batch when under limit", func(t *testing.T) {
-		files := []string{"a", "b", "c"}
-		batches := batchFileArgs(files, 10)
-		if len(batches) != 1 {
-			t.Fatalf("expected 1 batch, got %d", len(batches))
+// recordingLang records each invocation's files and answers with a line per
+// invocation and a scripted exit code.
+type recordingLang struct {
+	exit  func(files []string) int
+	calls [][]string
+	mu    sync.Mutex
+}
+
+func (l *recordingLang) Name() string                                      { return "system" }
+func (l *recordingLang) EnvironmentDir() string                            { return "" }
+func (l *recordingLang) GetDefaultVersion() string                         { return "default" }
+func (l *recordingLang) HealthCheck(string, string) error                  { return nil }
+func (l *recordingLang) InstallEnvironment(string, string, []string) error { return nil }
+
+func (l *recordingLang) Run(
+	_ context.Context, _, _, _ string, _, files []string, _ string,
+) (int, []byte, error) {
+	l.mu.Lock()
+	l.calls = append(l.calls, slices.Clone(files))
+	l.mu.Unlock()
+	code := 0
+	if l.exit != nil {
+		code = l.exit(files)
+	}
+	return code, []byte(strings.Join(files, " ") + "\n"), nil
+}
+
+func TestRunHookXargsPartitions(t *testing.T) {
+	files := make([]string, 22)
+	for i := range files {
+		files[i] = fmt.Sprintf("f%02d", i)
+	}
+
+	t.Run("splits into upstream's partitions and joins output in order", func(t *testing.T) {
+		lang := &recordingLang{}
+		h := &Hook{ID: "x", Entry: "true", Language: "system"}
+		code, out, err := runHookXargs(context.Background(), lang, h, files, t.TempDir(), 4)
+		if err != nil || code != 0 {
+			t.Fatalf("runHookXargs = %d, %v", code, err)
 		}
-		if len(batches[0]) != 3 {
-			t.Errorf("batch[0] len = %d, want 3", len(batches[0]))
+		// max(4, ceil(22/4)) = 6 per partition, as upstream's
+		// test_partition_target_concurrency.
+		if len(lang.calls) != 4 {
+			t.Fatalf("got %d invocations, want 4: %q", len(lang.calls), lang.calls)
+		}
+		shuffled := shuffledFileArgs("system", false, files)
+		var want strings.Builder
+		for i := 0; i < len(shuffled); i += 6 {
+			want.WriteString(strings.Join(shuffled[i:min(i+6, len(shuffled))], " ") + "\n")
+		}
+		if string(out) != want.String() {
+			t.Errorf("output =\n%s\nwant\n%s", out, want.String())
 		}
 	})
 
-	t.Run("splits into multiple batches", func(t *testing.T) {
-		files := []string{"a", "b", "c", "d", "e"}
-		batches := batchFileArgs(files, 2)
-		if len(batches) != 3 {
-			t.Fatalf("expected 3 batches, got %d", len(batches))
+	t.Run("require_serial runs once in the given order", func(t *testing.T) {
+		lang := &recordingLang{}
+		h := &Hook{ID: "x", Entry: "true", Language: "system", RequireSerial: true}
+		if _, _, err := runHookXargs(context.Background(), lang, h, files, t.TempDir(), 4); err != nil {
+			t.Fatal(err)
 		}
-		if len(batches[0]) != 2 {
-			t.Errorf("batch[0] len = %d, want 2", len(batches[0]))
-		}
-		if len(batches[2]) != 1 {
-			t.Errorf("batch[2] len = %d, want 1", len(batches[2]))
+		if len(lang.calls) != 1 || !slices.Equal(lang.calls[0], files) {
+			t.Errorf("calls = %q, want one call with %q", lang.calls, files)
 		}
 	})
 
-	t.Run("zero batch size returns single batch", func(t *testing.T) {
-		files := []string{"a", "b"}
-		batches := batchFileArgs(files, 0)
-		if len(batches) != 1 {
-			t.Fatalf("expected 1 batch, got %d", len(batches))
+	t.Run("PRE_COMMIT_NO_CONCURRENCY runs once", func(t *testing.T) {
+		t.Setenv("PRE_COMMIT_NO_CONCURRENCY", "1")
+		lang := &recordingLang{}
+		h := &Hook{ID: "x", Entry: "true", Language: "system"}
+		if _, _, err := runHookXargs(context.Background(), lang, h, files, t.TempDir(), 4); err != nil {
+			t.Fatal(err)
+		}
+		if len(lang.calls) != 1 {
+			t.Errorf("got %d invocations, want 1", len(lang.calls))
 		}
 	})
 
-	t.Run("empty files returns single empty batch", func(t *testing.T) {
-		batches := batchFileArgs(nil, 10)
-		if len(batches) != 1 {
-			t.Fatalf("expected 1 batch, got %d", len(batches))
+	t.Run("fail and pygrep run once", func(t *testing.T) {
+		for _, language := range []string{"fail", "pygrep"} {
+			lang := &recordingLang{}
+			h := &Hook{ID: "x", Entry: "x", Language: language}
+			if _, _, err := runHookXargs(context.Background(), lang, h, files, t.TempDir(), 4); err != nil {
+				t.Fatal(err)
+			}
+			if len(lang.calls) != 1 {
+				t.Errorf("%s: got %d invocations, want 1", language, len(lang.calls))
+			}
+		}
+	})
+
+	t.Run("exit code of largest magnitude wins", func(t *testing.T) {
+		// Partitions start at shuffled[0], [6], [12], [18]; key each
+		// partition's exit code on its first file.
+		shuffled := shuffledFileArgs("system", false, files)
+		codes := map[string]int{shuffled[0]: 1, shuffled[6]: -5, shuffled[12]: 3, shuffled[18]: 0}
+		lang := &recordingLang{exit: func(files []string) int { return codes[files[0]] }}
+		h := &Hook{ID: "x", Entry: "true", Language: "system"}
+		code, _, err := runHookXargs(context.Background(), lang, h, files, t.TempDir(), 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lang.calls) != 4 || code != -5 {
+			t.Errorf("exit = %d over %d invocations, want -5 over 4", code, len(lang.calls))
 		}
 	})
 }
