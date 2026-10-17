@@ -23,6 +23,21 @@ file was introduced; the full notes are on the
   `<name>: <error>`, and with no filenames nothing is validated and the exit
   is 0, as upstream's `nargs='*'` does, instead of falling back to the default
   file. (#145)
+- The hook script `install` and `init-templatedir` write is upstream's
+  `hook-tmpl`: it carries upstream's hash on its `ID:` line, and its `ARGS`
+  line is `shlex.join`ed as upstream writes it. Each tool now recognizes the
+  other's script as its own by upstream's hash rule, so Python pre-commit no
+  longer moves a hook this port installed to `.legacy` (and vice versa); a
+  script an earlier release of this port wrote still counts as ours. The one
+  intended difference is that the script runs `pre-commit` from `PATH`
+  rather than a pinned Python. `install --allow-missing-config` and
+  `init-templatedir` (unless `--no-allow-missing-config`) now write
+  `--skip-on-missing-config`, so the hook skips a repo with no config; both
+  were no-ops. `hook-impl` checks the config after the legacy hook as
+  upstream's `_validate_config` does, printing
+  `` `.pre-commit-config.yaml` config file not found. Skipping `pre-commit`. ``
+  when it skips and upstream's `No .pre-commit-config.yaml file was found`
+  guidance (exit 1) when it does not. (#164)
 - `install` and `uninstall` are ported from upstream's
   `install_uninstall.py`. The hook path comes from git's common dir after
   changing to the root, so `install` prints

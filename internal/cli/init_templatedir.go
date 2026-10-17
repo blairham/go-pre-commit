@@ -56,8 +56,7 @@ func (c *InitTemplateDirCommand) Run(args []string) int {
 
 	for _, ht := range typesToInstall {
 		hookFile := filepath.Join(hooksDir, ht)
-		installID := "pre-commit-" + ht
-		content := fmt.Sprintf(hookTemplate, installID, opts.Config, ht)
+		content := hookScript(opts.Config, ht, !opts.NoAllowMissing)
 
 		if err := os.WriteFile(hookFile, []byte(content), 0o755); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to write hook: %v\n", err)

@@ -5,6 +5,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -54,20 +55,6 @@ func (c *HookImplCommand) Run(args []string) int {
 		return fatalError(err)
 	}
 
-	// Check if config exists when --skip-on-missing-config is set.
-	if opts.SkipOnMissingConfig {
-		if _, err := os.Stat(opts.Config); os.IsNotExist(err) {
-			return 0
-		}
-	}
-
-	// Check PRE_COMMIT_ALLOW_NO_CONFIG.
-	if os.Getenv("PRE_COMMIT_ALLOW_NO_CONFIG") != "" {
-		if _, err := os.Stat(opts.Config); os.IsNotExist(err) {
-			return 0
-		}
-	}
-
 	// pre-push refs arrive on stdin, and both the legacy hook and the ref
 	// translation below need them, so read it once up front (upstream's
 	// _run_legacy does the same). Handing the legacy hook os.Stdin itself
@@ -82,8 +69,18 @@ func (c *HookImplCommand) Run(args []string) int {
 	}
 
 	// Run legacy hook first (e.g., .pre-commit.legacy).
+	retv := 0
 	if err := runLegacyHook(opts.HookType, opts.HookDir, remaining, stdin); err != nil {
 		output.Warn("Legacy hook failed: %v", err)
+		retv = 1
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			retv = exitErr.ExitCode()
+		}
+	}
+
+	if exit, stop := validateHookConfig(retv, opts.Config, opts.SkipOnMissingConfig); stop {
+		return exit
 	}
 
 	// Build args for the run command based on hook type.
@@ -172,6 +169,25 @@ func (c *HookImplCommand) Run(args []string) int {
 	// Execute the run command directly.
 	runCmd := &RunCommand{Meta: c.Meta}
 	return runCmd.Run(runArgs)
+}
+
+// validateHookConfig is upstream's _validate_config: with no config file, a
+// hook installed with --skip-on-missing-config (or run under
+// PRE_COMMIT_ALLOW_NO_CONFIG) says it is skipping and exits with the legacy
+// hook's status; otherwise it explains how to proceed and fails.
+func validateHookConfig(retv int, cfg string, skipOnMissingConfig bool) (exit int, stop bool) {
+	if info, err := os.Stat(cfg); err == nil && info.Mode().IsRegular() {
+		return 0, false
+	}
+	if skipOnMissingConfig || os.Getenv("PRE_COMMIT_ALLOW_NO_CONFIG") != "" {
+		fmt.Printf("`%s` config file not found. Skipping `pre-commit`.\n", cfg)
+		return retv, true
+	}
+	fmt.Printf("No %s file was found\n"+
+		"- To temporarily silence this, run `PRE_COMMIT_ALLOW_NO_CONFIG=1 git ...`\n"+
+		"- To permanently silence this, install pre-commit with the --allow-missing-config option\n"+
+		"- To uninstall pre-commit run `pre-commit uninstall`\n", cfg)
+	return 1, true
 }
 
 func (c *HookImplCommand) Help() string {

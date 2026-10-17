@@ -287,12 +287,13 @@ func WarnForStagesOnRepoInit(repo, directory string) {
 			"future version.  "+
 			"Hint: often `pre-commit autoupdate --repo %s` will fix this.  "+
 			"if it does not -- consider reporting an issue to that repo.",
-		repo, strings.Join(legacy, ", "), shlexQuote(repo),
+		repo, strings.Join(legacy, ", "), ShlexQuote(repo),
 	)
 }
 
-// shlexQuote is Python's shlex.quote.
-func shlexQuote(s string) string {
+// ShlexQuote is Python's shlex.quote. install also uses it, to write the
+// hook script's ARGS line as upstream's shlex.join does.
+func ShlexQuote(s string) string {
 	if s == "" {
 		return "''"
 	}
