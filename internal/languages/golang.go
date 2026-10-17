@@ -28,7 +28,7 @@ type Golang struct{}
 func (g *Golang) Name() string { return "golang" }
 
 // EnvironmentDir is the env directory's name before its version.
-func (g *Golang) EnvironmentDir() string { return "go_env" }
+func (g *Golang) EnvironmentDir() string { return "golangenv" }
 
 // GetDefaultVersion is upstream golang.get_default_version (4.7.0), cached
 // for the process as upstream's lru_cache does: "system" when the host's go

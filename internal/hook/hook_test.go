@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/languages"
 )
 
 // ---------------------------------------------------------------------------
@@ -461,7 +462,7 @@ func TestMergeManifest(t *testing.T) {
 		}
 	})
 
-	t.Run("LanguageVersion defaults to default", func(t *testing.T) {
+	t.Run("LanguageVersion default resolves to the language's default version", func(t *testing.T) {
 		manifest := &config.ManifestHook{
 			ID:       "my-hook",
 			Name:     "Hook",
@@ -472,8 +473,8 @@ func TestMergeManifest(t *testing.T) {
 		repoCfg := &config.RepoConfig{Repo: "https://github.com/example/repo", Rev: "v1.0.0"}
 
 		h := MergeManifest(manifest, hookCfg, repoCfg, nil)
-		if h.LanguageVersion != "default" {
-			t.Errorf("LanguageVersion = %q, want %q", h.LanguageVersion, "default")
+		if want := (&languages.Python{}).GetDefaultVersion(); h.LanguageVersion != want {
+			t.Errorf("LanguageVersion = %q, want python's default version %q", h.LanguageVersion, want)
 		}
 	})
 
@@ -857,5 +858,47 @@ func TestFilterFiles_SkipsNonExistentFiles(t *testing.T) {
 	}
 	if result[0] != realFile {
 		t.Errorf("expected %q, got %q", realFile, result[0])
+	}
+}
+
+// upstream's repository._hook: only a version that is still `default` after
+// the manifest and the config's hook are merged takes the config's
+// default_language_version, and only one still `default` after that takes
+// the language's get_default_version.
+func TestResolveLanguageVersion(t *testing.T) {
+	cfg := &config.Config{DefaultLanguageVersion: map[string]string{"python": "python3.10", "golang": "default"}}
+	repoCfg := &config.RepoConfig{Repo: "https://example.com/r", Rev: "v1"}
+	for _, c := range []struct {
+		cfg      *config.Config
+		name     string
+		lang     string
+		manifest string
+		hookCfg  string
+		want     string
+	}{
+		{name: "manifest default takes the config default", lang: "python", manifest: "default", want: "python3.10", cfg: cfg},
+		{name: "config hook default takes the config default", lang: "python", manifest: "python3.11", hookCfg: "default", want: "python3.10", cfg: cfg},
+		{name: "manifest version beats the config default", lang: "python", manifest: "python3.11", want: "python3.11", cfg: cfg},
+		{name: "config hook version beats both", lang: "python", manifest: "python3.11", hookCfg: "python3.9", want: "python3.9", cfg: cfg},
+		{name: "config default of default falls through", lang: "golang", want: (&languages.Golang{}).GetDefaultVersion(), cfg: cfg},
+		{name: "no environment stays default", lang: "system", want: "default", cfg: cfg},
+		{name: "pygrep stays default", lang: "pygrep", manifest: "default", want: "default"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m := &config.ManifestHook{ID: "h", Name: "h", Entry: "e", Language: c.lang, LanguageVersion: c.manifest}
+			h := MergeManifest(m, &config.HookConfig{ID: "h", LanguageVersion: c.hookCfg}, repoCfg, c.cfg)
+			if h.LanguageVersion != c.want {
+				t.Errorf("LanguageVersion = %q, want %q", h.LanguageVersion, c.want)
+			}
+		})
+	}
+
+	local := FromLocalConfig(&config.HookConfig{ID: "l", Language: "python", LanguageVersion: "default"}, cfg)
+	if local.LanguageVersion != "python3.10" {
+		t.Errorf("local hook LanguageVersion = %q, want the config default", local.LanguageVersion)
+	}
+	tried := FromManifestHook(&config.ManifestHook{ID: "t", Language: "golang"})
+	if want := (&languages.Golang{}).GetDefaultVersion(); tried.LanguageVersion != want {
+		t.Errorf("try-repo hook LanguageVersion = %q, want %q", tried.LanguageVersion, want)
 	}
 }

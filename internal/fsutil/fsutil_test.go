@@ -15,7 +15,7 @@ import (
 func writeModuleCache(t *testing.T, root string) string {
 	t.Helper()
 
-	envDir := filepath.Join(root, "go_env-default")
+	envDir := filepath.Join(root, "golangenv-default")
 	modDir := filepath.Join(envDir, "pkg", "mod", "example.com", "dep@v1.0.0")
 	nested := filepath.Join(modDir, "internal")
 

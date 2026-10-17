@@ -129,22 +129,30 @@ func (r *Resolver) setLocalPrefix(h *hook.Hook) error {
 	return nil
 }
 
-// checkAdditionalDependencies mirrors Python pre-commit: declaring
-// additional_dependencies for a language that installs no environment is a
-// config error, not something to drop on the floor.
+// checkAdditionalDependencies is the check upstream's repository._hook makes
+// once the hook's version is resolved: a language that installs no
+// environment can take neither a `language_version` nor
+// additional_dependencies, and declaring either is a config error rather
+// than something to drop on the floor. The wording is upstream's.
 func checkAdditionalDependencies(h *hook.Hook) error {
-	if len(h.AdditionalDependencies) == 0 {
-		return nil
-	}
 	lang, err := languages.Get(h.Language)
 	if err != nil || lang.EnvironmentDir() != "" {
 		return nil
 	}
-	return fmt.Errorf(
-		"the hook `%s` specifies `additional_dependencies` but is using language `%s` "+
-			"which does not install an environment. "+
+	field := ""
+	switch {
+	case h.LanguageVersion != "default" && h.LanguageVersion != "":
+		field = "language_version"
+	case len(h.AdditionalDependencies) > 0:
+		field = "additional_dependencies"
+	default:
+		return nil
+	}
+	return fmt.Errorf( //nolint:staticcheck // upstream's wording, capital and all
+		"The hook `%s` specifies `%s` but is using language `%s` "+
+			"which does not install an environment.  "+
 			"Perhaps you meant to use a specific language?",
-		h.ID, h.Language,
+		h.ID, field, h.Language,
 	)
 }
 

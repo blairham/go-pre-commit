@@ -22,6 +22,22 @@ file was introduced; the full notes are on the
   stage, `manual` included (upstream's `default_stages` defaults to all of
   them); and `--hook-stage` takes the legacy names `commit`, `merge-commit`
   and `push`, as upstream's `transform_stage` does. (#129)
+- `language_version: default` is resolved where upstream resolves it, when
+  each hook is built: a version still `default` after the manifest and the
+  config's hook are merged takes the config's `default_language_version`, and
+  one still `default` after that takes the language's own default. The env
+  directory is named after the resolved version, as upstream's is
+  (`node_env-system`, `golangenv-system`, `py_env-python3.13`, …), and a
+  manifest's explicit `language_version: default` now takes the config's
+  `default_language_version` instead of ignoring it. python's default is
+  upstream's (the versioned interpreter for the Python a pip-installed
+  pre-commit would run under, then its major version), and rust's is
+  `system` when `cargo --version` succeeds. The env directories upstream
+  names differently now carry upstream's names: `golangenv`, `conda`,
+  `coursier`, `dartenv`, `dotnetenv`, `renv`. A `language_version` on a
+  language that installs no environment is refused in upstream's words, as
+  `additional_dependencies` already was. Existing environments under the old
+  names are not reused: each is reinstalled once under its new name. (#138)
 - `language: fail` lists the files it failed on, as upstream's `fail.py`
   does: the entry, a blank line, then one file per line. It printed only the
   entry. (#128)

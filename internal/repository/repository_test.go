@@ -407,3 +407,45 @@ func TestResolveRemoteRepo_ClonePerDependencySet(t *testing.T) {
 		t.Errorf("vuln clone %s, want the one recorded under db_repo_name %s", vuln, want)
 	}
 }
+
+// upstream's repository._hook refuses a language_version on a language that
+// installs no environment, before it looks at additional_dependencies, and
+// says so in these words.
+func TestResolveLocalRepo_LanguageVersionWithoutEnvironment(t *testing.T) {
+	r := NewResolver(store.New(t.TempDir()), config.DefaultConfig())
+	for _, c := range []struct {
+		hc   config.HookConfig
+		want string
+	}{
+		{
+			hc: config.HookConfig{ID: "v", Name: "v", Entry: "echo", Language: "system", LanguageVersion: "python3"},
+			want: "The hook `v` specifies `language_version` but is using language `system` " +
+				"which does not install an environment.  Perhaps you meant to use a specific language?",
+		},
+		{
+			hc: config.HookConfig{
+				ID: "b", Name: "b", Entry: "echo", Language: "pygrep",
+				LanguageVersion: "3", AdditionalDependencies: []string{"x"},
+			},
+			want: "The hook `b` specifies `language_version` but is using language `pygrep` " +
+				"which does not install an environment.  Perhaps you meant to use a specific language?",
+		},
+		{
+			hc: config.HookConfig{ID: "d", Name: "d", Entry: "echo", Language: "fail", AdditionalDependencies: []string{"x"}},
+			want: "The hook `d` specifies `additional_dependencies` but is using language `fail` " +
+				"which does not install an environment.  Perhaps you meant to use a specific language?",
+		},
+	} {
+		_, err := r.resolveLocalRepo(&config.RepoConfig{Repo: "local", Hooks: []config.HookConfig{c.hc}})
+		if err == nil || err.Error() != c.want {
+			t.Errorf("hook %s: err = %v\nwant %s", c.hc.ID, err, c.want)
+		}
+	}
+	// `default` is no version at all.
+	_, err := r.resolveLocalRepo(&config.RepoConfig{Repo: "local", Hooks: []config.HookConfig{
+		{ID: "ok", Name: "ok", Entry: "echo", Language: "system", LanguageVersion: "default"},
+	}})
+	if err != nil {
+		t.Errorf("language_version: default on system: %v", err)
+	}
+}
