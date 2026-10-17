@@ -15,6 +15,12 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `language: pygrep` searches each line with its newline attached, as
+  upstream does when it iterates a file opened `rb`, so a pattern that can
+  consume the newline matches where upstream's does: `\s$` and `[^a-z]` now
+  fail every newline-terminated line, and `r\Z` no longer matches `bar\n`.
+  `$` keeps Python's meaning (the end, or just before a final newline), so
+  `[ \t]+$` and `o$` are unchanged and `o$` still misses a CRLF line. (#147)
 - `gc` reports what it did as upstream does, `<n> repo(s) removed.`, instead
   of `Garbage collection complete.`. (#154)
 - `language: rust` honors `language_version` as upstream's `rust.py` does.

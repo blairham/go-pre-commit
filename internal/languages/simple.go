@@ -71,6 +71,8 @@ func (p *Pygrep) Run(
 	if opts.multiline {
 		// Upstream compiles with re.MULTILINE | re.DOTALL.
 		pattern = "(?ms)" + pattern
+	} else {
+		pattern = pygrepLineAnchors(pattern)
 	}
 	if opts.ignoreCase {
 		pattern = "(?i)" + pattern
@@ -144,21 +146,60 @@ func abbreviates(arg, option string) bool {
 }
 
 // pygrepLines splits contents into the lines iterating a binary file yields
-// in Python, so a final newline adds no empty line after it.
-//
-// Python searches each line with its "\n" still attached, where a bare `$`
-// matches just before it. pcre's `$` matches only at the very end, so the
-// line is searched without its "\n" instead, which is what keeps the common
-// `[ \t]+$` matching as upstream does.
+// in Python: each keeps its "\n", and a final newline adds no empty line
+// after it. Upstream searches each line with that "\n" attached, so a pattern
+// that can consume it (`\s$`, `[^a-z]`) matches there too.
 func pygrepLines(contents string) []string {
 	lines := strings.SplitAfter(contents, "\n")
 	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	for i := range lines {
-		lines[i] = strings.TrimSuffix(lines[i], "\n")
-	}
 	return lines
+}
+
+// pygrepLineAnchors rewrites a by-line pattern's end anchors to Python's
+// meaning for a line that still carries its "\n". pcre's RE2 mode reads `$`
+// as the very end of the text, where Python's `$` also matches just before a
+// final "\n"; and Python's `\Z` is the very end, which `\z` spells in every
+// regexp2 mode. A `$` or `\Z` inside a character class, or escaped, is left
+// alone.
+func pygrepLineAnchors(pattern string) string {
+	var b strings.Builder
+	inClass := false
+	for i := 0; i < len(pattern); i++ {
+		c := pattern[i]
+		switch {
+		case c == '\\' && i+1 < len(pattern):
+			if !inClass && pattern[i+1] == 'Z' {
+				b.WriteString(`\z`)
+			} else {
+				b.WriteString(pattern[i : i+2])
+			}
+			i++
+		case inClass:
+			b.WriteByte(c)
+			if c == ']' {
+				inClass = false
+			}
+		case c == '[':
+			inClass = true
+			b.WriteByte(c)
+			// A ']' first in the set (after an optional '^') is literal.
+			if i+1 < len(pattern) && pattern[i+1] == '^' {
+				b.WriteByte('^')
+				i++
+			}
+			if i+1 < len(pattern) && pattern[i+1] == ']' {
+				b.WriteByte(']')
+				i++
+			}
+		case c == '$':
+			b.WriteString(`(?=\n?\z)`)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // pygrepByLine is upstream's _process_filename_by_line: every matching line,

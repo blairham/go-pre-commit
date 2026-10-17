@@ -99,7 +99,8 @@ func TestPygrepOutputMatchesUpstream(t *testing.T) {
 	a := write("a.txt", "xx\nBAD one\r\nok\nBAD two")
 	b := write("b.txt", "clean\n")
 	c := write("c.txt", "foo\nbar\nbaz\n")
-	files := []string{a, b, c}
+	d := write("d.txt", "x\u0663\nnum 7\ntail \t\nbar")
+	files := []string{a, b, c, d}
 
 	cases := []struct {
 		name  string
@@ -124,29 +125,41 @@ func TestPygrepOutputMatchesUpstream(t *testing.T) {
 			entry: "^ba.$",
 			args:  []string{"--multiline"},
 			code:  1,
-			want:  c + ":2:bar\n",
+			want:  c + ":2:bar\n" + d + ":4:bar\n",
 		},
 		{
 			name:  "negate names files without a match",
 			entry: "BAD",
 			args:  []string{"--negate"},
 			code:  1,
-			want:  b + "\n" + c + "\n",
+			want:  b + "\n" + c + "\n" + d + "\n",
 		},
 		{
 			name:  "multiline negate",
 			entry: "BAD",
 			args:  []string{"--multiline", "--negate"},
 			code:  1,
-			want:  b + "\n" + c + "\n",
+			want:  b + "\n" + c + "\n" + d + "\n",
 		},
 		{
 			name:  "abbreviated long options",
 			entry: "bad",
 			args:  []string{"--ign", "--neg"},
 			code:  1,
-			want:  b + "\n" + c + "\n",
+			want:  b + "\n" + c + "\n" + d + "\n",
 		},
+		// Each line is searched with its "\n" attached, as upstream iterates a
+		// file opened 'rb' (#147).
+		{
+			name: "\\s$ takes the newline", entry: `\s$`, code: 1,
+			want: a + ":1:xx\n" + a + ":2:BAD one\n" + a + ":3:ok\n" + b + ":1:clean\n" +
+				c + ":1:foo\n" + c + ":2:bar\n" + c + ":3:baz\n" +
+				d + ":1:x\u0663\n" + d + ":2:num 7\n" + d + ":3:tail \t\n",
+		},
+		{name: "[ \\t]+$ before the newline", entry: `[ \t]+$`, code: 1, want: d + ":3:tail \t\n"},
+		{name: "\\Z is the very end", entry: `r\Z`, code: 1, want: d + ":4:bar\n"},
+		{name: "\\d is ASCII", entry: `\d`, code: 1, want: d + ":2:num 7\n"},
+		{name: "escaped and bracketed $ are literal", entry: `\$|[$]`, code: 0, want: ""},
 		{name: "ignore-case", entry: "bad two", args: []string{"--ignore-case"}, code: 1, want: a + ":4:BAD two\n"},
 	}
 	for _, tc := range cases {
@@ -319,5 +332,25 @@ func TestFailOutputMatchesUpstream(t *testing.T) {
 				t.Errorf("got (%d, %q), want (1, %q)", code, out, tc.want)
 			}
 		})
+	}
+}
+
+// pygrepLineAnchors rewrites only the anchors that stand on their own.
+func TestPygrepLineAnchors(t *testing.T) {
+	for pattern, want := range map[string]string{
+		`o$`:      `o(?=\n?\z)`,
+		`a$|b$`:   `a(?=\n?\z)|b(?=\n?\z)`,
+		`r\Z`:     `r\z`,
+		`\$`:      `\$`,
+		`[$]`:     `[$]`,
+		`[]$]$`:   `[]$](?=\n?\z)`,
+		`[^]$]\Z`: `[^]$]\z`,
+		`[\]$]$`:  `[\]$](?=\n?\z)`,
+		`\\$`:     `\\(?=\n?\z)`,
+		`plain`:   `plain`,
+	} {
+		if got := pygrepLineAnchors(pattern); got != want {
+			t.Errorf("pygrepLineAnchors(%q) = %q, want %q", pattern, got, want)
+		}
 	}
 }
