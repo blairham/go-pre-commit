@@ -101,6 +101,7 @@ Releases: move `CHANGELOG.md`'s `[Unreleased]` under the version, push a `v*` ta
 - golangci-lint and gofumpt are pinned in `go.mod`'s `tool` block — invoke as `go tool <name>`, never a separately installed binary
 - Keep the `golangci-lint` pre-commit `rev` and the `go.mod` tool pin in lockstep
 - goreleaser is pinned in `.tool-versions`, not `go.mod`
+- At runtime the tool needs **git ≥ 2.31** (`ls-files --deduplicate`), the same floor as upstream; a change that uses a newer git feature must raise it in README.md and docs/parity.md too
 
 ## Key Dependencies
 
