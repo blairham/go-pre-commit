@@ -24,6 +24,12 @@ file was introduced; the full notes are on the
   pre-commit script saved as the legacy hook now stops with upstream's
   `bug: pre-commit's script is installed in migration mode` message instead
   of recursing without end. (#170)
+- A key repeated in one mapping of a config or manifest loads as upstream's
+  Python dict reads it, rather than failing: the entry keeps its first
+  position and takes the last value, and keys that are equal as Python values
+  (`1`, `1.0`, `true`) are the same key. yaml.v3 refused these with "mapping
+  key already defined", which broke, among others, `autoupdate` on a config
+  whose `sha:` migration produced a second `rev:`. (#167)
 - `language: pygrep`'s `\s` matches a vertical tab, as upstream's bytes
   pattern does (`[ \t\n\r\f\v]`), and `\S` does not, inside a character
   class too. RE2's `\s`, which pcre compiled it to, leaves `\v` out. (#181)

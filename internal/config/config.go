@@ -9,9 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/blairham/go-pre-commit/v4/internal/output"
+	"github.com/blairham/go-pre-commit/v4/internal/pyyaml"
 )
 
 // Default file names.
@@ -175,7 +174,7 @@ func LoadConfig(path string) (*Config, error) {
 	// an error here is a gap in that port, reported as upstream would a
 	// validation failure.
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := pyyaml.Unmarshal(data, &cfg); err != nil {
 		return nil, invalidConfig(inFile(path, newValidationError("%s", err.Error())))
 	}
 
@@ -239,7 +238,7 @@ func WarnForStagesOnRepoInit(repo, directory string) {
 	// Upstream's MINIMAL_MANIFEST_SCHEMA: a list of hooks, each with a
 	// string id and an optional list of string stages.
 	var hooks []map[string]any
-	if err := yaml.Unmarshal(data, &hooks); err != nil || hooks == nil {
+	if err := pyyaml.Unmarshal(data, &hooks); err != nil || hooks == nil {
 		return
 	}
 	var legacy []string
@@ -443,7 +442,7 @@ func LoadManifest(path string) ([]ManifestHook, error) {
 	}
 
 	var hooks []ManifestHook
-	if err := yaml.Unmarshal(data, &hooks); err != nil {
+	if err := pyyaml.Unmarshal(data, &hooks); err != nil {
 		return nil, invalidManifest(inFile(path, newValidationError("%s", err.Error())))
 	}
 
