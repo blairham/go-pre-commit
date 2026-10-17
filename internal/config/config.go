@@ -349,6 +349,15 @@ func migrateLegacyStages(stages []Stage) []Stage {
 	return result
 }
 
+// TransformStage maps a legacy stage name given to --hook-stage onto its
+// current one, as upstream's clientlib.transform_stage does.
+func TransformStage(s Stage) Stage {
+	if mapped, ok := legacyStages[s]; ok {
+		return mapped
+	}
+	return s
+}
+
 // CheckMinimumVersion checks if the current version meets the minimum requirement.
 func CheckMinimumVersion(minVersion string) bool {
 	cParts := splitVersionParts(Version)

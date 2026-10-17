@@ -1251,6 +1251,52 @@ func TestRun(t *testing.T) {
 			(pyExit != 0) && (goExit != 0), "")
 	})
 
+	// Which hook `run <id>` selects, and what it says when none is selected
+	// (#129): upstream matches the id or the alias, in the stage after
+	// transform_stage, where a hook with no stages is in every stage, manual
+	// included. The miss is reported on stdout, not stderr.
+	t.Run("hook-id selection and the not-found message", func(t *testing.T) {
+		cfg := `repos:
+- repo: local
+  hooks:
+  - id: anywhere
+    name: anywhere
+    entry: nope
+    language: fail
+    alias: nick
+  - id: pushy
+    name: pushy
+    entry: nope
+    language: fail
+    stages: [pre-push]
+`
+		for _, args := range [][]string{
+			{"nosuchhook"},
+			{"nosuchhook", "--hook-stage", "pre-push"},
+			{"nosuchhook", "--hook-stage", "commit"},
+			{"pushy"},
+			{"pushy", "--hook-stage", "push"},
+			{"anywhere", "--hook-stage", "manual"},
+			{"nick"},
+		} {
+			name := strings.Join(args, " ")
+			t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+			pyOut, pyErr, pyExit := runSplit(t, initTestRepo(t, cfg, "x\n"), pyBin,
+				append([]string{"run", "--color=never"}, args...)...)
+			t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+			goOut, goErr, goExit := runSplit(t, initTestRepo(t, cfg, "x\n"), goBinary,
+				append([]string{"run", "--color=never"}, args...)...)
+
+			// Every row fails, either as a missing id or as a fail hook that
+			// ran, so a row passing on two empty outputs would be a dead probe.
+			exercised := pyExit == 1 && pyOut != ""
+			addOutputResult("run", "run "+name,
+				exercised && pyExit == goExit && pyOut == goOut && pyErr == goErr,
+				fmt.Sprintf("exercised=%v py=%d go=%d\npy stdout:\n%s\npy stderr:\n%s\ngo stdout:\n%s\ngo stderr:\n%s",
+					exercised, pyExit, goExit, pyOut, pyErr, goOut, goErr))
+		}
+	})
+
 	t.Run("files flag", func(t *testing.T) {
 		pyRepo := initTestRepo(t, standardCfg, "hello   \n")
 		goRepo := initTestRepo(t, standardCfg, "hello   \n")

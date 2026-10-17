@@ -129,10 +129,11 @@ func TestMatchesStage(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "empty stages does not match manual",
+			// Upstream's default_stages defaults to every stage, manual too.
+			name:   "empty stages matches manual",
 			stages: nil,
 			stage:  config.StageManual,
-			want:   false,
+			want:   true,
 		},
 		{
 			name:   "explicit stage matches",

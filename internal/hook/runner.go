@@ -145,7 +145,8 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 	}
 
 	if len(hooksToRun) == 0 && opts.HookID != "" {
-		output.Error("No hook with id %q found", opts.HookID)
+		// Upstream writes this with output.write_line: stdout, no [ERROR].
+		fmt.Printf("No hook with id `%s` in stage `%s`\n", opts.HookID, opts.HookStage)
 		result.Errors++
 		return result
 	}

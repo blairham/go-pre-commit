@@ -78,8 +78,8 @@ func (h *Hook) MatchesFiles(filename string) bool {
 // Hooks with stages: [manual] only run when --hook-stage manual is explicit.
 func (h *Hook) MatchesStage(stage config.Stage) bool {
 	if len(h.Stages) == 0 {
-		// Run on all stages if none specified, except manual.
-		return stage != config.StageManual
+		// Upstream's default_stages defaults to every stage, manual included.
+		return true
 	}
 	for _, s := range h.Stages {
 		if s == stage {
@@ -206,6 +206,7 @@ func FromLocalConfig(hookCfg *config.HookConfig, globalCfg *config.Config) *Hook
 		Entry:    hookCfg.Entry,
 		Language: hookCfg.Language,
 		Repo:     "local",
+		Alias:    hookCfg.Alias,
 	}
 
 	if hookCfg.Files != "" {
