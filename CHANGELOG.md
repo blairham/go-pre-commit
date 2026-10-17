@@ -22,6 +22,13 @@ file was introduced; the full notes are on the
   `cfgv.Required` over an array: `run`, `validate-config`, `autoupdate` and
   `install-hooks` accept it instead of failing with `'repos' is required`. A
   missing (or null) `repos` still fails. (#131)
+- The deprecated stage names `commit`, `merge-commit` and `push` are warned
+  about as upstream does: for a hook's `stages` and for `default_stages` in
+  the config (with a `pre-commit migrate-config` hint), and once a hook repo
+  is cloned whose manifest still uses them (with a
+  `pre-commit autoupdate --repo` hint). A hook repo's manifest that uses the
+  old names now has them migrated as the config's were, so those hooks run
+  at the right stage instead of never matching. (#136)
 - The mutable-`rev` warning is upstream's. It fired only for a `rev` of
   exactly `master`, `main`, `develop` or `HEAD`, on stderr, in this port's own
   words; it now fires for any `rev` with no `.` that is not all hex (so `v1`
