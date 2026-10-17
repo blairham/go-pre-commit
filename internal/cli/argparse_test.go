@@ -84,8 +84,8 @@ func captureStderr(t *testing.T, fn func() int) (string, int) {
 
 func TestParseArgsErrors(t *testing.T) {
 	t.Setenv("COLUMNS", "80")
-	hookTypes := "commit-msg, post-checkout, post-commit, post-merge, post-rewrite, pre-commit, " +
-		"pre-merge-commit, pre-push, pre-rebase, prepare-commit-msg"
+	hookTypes := "'commit-msg', 'post-checkout', 'post-commit', 'post-merge', 'post-rewrite', 'pre-commit', " +
+		"'pre-merge-commit', 'pre-push', 'pre-rebase', 'prepare-commit-msg'"
 	type errCase struct {
 		cmd     string
 		prog    string
@@ -131,7 +131,7 @@ func TestParseArgsErrors(t *testing.T) {
 			"run",
 			[]string{"--hook-stage", "nope"},
 			"pre-commit run",
-			"argument --hook-stage: invalid choice: 'nope' (choose from "+hookTypes+", manual)",
+			"argument --hook-stage: invalid choice: 'nope' (choose from "+hookTypes+", 'manual')",
 		),
 		errRow("autoupdate", []string{"-j", "x"}, "pre-commit autoupdate", "argument -j/--jobs: invalid int value: 'x'"),
 		errRow("init-templatedir", nil, "pre-commit init-templatedir", "the following arguments are required: directory"),

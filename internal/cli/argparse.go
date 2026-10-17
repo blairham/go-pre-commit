@@ -241,13 +241,23 @@ func stageChoices() []string {
 	return append(hookTypeChoices(), string(config.StageManual))
 }
 
+// pyReprList is argparse's ', '.join(map(repr, choices)), which the
+// "choose from" list uses (the Python 3.13 the parity job runs).
+func pyReprList(choices []string) string {
+	quoted := make([]string, len(choices))
+	for i, c := range choices {
+		quoted[i] = config.PyRepr(c)
+	}
+	return strings.Join(quoted, ", ")
+}
+
 // checkChoice is argparse's _check_value.
 func checkChoice(choices []string) func(string) string {
 	return func(v string) string {
 		if slices.Contains(choices, v) {
 			return ""
 		}
-		return fmt.Sprintf("invalid choice: %s (choose from %s)", config.PyRepr(v), strings.Join(choices, ", "))
+		return fmt.Sprintf("invalid choice: %s (choose from %s)", config.PyRepr(v), pyReprList(choices))
 	}
 }
 

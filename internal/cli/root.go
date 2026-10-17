@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"slices"
-	"strings"
 
 	mcli "github.com/mitchellh/cli"
 
@@ -94,7 +93,7 @@ func Run(args []string, build BuildInfo) (code int) {
 		return argparseError(topLevelSpec, "unrecognized arguments: "+first)
 	case !slices.Contains(commandNames, first):
 		return argparseError(topLevelSpec, fmt.Sprintf("argument command: invalid choice: %s (choose from %s)",
-			config.PyRepr(first), strings.Join(commandNames, ", ")))
+			config.PyRepr(first), pyReprList(commandNames)))
 	}
 	ui := &mcli.BasicUi{
 		Reader:      os.Stdin,
