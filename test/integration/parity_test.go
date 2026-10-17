@@ -970,6 +970,49 @@ func TestGC(t *testing.T) {
 	addExitResult("gc", "exits 0 with config", pyExit, goExit, pyExit == goExit, "")
 }
 
+// TestGCOutput compares gc's report with upstream's "{n} repo(s) removed."
+// (#154): nothing to remove while the config still uses its environment, then
+// one repo once the config stops using it.
+func TestGCOutput(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+	cfg := "repos:\n- repo: local\n  hooks:\n  - id: py\n    name: py\n" +
+		"    entry: python -c \"import sys\"\n    language: python\n"
+
+	type step struct{ out, errOut string }
+	gc := func(bin string) []step {
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		repo := initTestRepo(t, cfg, "test\n")
+		if out, code := runCmd(t, repo, bin, "run", "--all-files"); code != 0 {
+			t.Fatalf("%s run --all-files exited %d:\n%s", bin, code, out)
+		}
+		var steps []step
+		for _, c := range []string{cfg, "repos: []\n"} {
+			if err := os.WriteFile(filepath.Join(repo, ".pre-commit-config.yaml"), []byte(c), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, errOut, code := runSplit(t, repo, bin, "gc")
+			if code != 0 {
+				t.Fatalf("%s gc exited %d: %s", bin, code, errOut)
+			}
+			steps = append(steps, step{out, errOut})
+		}
+		return steps
+	}
+	py, goSteps := gc(pyBin), gc(goBinary)
+	for i, name := range []string{"env in use", "env unused"} {
+		match := py[i] == goSteps[i]
+		detail := ""
+		if !match {
+			detail = fmt.Sprintf("py=%q go=%q", py[i], goSteps[i])
+			t.Errorf("gc %s differs: %s", name, detail)
+		}
+		addOutputResult("gc", "removed count: "+name, match, detail)
+	}
+	if want := "1 repo(s) removed.\n"; goSteps[1].out != want {
+		t.Errorf("gc after dropping the hook printed %q, want %q", goSteps[1].out, want)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests: install (exit codes + filesystem)
 // ---------------------------------------------------------------------------

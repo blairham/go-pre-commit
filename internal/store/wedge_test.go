@@ -76,8 +76,11 @@ func TestGCKeepsEntryWhenDirectoryCannotBeRemoved(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(holder, 0o755) })
 
 	// GC with nothing in use: it will try to remove repoPath and fail.
-	err := s.GC(map[string]bool{})
+	removed, err := s.GC(map[string]bool{})
 
+	if removed != 0 {
+		t.Errorf("GC counted %d removed for a directory it could not remove", removed)
+	}
 	if err == nil {
 		t.Fatal("GC should report the directories it could not remove")
 	}
@@ -121,8 +124,8 @@ func TestGCRemovesUnusedEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.GC(map[string]bool{}); err != nil {
-		t.Fatalf("GC: %v", err)
+	if removed, err := s.GC(map[string]bool{}); err != nil || removed != 1 {
+		t.Fatalf("GC = %d, %v; want 1 removed", removed, err)
 	}
 	if _, err := os.Stat(repoPath); !os.IsNotExist(err) {
 		t.Errorf("directory should be gone, stat err = %v", err)
@@ -152,7 +155,7 @@ func TestGCRemovesReadOnlyEnvironment(t *testing.T) {
 	if err := s.save("https://example.com/repo", "v1", repoPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.GC(map[string]bool{}); err != nil {
+	if _, err := s.GC(map[string]bool{}); err != nil {
 		t.Fatalf("GC should clear a read-only env: %v", err)
 	}
 	if _, err := os.Stat(repoPath); !os.IsNotExist(err) {
@@ -174,8 +177,8 @@ func TestGCKeepsUsedEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.GC(map[string]bool{"https://example.com/repo@v1": true}); err != nil {
-		t.Fatalf("GC: %v", err)
+	if removed, err := s.GC(map[string]bool{"https://example.com/repo@v1": true}); err != nil || removed != 0 {
+		t.Fatalf("GC = %d, %v; want 0 removed", removed, err)
 	}
 	if _, err := os.Stat(repoPath); err != nil {
 		t.Errorf("in-use repo was removed: %v", err)

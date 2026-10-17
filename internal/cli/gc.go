@@ -91,11 +91,12 @@ func (c *GCCommand) Run(args []string) int {
 		fmt.Fprintf(os.Stderr, "Error: failed to run GC: %v\n", err)
 		return 1
 	}
-	if err := s.GC(usedRepos); err != nil {
+	removed, err := s.GC(usedRepos)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to run GC: %v\n", err)
 		return 1
 	}
-	fmt.Println("Garbage collection complete.")
+	fmt.Printf("%d repo(s) removed.\n", removed)
 	return 0
 }
 

@@ -15,6 +15,8 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `gc` reports what it did as upstream does, `<n> repo(s) removed.`, instead
+  of `Garbage collection complete.`. (#154)
 - `language: rust` honors `language_version` as upstream's `rust.py` does.
   For anything but `system`, the install gets the toolchain through rustup
   (`default` is `stable`), downloading rustup-init into the env when there is

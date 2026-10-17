@@ -289,24 +289,26 @@ func (s *Store) ForgetConfigs(dead []string) error {
 	return s.saveDB(db)
 }
 
-// GC garbage-collects unused repos.
-func (s *Store) GC(usedRepos map[string]bool) error {
+// GC garbage-collects unused repos and returns how many it removed, which
+// upstream's gc reports as "{n} repo(s) removed.".
+func (s *Store) GC(usedRepos map[string]bool) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	unlock, err := s.acquireLock()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer unlock()
 
 	db, err := s.loadDB()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	var kept []RepoEntry
 	var failures []string
+	removed := 0
 	for _, entry := range db.Repos {
 		key := entry.Repo + "@" + entry.Rev
 		if usedRepos[key] {
@@ -321,17 +323,19 @@ func (s *Store) GC(usedRepos map[string]bool) error {
 		if err := fsutil.RemoveAll(entry.Path); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", entry.Path, err))
 			kept = append(kept, entry)
+			continue
 		}
+		removed++
 	}
 	db.Repos = kept
 	if err := s.saveDB(db); err != nil {
-		return err
+		return 0, err
 	}
 	if len(failures) > 0 {
-		return fmt.Errorf("failed to remove %d cached repo(s): %s",
+		return removed, fmt.Errorf("failed to remove %d cached repo(s): %s",
 			len(failures), strings.Join(failures, "; "))
 	}
-	return nil
+	return removed, nil
 }
 
 // ListRepos returns all cached repos.
