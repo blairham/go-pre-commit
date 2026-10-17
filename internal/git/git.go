@@ -333,6 +333,9 @@ type CalledProcessError struct {
 	ReturnCode int
 }
 
+// ErrorType is the class name upstream's error handler prints for it.
+func (e *CalledProcessError) ErrorType() string { return "CalledProcessError" }
+
 func (e *CalledProcessError) Error() string {
 	indentOrNone := func(part []byte) string {
 		if len(part) == 0 {

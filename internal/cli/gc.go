@@ -82,8 +82,7 @@ func (c *GCCommand) Run(args []string) int {
 	}
 	removed, err := s.GC(usedRepos)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to run GC: %v\n", err)
-		return 1
+		return reportError(err)
 	}
 	fmt.Printf("%d repo(s) removed.\n", removed)
 	return 0

@@ -52,10 +52,16 @@ func (c *AutoupdateCommand) Run(args []string) int {
 		return fatalError(err)
 	}
 
+	// Upstream's autoupdate opens the config (in migrate_config) before it
+	// loads it, so a missing file is open()'s FileNotFoundError, not an
+	// InvalidConfigError.
+	if _, err = os.ReadFile(opts.Config); err != nil {
+		return reportError(err)
+	}
+
 	cfg, err := config.LoadConfig(opts.Config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to load config: %v\n", err)
-		return 1
+		return reportError(err)
 	}
 
 	// Upstream (4.6.1) refuses a --repo the config does not name before

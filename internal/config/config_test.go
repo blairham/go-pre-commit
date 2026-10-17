@@ -52,7 +52,7 @@ func TestLoadConfig_MissingFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
-	if !strings.Contains(err.Error(), "failed to read config file") {
+	if want := "\n=====> /nonexistent/path/config.yaml is not a file"; err.Error() != want {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -68,7 +68,7 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
 	}
-	if !strings.Contains(err.Error(), "failed to parse config file") {
+	if !strings.HasPrefix(err.Error(), "\n==> File "+path+"\n=====> yaml: ") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -86,7 +86,7 @@ func TestLoadConfig_MissingRepos(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing repos")
 	}
-	if !strings.Contains(err.Error(), "'repos' is required") {
+	if want := "\n==> File " + path + "\n==> At Config()\n=====> Missing required key: repos"; err.Error() != want {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -114,213 +114,6 @@ func TestLoadConfig_EmptyRepos(t *testing.T) {
 		if err == nil && len(cfg.Repos) != 0 {
 			t.Errorf("LoadConfig(%q) repos = %v, want none", tc.content, cfg.Repos)
 		}
-	}
-}
-
-// --- Validate tests ---
-
-func TestValidate_MissingRepoField(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{Repo: "", Hooks: []HookConfig{{ID: "test"}}},
-		},
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for missing repo field")
-	}
-	if !strings.Contains(err.Error(), "'repo' is required") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestValidate_MissingRevForRemoteRepo(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{Repo: "https://github.com/example/repo", Rev: "", Hooks: []HookConfig{{ID: "test"}}},
-		},
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for missing rev")
-	}
-	if !strings.Contains(err.Error(), "'rev' is required") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestValidate_LocalRepoNoRevRequired(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{
-				Repo: "local",
-				Hooks: []HookConfig{
-					{ID: "test", Name: "Test", Entry: "echo hi", Language: "system"},
-				},
-			},
-		},
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("local repo should not require rev: %v", err)
-	}
-}
-
-func TestValidate_MetaRepoNoRevRequired(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{
-				Repo:  "meta",
-				Hooks: []HookConfig{{ID: "check-hooks-apply"}},
-			},
-		},
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("meta repo should not require rev: %v", err)
-	}
-}
-
-func TestValidate_LocalHookRequiresFields(t *testing.T) {
-	tests := []struct {
-		name    string
-		hook    HookConfig
-		wantErr string
-	}{
-		{
-			name:    "missing name",
-			hook:    HookConfig{ID: "test", Entry: "echo", Language: "system"},
-			wantErr: "'name' is required",
-		},
-		{
-			name:    "missing entry",
-			hook:    HookConfig{ID: "test", Name: "Test", Language: "system"},
-			wantErr: "'entry' is required",
-		},
-		{
-			name:    "missing language",
-			hook:    HookConfig{ID: "test", Name: "Test", Entry: "echo"},
-			wantErr: "'language' is required",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := &Config{
-				Repos: []RepoConfig{
-					{Repo: "local", Hooks: []HookConfig{tc.hook}},
-				},
-			}
-			err := cfg.Validate()
-			if err == nil {
-				t.Fatal("expected error")
-			}
-			if !strings.Contains(err.Error(), tc.wantErr) {
-				t.Errorf("expected error containing %q, got: %v", tc.wantErr, err)
-			}
-		})
-	}
-}
-
-func TestValidate_InvalidRegex_TopLevel(t *testing.T) {
-	tests := []struct {
-		name    string
-		files   string
-		exclude string
-		wantErr string
-	}{
-		{
-			name:    "invalid files pattern",
-			files:   "[invalid",
-			wantErr: "invalid 'files' pattern",
-		},
-		{
-			name:    "invalid exclude pattern",
-			exclude: "[invalid",
-			wantErr: "invalid 'exclude' pattern",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := &Config{
-				Files:   tc.files,
-				Exclude: tc.exclude,
-				Repos: []RepoConfig{
-					{
-						Repo: "https://github.com/example/repo",
-						Rev:  "v1.0.0",
-						Hooks: []HookConfig{
-							{ID: "test"},
-						},
-					},
-				},
-			}
-			err := cfg.Validate()
-			if err == nil {
-				t.Fatal("expected error")
-			}
-			if !strings.Contains(err.Error(), tc.wantErr) {
-				t.Errorf("expected error containing %q, got: %v", tc.wantErr, err)
-			}
-		})
-	}
-}
-
-func TestValidate_InvalidRegex_HookLevel(t *testing.T) {
-	tests := []struct {
-		name    string
-		files   string
-		exclude string
-		wantErr string
-	}{
-		{
-			name:    "invalid hook files pattern",
-			files:   "[invalid",
-			wantErr: "invalid 'files' pattern",
-		},
-		{
-			name:    "invalid hook exclude pattern",
-			exclude: "[invalid",
-			wantErr: "invalid 'exclude' pattern",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := &Config{
-				Repos: []RepoConfig{
-					{
-						Repo: "https://github.com/example/repo",
-						Rev:  "v1.0.0",
-						Hooks: []HookConfig{
-							{ID: "test", Files: tc.files, Exclude: tc.exclude},
-						},
-					},
-				},
-			}
-			err := cfg.Validate()
-			if err == nil {
-				t.Fatal("expected error")
-			}
-			if !strings.Contains(err.Error(), tc.wantErr) {
-				t.Errorf("expected error containing %q, got: %v", tc.wantErr, err)
-			}
-		})
-	}
-}
-
-func TestValidate_ValidRegex(t *testing.T) {
-	cfg := &Config{
-		Files:   `\.go$`,
-		Exclude: `^vendor/`,
-		Repos: []RepoConfig{
-			{
-				Repo: "https://github.com/example/repo",
-				Rev:  "v1.0.0",
-				Hooks: []HookConfig{
-					{ID: "test", Files: `\.py$`, Exclude: `test_.*\.py$`},
-				},
-			},
-		},
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -582,22 +375,22 @@ func TestLoadManifest_MissingFields(t *testing.T) {
 		{
 			name:    "missing id",
 			content: "- name: Test\n  entry: echo\n  language: system\n",
-			wantErr: "missing required 'id' field",
+			wantErr: "==> At Hook(id=MISSING)\n=====> Missing required key: id",
 		},
 		{
 			name:    "missing name",
 			content: "- id: test\n  entry: echo\n  language: system\n",
-			wantErr: "missing required 'name' field",
+			wantErr: "==> At Hook(id='test')\n=====> Missing required key: name",
 		},
 		{
 			name:    "missing entry",
 			content: "- id: test\n  name: Test\n  language: system\n",
-			wantErr: "missing required 'entry' field",
+			wantErr: "==> At Hook(id='test')\n=====> Missing required key: entry",
 		},
 		{
 			name:    "missing language",
 			content: "- id: test\n  name: Test\n  entry: echo\n",
-			wantErr: "missing required 'language' field",
+			wantErr: "==> At Hook(id='test')\n=====> Missing required key: language",
 		},
 	}
 	for _, tc := range tests {
@@ -884,44 +677,6 @@ repos:
 	}
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
-	}
-}
-
-// --- Validate: missing hooks array ---
-
-func TestValidate_MissingHooks(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{Repo: "https://github.com/example/repo", Rev: "v1.0.0"},
-		},
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for missing hooks")
-	}
-	if !strings.Contains(err.Error(), "'hooks' is required") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-// --- Validate: missing hook ID ---
-
-func TestValidate_MissingHookID(t *testing.T) {
-	cfg := &Config{
-		Repos: []RepoConfig{
-			{
-				Repo:  "https://github.com/example/repo",
-				Rev:   "v1.0.0",
-				Hooks: []HookConfig{{ID: ""}},
-			},
-		},
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for missing hook ID")
-	}
-	if !strings.Contains(err.Error(), "'id' is required") {
-		t.Errorf("unexpected error: %v", err)
 	}
 }
 

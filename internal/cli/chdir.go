@@ -4,16 +4,9 @@
 package cli
 
 import (
-	"errors"
-	"fmt"
-	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strings"
 
-	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
@@ -133,74 +126,4 @@ func relFrom(start, p string) string {
 func exists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
-}
-
-// fatalError reports err the way upstream's error_handler reports a
-// FatalError: one line on stdout naming it, a pointer to the log, and the
-// log itself in the store directory. Returns upstream's exit code, 1.
-func fatalError(err error) int {
-	writeFatalError(storeDirForLog(), err.Error())
-	return 1
-}
-
-// storeDirForLog is the directory upstream's Store() resolves -- realpath'd,
-// and created if missing -- which is where it writes pre-commit.log.
-func storeDirForLog() string {
-	dir := store.DefaultDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return dir
-	}
-	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
-		return resolved
-	}
-	return dir
-}
-
-// unexpectedError reports err the way upstream's error_handler reports any
-// exception that is not a FatalError, with its exit code, 3. A failed git
-// command is upstream's CalledProcessError; anything else is named by the
-// nearest Python equivalent.
-func unexpectedError(err error) int {
-	name := "Exception"
-	var cpe *git.CalledProcessError
-	var pathErr *fs.PathError
-	switch {
-	case errors.As(err, &cpe):
-		name = "CalledProcessError"
-	case errors.As(err, &pathErr):
-		name = "OSError"
-	}
-	writeErrorLog(storeDirForLog(), "An unexpected error has occurred: "+name+": "+err.Error())
-	return 3
-}
-
-func writeFatalError(storeDir, msg string) {
-	writeErrorLog(storeDir, "An error has occurred: FatalError: "+msg)
-}
-
-// writeErrorLog prints line, then writes upstream's pre-commit.log for it.
-func writeErrorLog(storeDir, line string) {
-	fmt.Println(line)
-
-	gitVersion := "unknown"
-	if out, err := exec.Command("git", "--version").Output(); err == nil {
-		gitVersion = strings.TrimRight(string(out), "\n")
-	}
-	log := fmt.Sprintf("### version information\n\n```\n"+
-		"pre-commit version: %s\n"+
-		"git --version: %s\n"+
-		"go version: %s\n"+
-		"runtime.GOOS: %s\n"+
-		"runtime.GOARCH: %s\n"+
-		"```\n\n"+
-		"### error information\n\n```\n%s\n```\n",
-		config.Version, gitVersion, runtime.Version(), runtime.GOOS, runtime.GOARCH, line)
-
-	logPath := filepath.Join(storeDir, "pre-commit.log")
-	if err := os.WriteFile(logPath, []byte(log), 0o644); err != nil {
-		fmt.Printf("Failed to write to log at %s\n", logPath)
-		fmt.Print(log)
-		return
-	}
-	fmt.Printf("Check the log at %s\n", logPath)
 }

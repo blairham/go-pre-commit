@@ -156,28 +156,24 @@ func (c *InstallCommand) Run(args []string) int {
 	for _, hookType := range typesToInstall {
 		hookFile, legacyFile, err := hookPaths(hookType)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 		if err := os.MkdirAll(filepath.Dir(hookFile), 0o755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to create hooks directory: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 
 		// An existing hook that is not ours becomes the legacy hook, which
 		// the installed script runs first ("migration mode").
 		if _, err := os.Lstat(hookFile); err == nil && !isOurScript(hookFile) {
 			if err := os.Rename(hookFile, legacyFile); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: failed to move existing hook %s: %v\n", hookFile, err)
-				return 1
+				return reportError(err)
 			}
 		}
 
 		if _, err := os.Stat(legacyFile); err == nil {
 			if opts.Overwrite {
 				if err := os.Remove(legacyFile); err != nil {
-					fmt.Fprintf(os.Stderr, "Error: failed to remove %s: %v\n", legacyFile, err)
-					return 1
+					return reportError(err)
 				}
 			} else {
 				fmt.Printf("Running in migration mode with existing hooks at %s\nUse -f to use only pre-commit.\n", legacyFile)
@@ -187,13 +183,11 @@ func (c *InstallCommand) Run(args []string) int {
 		content := hookScript(opts.Config, hookType, opts.AllowMissing)
 
 		if err := os.WriteFile(hookFile, []byte(content), 0o755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to write hook: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 		// WriteFile keeps an existing file's mode; make_executable does not.
 		if err := os.Chmod(hookFile, 0o755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 
 		fmt.Printf("pre-commit installed at %s\n", hookFile)
@@ -201,9 +195,8 @@ func (c *InstallCommand) Run(args []string) int {
 
 	// Install hook environments if requested.
 	if opts.InstallHooks {
-		if err := installAllHookEnvironments(opts.Config); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return 1
+		if err := installAllHookEnvironments(c.Meta.ctx(), opts.Config); err != nil {
+			return reportError(err)
 		}
 	}
 
@@ -263,8 +256,7 @@ func (c *UninstallCommand) Run(args []string) int {
 	for _, ht := range installHookTypes(opts.Config, opts.HookTypes) {
 		hookFile, legacyFile, err := hookPaths(ht)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 
 		// A hook that is missing or not ours is left alone, silently.
@@ -326,9 +318,8 @@ func (c *InstallHooksCommand) Run(args []string) int {
 		return fatalError(err)
 	}
 
-	if err := installAllHookEnvironments(opts.Config); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	if err := installAllHookEnvironments(c.Meta.ctx(), opts.Config); err != nil {
+		return reportError(err)
 	}
 	return 0
 }
@@ -350,21 +341,21 @@ func (c *InstallHooksCommand) Synopsis() string {
 	return "Install hook environments for all hooks in the config"
 }
 
-func installAllHookEnvironments(cfgPath string) error {
+func installAllHookEnvironments(ctx context.Context, cfgPath string) error {
 	cfg, err := config.LoadConfig(cfgPath)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
 	s := store.New("")
 
 	resolver := repository.NewResolver(s, cfg)
-	hooks, err := resolver.ResolveAll(context.Background(), cfg)
+	hooks, err := resolver.ResolveAll(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("failed to resolve hooks: %w", err)
+		return err
 	}
 
-	return hook.InstallEnvironments(context.Background(), hooks, s.ExclusiveLock)
+	return hook.InstallEnvironments(ctx, hooks, s.ExclusiveLock)
 }
 
 // installHookTypes is upstream's _hook_types: the -t types given, else the

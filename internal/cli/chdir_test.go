@@ -171,36 +171,6 @@ func TestAdjustArgsAndChdir_Errors(t *testing.T) {
 	})
 }
 
-func TestWriteFatalError(t *testing.T) {
-	dir := t.TempDir()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	orig := os.Stdout
-	os.Stdout = w
-	writeFatalError(dir, git.ErrInsideGitDir.Error())
-	w.Close()
-	os.Stdout = orig
-	out, _ := io.ReadAll(r)
-
-	logPath := filepath.Join(dir, "pre-commit.log")
-	want := "An error has occurred: FatalError: git toplevel unexpectedly empty! make sure you are " +
-		"not inside the `.git` directory of your repository.\n" +
-		"Check the log at " + logPath + "\n"
-	if string(out) != want {
-		t.Errorf("stdout = %q, want %q", out, want)
-	}
-	log, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(log), "### error information") ||
-		!strings.Contains(string(log), "FatalError: git toplevel") {
-		t.Errorf("log does not record the error:\n%s", log)
-	}
-}
-
 // The case #109 was filed for: from a subdirectory, the config at the root
 // is found, and a `../`-relative --config is reported root-relative.
 func TestAutoupdateFromSubdirectory(t *testing.T) {

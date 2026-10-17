@@ -5,12 +5,27 @@
 package cli
 
 import (
+	"context"
+
 	mcli "github.com/mitchellh/cli"
 )
 
 // Meta contains shared state for all commands.
 type Meta struct {
 	UI mcli.Ui
+	// Ctx is canceled when the user interrupts (SIGINT), so a command
+	// stops starting work and unwinds -- restoring a stash on the way, as
+	// upstream's context managers do for KeyboardInterrupt.
+	Ctx context.Context
+}
+
+// ctx is m.Ctx, or a context that is never canceled when there is none (a
+// command constructed directly, as tests do).
+func (m *Meta) ctx() context.Context {
+	if m == nil || m.Ctx == nil {
+		return context.Background()
+	}
+	return m.Ctx
 }
 
 // GlobalFlags are flags available to all commands.

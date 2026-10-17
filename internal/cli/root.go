@@ -4,8 +4,11 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"runtime/debug"
 
 	mcli "github.com/mitchellh/cli"
 
@@ -41,7 +44,37 @@ func versionString(b BuildInfo) string {
 }
 
 // Run creates the CLI application and executes the command specified by args.
-func Run(args []string, build BuildInfo) int {
+//
+// It plays the part of upstream's error_handler around the whole command: a
+// panic is reported as an unexpected error (exit 3), and SIGINT cancels the
+// command's context and, once the command has unwound, is reported as
+// "Interrupted (^C)" (exit 130). A second SIGINT is not caught, and kills
+// the process as it would have before.
+func Run(args []string, build BuildInfo) (code int) {
+	interrupted.Store(false)
+	errorReported.Store(false)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt)
+	defer signal.Stop(sigs)
+	go func() {
+		select {
+		case <-sigs:
+			interrupted.Store(true)
+			signal.Stop(sigs)
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	defer func() {
+		if r := recover(); r != nil {
+			code = reportPanic(r, debug.Stack())
+		}
+	}()
+
 	// Upstream: "argparse doesn't really provide a way to use a `default`
 	// subparser" — a bare `pre-commit` is `pre-commit run`.
 	if len(args) == 0 {
@@ -53,7 +86,7 @@ func Run(args []string, build BuildInfo) int {
 		ErrorWriter: os.Stderr,
 	}
 
-	meta := &Meta{UI: ui}
+	meta := &Meta{UI: ui, Ctx: ctx}
 
 	c := &mcli.CLI{
 		Name:    "pre-commit",
@@ -98,6 +131,9 @@ func Run(args []string, build BuildInfo) int {
 	}
 
 	exitCode, err := c.Run()
+	if interrupted.Load() && !errorReported.Load() {
+		return reportError(keyboardInterrupt{})
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
