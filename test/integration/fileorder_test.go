@@ -74,6 +74,11 @@ func TestHookFileOrder(t *testing.T) {
 			hook: `entry: x
     language: pygrep`,
 		},
+		{
+			name: "fail hook keeps the given order",
+			hook: `entry: nope
+    language: fail`,
+		},
 	}
 
 	for _, tc := range cases {

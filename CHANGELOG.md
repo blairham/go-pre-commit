@@ -15,6 +15,9 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `language: fail` lists the files it failed on, as upstream's `fail.py`
+  does: the entry, a blank line, then one file per line. It printed only the
+  entry. (#128)
 - A config with `repos: []` is valid, as it is upstream, where `repos` is
   `cfgv.Required` over an array: `run`, `validate-config`, `autoupdate` and
   `install-hooks` accept it instead of failing with `'repos' is required`. A

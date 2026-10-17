@@ -51,6 +51,8 @@ func TestHookOutput(t *testing.T) {
 		{"pygrep --multiline", "entry: 'ar\\nba'\n    language: pygrep\n    args: [--multiline]", "c.txt:2:bar"},
 		{"pygrep --negate", "entry: BAD\n    language: pygrep\n    args: [--negate]", "b.txt"},
 		{"pygrep --multiline --negate", "entry: BAD\n    language: pygrep\n    args: [--multiline, --negate]", "c.txt"},
+		{"fail lists its files", "entry: nope\n    language: fail", "b.txt"},
+		{"fail without filenames", "entry: nope\n    language: fail\n    pass_filenames: false", "nope"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
