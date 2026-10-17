@@ -134,3 +134,34 @@ func TestMakeLocalRebuildsRemovedDirectory(t *testing.T) {
 		t.Errorf("recorded path %s, want %s", repos[0].Path, again)
 	}
 }
+
+// upstream's _make_local_repo writes renv's placeholders, so a local r hook
+// has a lockfile to restore; a directory made before they existed is rebuilt.
+func TestMakeLocalWritesRenvResources(t *testing.T) {
+	s := New(t.TempDir())
+	dir, err := s.MakeLocal(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, src := range renvResources {
+		got, readErr := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		if readErr != nil {
+			t.Fatalf("%s: %v", name, readErr)
+		}
+		want, _ := renvFiles.ReadFile(src)
+		if string(got) != string(want) || len(got) == 0 {
+			t.Errorf("%s does not hold upstream's template", name)
+		}
+	}
+
+	if rmErr := os.RemoveAll(filepath.Join(dir, "renv")); rmErr != nil {
+		t.Fatal(rmErr)
+	}
+	again, err := s.MakeLocal(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(again, "renv", "activate.R")); err != nil {
+		t.Errorf("a local repo missing renv's files should be rebuilt: %v", err)
+	}
+}

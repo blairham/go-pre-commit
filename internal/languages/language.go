@@ -121,6 +121,6 @@ func init() {
 	Register("julia", &Julia{})
 	Register("lua", luaLang)
 	Register("perl", perlLang)
-	Register("r", rLang)
+	Register("r", &R{})
 	Register("swift", &Swift{})
 }

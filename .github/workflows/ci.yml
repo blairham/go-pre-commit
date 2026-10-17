@@ -96,6 +96,24 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/julia" --strip-components=1
           echo "$RUNNER_TEMP/julia/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/julia/bin/julia" --version
+      - name: Install R
+        if: needs.changes.outputs.code == 'true'
+        # For the r rows (#139): a remote and a `repo: local` hook, each
+        # installed and run by both tools. Posit's prebuilt R for this image,
+        # pinned by the sha256 of the .deb as downloaded on 2026-10-16, so the
+        # runner image cannot change what is graded; apt resolves only its
+        # system dependencies.
+        env:
+          R_VERSION: '4.6.1'
+          R_SHA256: 5af816371126c8e5895600de035153cd3a64b12f4beb43f291ee34bf24f8fd2d
+        run: |
+          deb="r-${R_VERSION}_1_amd64.deb"
+          curl -fsSL -o "$RUNNER_TEMP/$deb" "https://cdn.posit.co/r/ubuntu-2404/pkgs/$deb"
+          echo "$R_SHA256  $RUNNER_TEMP/$deb" | sha256sum -c -
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "$RUNNER_TEMP/$deb"
+          echo "/opt/R/${R_VERSION}/bin" >> "$GITHUB_PATH"
+          "/opt/R/${R_VERSION}/bin/Rscript" --version
       - name: Run parity tests
         if: needs.changes.outputs.code == 'true'
         # PARITY_REQUIRE turns "no Python found" and "zero checks ran" from a
