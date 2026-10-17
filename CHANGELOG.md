@@ -15,6 +15,15 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `hook-impl` runs a `.legacy` hook as upstream's `_run_legacy` does. A
+  failing legacy hook now fails the commit (`retv | run`), where this port
+  printed `[WARNING] Legacy hook failed: ...` and went on. A legacy hook that
+  is not executable is skipped. With no `--hook-dir` (git 2.54+ hooks) no
+  legacy hook runs. The legacy hook gets `PRE_COMMIT_RUNNING_LEGACY=1`, the
+  environment git gave the hook, and empty stdin outside `pre-push`. A
+  pre-commit script saved as the legacy hook now stops with upstream's
+  `bug: pre-commit's script is installed in migration mode` message instead
+  of recursing without end. (#170)
 - `language: pygrep`'s `\s` matches a vertical tab, as upstream's bytes
   pattern does (`[ \t\n\r\f\v]`), and `\S` does not, inside a character
   class too. RE2's `\s`, which pcre compiled it to, leaves `\v` out. (#181)
