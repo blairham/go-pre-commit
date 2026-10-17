@@ -15,6 +15,14 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- Config validation emits upstream's schema warnings, in its schema order:
+  "Unexpected key(s) present at root/on <repo>", the regex-not-glob and
+  slash-normalising hints for `files`/`exclude`, and (now in place, before
+  any later key fails) the deprecated-stage and mutable-rev warnings. The
+  validator sees the values PyYAML builds, so `on:`/`yes` are bools as
+  upstream reads them, and a key that is not a string makes the unknown-key
+  warning raise upstream's `TypeError` (exit 3) instead of being accepted.
+  (#187)
 - `hook-impl` runs a `.legacy` hook as upstream's `_run_legacy` does. A
   failing legacy hook now fails the commit (`retv | run`), where this port
   printed `[WARNING] Legacy hook failed: ...` and went on. A legacy hook that
