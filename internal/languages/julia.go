@@ -26,14 +26,9 @@ func (j *Julia) EnvironmentDir() string { return "juliaenv" }
 // GetDefaultVersion is upstream's basic_get_default_version.
 func (j *Julia) GetDefaultVersion() string { return "default" }
 
-// HealthCheck implements Language.
-func (j *Julia) HealthCheck(_, _ string) error {
-	cmd := exec.Command("julia", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("julia not available: %w", err)
-	}
-	return nil
-}
+// HealthCheck is upstream's lang_base.basic_health_check: an installed
+// environment is always healthy. A missing toolchain shows when the hook runs.
+func (j *Julia) HealthCheck(_, _ string) error { return nil }
 
 // juliaUnset is the part of upstream's get_env_patch that removes a variable:
 // a JULIA_PROJECT in the caller's environment would override the load path.

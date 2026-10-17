@@ -648,7 +648,10 @@ func environmentsToInstall(hooks []*Hook) ([]installTask, error) {
 
 		envPath := languages.EnvPath(envDir, lang, h.LanguageVersion)
 		stateFile := filepath.Join(envPath, installStateFile)
-		if data, err := os.ReadFile(stateFile); err == nil && string(data) == h.InstallKey() {
+		// upstream's _hook_installed: the install state matches and the
+		// language's health_check finds the env still healthy.
+		if data, err := os.ReadFile(stateFile); err == nil && string(data) == h.InstallKey() &&
+			lang.HealthCheck(envDir, h.LanguageVersion) == nil {
 			continue // Already installed with same deps.
 		}
 		// A state mismatch (deps changed), or an env dir with no valid state
@@ -699,6 +702,15 @@ func installTasks(tasks []installTask) error {
 			); err != nil {
 				_ = fsutil.RemoveAll(envPath)
 				errs[idx] = fmt.Errorf("failed to install environment for hook %q: %w", t.hook.ID, err)
+				return
+			}
+			// As upstream's _hook_install: a fresh env must be healthy.
+			if healthErr := t.lang.HealthCheck(t.hook.RepoDir, t.hook.LanguageVersion); healthErr != nil {
+				errs[idx] = errors.Join(fmt.Errorf(
+					"BUG: expected environment for %s to be healthy immediately after install, "+
+						"please open an issue describing your environment\n\nmore info:\n\n%v",
+					t.hook.Language, healthErr,
+				), fsutil.RemoveAll(envPath))
 				return
 			}
 
