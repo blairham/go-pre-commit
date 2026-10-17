@@ -115,3 +115,24 @@ func TestExtractZip(t *testing.T) {
 		t.Error("a zip member outside the destination must be refused")
 	}
 }
+
+// Each symlink is in-tree on its own, but through the first the second
+// points at the destination's parent: a write through it must not land there.
+func TestExtractTarGzSymlinkChain(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks")
+	}
+	parent := t.TempDir()
+	dest := filepath.Join(parent, "dest")
+	err := extractTarGz(tarGz(t,
+		tarMember{name: "a", typ: tar.TypeSymlink, link: "."},
+		tarMember{name: "a/b", typ: tar.TypeSymlink, link: ".."},
+		tarMember{name: "a/b/escaped", typ: tar.TypeReg, mode: 0o644, body: "x"},
+	), dest)
+	if err == nil {
+		t.Error("a write through a chain of symlinks out of the destination must fail")
+	}
+	if _, statErr := os.Stat(filepath.Join(parent, "escaped")); !os.IsNotExist(statErr) {
+		t.Errorf("file escaped the destination (stat: %v)", statErr)
+	}
+}

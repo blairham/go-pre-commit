@@ -12,20 +12,25 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // extractTarGz is Python's tarfile.open(fileobj=r).extractall(dest) under
 // the "data" filter Python 3.14 applies by default: regular files,
 // directories and symlinks, none of which may land or point outside dest.
 // Modes keep their permission bits, so the executables in a Go distribution
-// or rbenv stay executable.
+// or rbenv stay executable. Every write goes through an os.Root on dest, so
+// not even a chain of in-tree symlinks can carry one outside it.
 func extractTarGz(r io.Reader, dest string) (err error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, gz.Close()) }()
+	root, err := openArchiveRoot(dest)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, root.Close()) }()
 	tr := tar.NewReader(gz)
 	for {
 		hdr, nextErr := tr.Next()
@@ -35,34 +40,32 @@ func extractTarGz(r io.Reader, dest string) (err error) {
 		if nextErr != nil {
 			return nextErr
 		}
-		if memberErr := extractTarMember(tr, hdr, dest); memberErr != nil {
+		if memberErr := extractTarMember(root, tr, hdr); memberErr != nil {
 			return memberErr
 		}
 	}
 }
 
-// extractTarMember writes one tar member under dest.
-func extractTarMember(r io.Reader, hdr *tar.Header, dest string) error {
-	target, err := archiveTarget(dest, hdr.Name)
+// extractTarMember writes one tar member under root.
+func extractTarMember(root *os.Root, r io.Reader, hdr *tar.Header) error {
+	name, err := archiveMemberName(hdr.Name)
 	if err != nil {
 		return err
 	}
 	switch hdr.Typeflag {
 	case tar.TypeDir:
-		return os.MkdirAll(target, 0o755)
+		return root.MkdirAll(name, 0o755)
 	case tar.TypeReg:
-		return writeArchiveFile(target, r, hdr.FileInfo().Mode().Perm())
+		return writeArchiveFile(root, name, r, hdr.FileInfo().Mode().Perm())
 	case tar.TypeSymlink:
-		if filepath.IsAbs(hdr.Linkname) {
-			return fmt.Errorf("archive symlink %s points to an absolute path", hdr.Name)
+		link := filepath.FromSlash(hdr.Linkname)
+		if filepath.IsAbs(link) || !filepath.IsLocal(filepath.Join(filepath.Dir(name), link)) {
+			return fmt.Errorf("archive symlink %q points outside the destination", hdr.Name)
 		}
-		if _, err := archiveTarget(dest, filepath.Join(filepath.Dir(hdr.Name), hdr.Linkname)); err != nil {
+		if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return err
-		}
-		return os.Symlink(hdr.Linkname, target)
+		return root.Symlink(link, name)
 	default:
 		// Hard links, devices and fifos appear in neither a Go distribution
 		// nor upstream's rbenv tarballs; the data filter would refuse the
@@ -72,28 +75,33 @@ func extractTarMember(r io.Reader, hdr *tar.Header, dest string) error {
 }
 
 // extractZip is zipfile.ZipFile(path).extractall(dest), with the same
-// containment check as extractTarGz.
+// containment as extractTarGz.
 func extractZip(path, dest string) (err error) {
 	zr, err := zip.OpenReader(path)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, zr.Close()) }()
+	root, err := openArchiveRoot(dest)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, root.Close()) }()
 	for _, f := range zr.File {
-		if memberErr := extractZipMember(f, dest); memberErr != nil {
+		if memberErr := extractZipMember(root, f); memberErr != nil {
 			return memberErr
 		}
 	}
 	return nil
 }
 
-func extractZipMember(f *zip.File, dest string) (err error) {
-	target, err := archiveTarget(dest, f.Name)
+func extractZipMember(root *os.Root, f *zip.File) (err error) {
+	name, err := archiveMemberName(f.Name)
 	if err != nil {
 		return err
 	}
 	if f.FileInfo().IsDir() {
-		return os.MkdirAll(target, 0o755)
+		return root.MkdirAll(name, 0o755)
 	}
 	rc, err := f.Open()
 	if err != nil {
@@ -104,25 +112,31 @@ func extractZipMember(f *zip.File, dest string) (err error) {
 	if mode == 0 {
 		mode = 0o644
 	}
-	return writeArchiveFile(target, rc, mode)
+	return writeArchiveFile(root, name, rc, mode)
 }
 
-// archiveTarget is where an archive member named name lands under dest; a
-// name that would escape dest is an error.
-func archiveTarget(dest, name string) (string, error) {
-	target := filepath.Join(dest, filepath.FromSlash(name))
-	rel, err := filepath.Rel(dest, target)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(name) {
+func openArchiveRoot(dest string) (*os.Root, error) {
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return nil, err
+	}
+	return os.OpenRoot(dest)
+}
+
+// archiveMemberName is an archive member's name as a local path; a name
+// that is absolute or climbs out with .. is an error.
+func archiveMemberName(name string) (string, error) {
+	local := filepath.Clean(filepath.FromSlash(name))
+	if !filepath.IsLocal(local) {
 		return "", fmt.Errorf("archive member %q is outside the destination", name)
 	}
-	return target, nil
+	return local, nil
 }
 
-func writeArchiveFile(target string, r io.Reader, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+func writeArchiveFile(root *os.Root, name string, r io.Reader, mode os.FileMode) error {
+	if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
 	if err != nil {
 		return err
 	}
