@@ -218,6 +218,27 @@ file was introduced; the full notes are on the
   `require_serial` hook; `run --jobs` still overrides it. A hook that prints
   once per invocation now prints as often as upstream's does, and a large
   file list no longer risks exceeding the OS argument limit. (#132)
+- Errors are reported through a port of upstream's `error_handler`. An
+  expected failure prints `An error has occurred: <Type>: <message>` and
+  exits 1; any other error prints `An unexpected error has occurred: ...`
+  and exits 3; Ctrl-C prints `Interrupted (^C): KeyboardInterrupt: ` and
+  exits 130 once hooks have stopped and any stash is restored; a panic is
+  an unexpected error. Each is followed by `Check the log at
+  <store>/pre-commit.log`, and the log holds the version information, the
+  error and a stack trace. These replace the `Error: ...` lines and blanket
+  exit 1. File errors read as Python's (`FileNotFoundError: [Errno 2] No
+  such file or directory: 'x'`). (#126)
+- `.pre-commit-config.yaml` and `.pre-commit-hooks.yaml` are validated by a
+  port of upstream's cfgv schemas, in upstream's key order, and failures
+  carry its `==> At ...` / `=====> ...` context, as an `InvalidConfigError`
+  or `InvalidManifestError`. Checks that were missing now apply: a
+  `language` outside upstream's list, `rev` on a `local` or `meta` repo,
+  `entry` on a meta hook, unknown stages and `default_install_hook_types`,
+  unknown `default_language_version` keys, and wrongly typed values.
+  YAML syntax errors keep the Go parser's wording. (#126)
+- `run` with `PRE_COMMIT_ALLOW_NO_CONFIG` set no longer exits 0 on a missing
+  or invalid config; upstream honors that variable only in the git hook
+  (`hook-impl`), which still does. (#126)
 - Hooks receive their files in upstream's order. Upstream shuffles each
   hook's file list with a fixed-seed `random.Random` before splitting it into
   xargs batches, unless the hook is `require_serial`; this port never

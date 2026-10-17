@@ -19,7 +19,8 @@ func TestMain(m *testing.M) {
 		os.Exit(Run(os.Args[1:], BuildInfo{}))
 	}
 	// Every command that changes to the repository root records its config
-	// in the store, so the store must never be the user's own.
+	// in the store, and the error handler writes pre-commit.log there, so the
+	// store must never be the user's own.
 	home, err := os.MkdirTemp("", "pre-commit-home-")
 	if err != nil {
 		panic(err)

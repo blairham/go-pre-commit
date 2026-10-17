@@ -245,6 +245,12 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 		var exitCode int
 		var hookOutput []byte
 		exitCode, hookOutput, err = runHookXargs(ctx, lang, h, fileArgs, r.root, opts.Jobs)
+		if ctx.Err() != nil {
+			// Interrupted mid-hook: upstream's KeyboardInterrupt leaves the
+			// name and dots on the line with no status, and the error
+			// handler's message completes it.
+			return result
+		}
 		if err != nil {
 			if !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, fs.ErrNotExist) {
 				fmt.Println()

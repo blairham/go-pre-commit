@@ -30,8 +30,7 @@ func (c *MigrateConfigCommand) Run(args []string) int {
 
 	content, err := os.ReadFile(opts.Config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to read config: %v\n", err)
-		return 1
+		return reportError(err)
 	}
 
 	raw := string(content)
@@ -82,8 +81,7 @@ func (c *MigrateConfigCommand) Run(args []string) int {
 
 	if migrated {
 		if err := os.WriteFile(opts.Config, []byte(raw), 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to write config: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 		fmt.Println("Configuration has been migrated.")
 	} else {

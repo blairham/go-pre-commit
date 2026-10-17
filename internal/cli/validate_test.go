@@ -48,7 +48,7 @@ func TestValidateFilesSilentOnSuccess(t *testing.T) {
 		{name: "manifest", file: man, load: loadManifestOnly},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			out, rc := validateOutput([]string{tc.file}, tc.load)
+			out, rc, _ := validateOutput([]string{tc.file}, tc.load)
 			if rc != 0 {
 				t.Fatalf("rc = %d, want 0", rc)
 			}
@@ -78,7 +78,7 @@ func TestValidateFilesMissing(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing.yaml")
 	for _, path := range []string{missing, dir} {
-		out, rc := validateOutput([]string{path}, loadConfigOnly)
+		out, rc, _ := validateOutput([]string{path}, loadConfigOnly)
 		if rc != 1 {
 			t.Fatalf("rc = %d, want 1", rc)
 		}
@@ -94,12 +94,13 @@ func TestValidateFilesInvalid(t *testing.T) {
 	bad := writeValidateFile(t, dir, "bad.yaml", "repos:\n- repo: local\n  hooks:\n  - id: x\n")
 	missing := filepath.Join(dir, "missing.yaml")
 
-	out, rc := validateOutput([]string{bad, missing}, loadConfigOnly)
+	out, rc, _ := validateOutput([]string{bad, missing}, loadConfigOnly)
 	if rc != 1 {
 		t.Fatalf("rc = %d, want 1", rc)
 	}
-	if !strings.HasPrefix(out, "\n==> File "+bad+"\n=====> ") {
-		t.Errorf("output does not start with the File context: %q", out)
+	if want := "\n==> File " + bad + "\n==> At Config()\n==> At key: repos\n==> At Repository(repo='local')\n" +
+		"==> At key: hooks\n==> At Hook(id='x')\n=====> Missing required key: name\n"; !strings.HasPrefix(out, want) {
+		t.Errorf("output = %q, want prefix %q", out, want)
 	}
 	if strings.Contains(out, "invalid config") {
 		t.Errorf("output carries our wrapping prefix: %q", out)

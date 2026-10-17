@@ -5,7 +5,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/blairham/go-pre-commit/v4/internal/output"
-	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
 
 // Default file names.
@@ -164,31 +162,21 @@ func (h *ManifestHook) DefaultPassFilenames() bool {
 	return *h.PassFilenames
 }
 
-// LoadConfig reads and parses a .pre-commit-config.yaml file.
+// LoadConfig reads, validates and parses a .pre-commit-config.yaml file, as
+// upstream's clientlib.load_config does. A file that fails validation is a
+// *fatal.Error of type InvalidConfigError carrying cfgv's message.
 func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := loadFromFilename(path, invalidConfig, configSchema().check)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
+		return nil, err
 	}
 
+	// Validation has ruled out every shape that cannot bind to the struct;
+	// an error here is a gap in that port, reported as upstream would a
+	// validation failure.
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid config %s: %w", path, err)
-	}
-
-	// Enforce minimum_pre_commit_version.
-	if cfg.MinimumPreCommitVersion != "" {
-		if !CheckMinimumVersion(cfg.MinimumPreCommitVersion) {
-			return nil, fmt.Errorf(
-				"pre-commit version %s is required but version %s is installed. "+
-					"Update using: pip install --upgrade pre-commit (or go install this binary)",
-				cfg.MinimumPreCommitVersion, Version,
-			)
-		}
+		return nil, invalidConfig(inFile(path, newValidationError("%s", err.Error())))
 	}
 
 	// Upstream's schema warnings, in the order its schema checks them: each
@@ -445,16 +433,18 @@ func WarnMutableRev(repo, rev string) {
 	)
 }
 
-// LoadManifest reads and parses a .pre-commit-hooks.yaml file.
+// LoadManifest reads, validates and parses a .pre-commit-hooks.yaml file,
+// as upstream's clientlib.load_manifest does. A file that fails validation
+// is a *fatal.Error of type InvalidManifestError.
 func LoadManifest(path string) ([]ManifestHook, error) {
-	data, err := os.ReadFile(path)
+	data, err := loadFromFilename(path, invalidManifest, validateManifest)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read manifest file %s: %w", path, err)
+		return nil, err
 	}
 
 	var hooks []ManifestHook
 	if err := yaml.Unmarshal(data, &hooks); err != nil {
-		return nil, fmt.Errorf("failed to parse manifest file %s: %w", path, err)
+		return nil, invalidManifest(inFile(path, newValidationError("%s", err.Error())))
 	}
 
 	// Upstream's manifest schema migrates legacy stage names too, so a hook
@@ -462,92 +452,7 @@ func LoadManifest(path string) ([]ManifestHook, error) {
 	for i := range hooks {
 		hooks[i].Stages = migrateLegacyStages(hooks[i].Stages)
 	}
-
-	for _, h := range hooks {
-		if h.ID == "" {
-			return nil, fmt.Errorf("hook missing required 'id' field in %s", path)
-		}
-		if h.Name == "" {
-			return nil, fmt.Errorf("hook %q missing required 'name' field in %s", h.ID, path)
-		}
-		if h.Entry == "" {
-			return nil, fmt.Errorf("hook %q missing required 'entry' field in %s", h.ID, path)
-		}
-		if h.Language == "" {
-			return nil, fmt.Errorf("hook %q missing required 'language' field in %s", h.ID, path)
-		}
-	}
-
 	return hooks, nil
-}
-
-// Validate validates the config structure.
-func (c *Config) Validate() error {
-	// Upstream's schema is cfgv.Required('repos', check_array(...)): only a
-	// missing key (or one that is not a list) fails; `repos: []` is a valid
-	// config with no hooks. YAML decodes `[]` to an empty, non-nil slice and a
-	// missing or null key to nil.
-	if c.Repos == nil {
-		return fmt.Errorf("'repos' is required")
-	}
-	for i, repo := range c.Repos {
-		if repo.Repo == "" {
-			return fmt.Errorf("repos[%d]: 'repo' is required", i)
-		}
-		if !repo.IsLocal() && !repo.IsMeta() && repo.Rev == "" {
-			return fmt.Errorf("repos[%d]: 'rev' is required for repo %q", i, repo.Repo)
-		}
-		if len(repo.Hooks) == 0 {
-			return fmt.Errorf("repos[%d]: 'hooks' is required for repo %q", i, repo.Repo)
-		}
-		for j, hook := range repo.Hooks {
-			if hook.ID == "" {
-				return fmt.Errorf("repos[%d].hooks[%d]: 'id' is required", i, j)
-			}
-			// Local hooks require additional fields.
-			if repo.IsLocal() {
-				if hook.Name == "" {
-					return fmt.Errorf("repos[%d].hooks[%d]: 'name' is required for local hook %q", i, j, hook.ID)
-				}
-				if hook.Entry == "" {
-					return fmt.Errorf("repos[%d].hooks[%d]: 'entry' is required for local hook %q", i, j, hook.ID)
-				}
-				if hook.Language == "" {
-					return fmt.Errorf("repos[%d].hooks[%d]: 'language' is required for local hook %q", i, j, hook.ID)
-				}
-			}
-		}
-	}
-
-	// Validate regex patterns.
-	if c.Files != "" {
-		if _, err := pcre.Compile(c.Files); err != nil {
-			return fmt.Errorf("invalid 'files' pattern: %w", err)
-		}
-	}
-	if c.Exclude != "" {
-		if _, err := pcre.Compile(c.Exclude); err != nil {
-			return fmt.Errorf("invalid 'exclude' pattern: %w", err)
-		}
-	}
-
-	// Validate hook-level regex patterns.
-	for i, repo := range c.Repos {
-		for j, hook := range repo.Hooks {
-			if hook.Files != "" {
-				if _, err := pcre.Compile(hook.Files); err != nil {
-					return fmt.Errorf("repos[%d].hooks[%d] (%s): invalid 'files' pattern: %w", i, j, hook.ID, err)
-				}
-			}
-			if hook.Exclude != "" {
-				if _, err := pcre.Compile(hook.Exclude); err != nil {
-					return fmt.Errorf("repos[%d].hooks[%d] (%s): invalid 'exclude' pattern: %w", i, j, hook.ID, err)
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 // ValidateConfigFile validates a .pre-commit-config.yaml file.

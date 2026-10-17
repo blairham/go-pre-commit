@@ -63,8 +63,7 @@ func (c *HookImplCommand) Run(args []string) int {
 	if opts.HookType == "pre-push" {
 		var err error
 		if stdin, err = readPrePushStdin(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 	}
 
@@ -107,8 +106,7 @@ func (c *HookImplCommand) Run(args []string) int {
 		}
 		pushArgs, err := prePushArgs("", remaining[0], remaining[1], stdin)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return 1
+			return reportError(err)
 		}
 		if pushArgs == nil {
 			// Nothing being pushed needs checking (only deletions, or
