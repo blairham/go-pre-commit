@@ -15,6 +15,14 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `validate-config` and `validate-manifest` print nothing for a valid file,
+  as upstream does, instead of `Config file(s) are valid.` /
+  `Manifest file(s) are valid.`. A failure is printed to stdout in cfgv's
+  shape (`==> File <name>` then `=====> <message>`, or
+  `=====> <name> is not a file` for a missing path) rather than to stderr as
+  `<name>: <error>`, and with no filenames nothing is validated and the exit
+  is 0, as upstream's `nargs='*'` does, instead of falling back to the default
+  file. (#145)
 - `install` and `uninstall` are ported from upstream's
   `install_uninstall.py`. The hook path comes from git's common dir after
   changing to the root, so `install` prints
