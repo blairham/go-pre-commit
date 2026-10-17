@@ -7,6 +7,7 @@ package integration
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -44,6 +45,13 @@ func TestMigrateConfigFullOutput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			pyRepo := initTestRepo(t, tc.cfg, "")
 			goRepo := initTestRepo(t, tc.cfg, "")
+			// initTestRepo writes no config for "", and an empty file is
+			// what the row is about.
+			for _, repo := range []string{pyRepo, goRepo} {
+				if err := os.WriteFile(filepath.Join(repo, ".pre-commit-config.yaml"), []byte(tc.cfg), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			pyOut, pyErr, pyExit := runSplit(t, pyRepo, pyBin, "migrate-config")
 			goOut, goErr, goExit := runSplit(t, goRepo, goBinary, "migrate-config")
 			addExitResult("migrate-config", tc.name+": exit", pyExit, goExit, pyExit == goExit, "")
