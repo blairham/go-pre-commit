@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 

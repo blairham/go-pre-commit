@@ -67,7 +67,7 @@ func TestArgparseUsage(t *testing.T) {
 	}
 }
 
-func captureStderr(t *testing.T, fn func() int) (string, int) {
+func captureStderrCode(t *testing.T, fn func() int) (string, int) {
 	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -158,7 +158,7 @@ func TestParseArgsErrors(t *testing.T) {
 		default:
 			opts = &ColorFlags{}
 		}
-		out, code := captureStderr(t, func() int {
+		out, code := captureStderrCode(t, func() int {
 			_, code, ok := parseArgs(tc.cmd, opts, tc.args, expandFilesFlag(tc.args))
 			if ok {
 				return 0
