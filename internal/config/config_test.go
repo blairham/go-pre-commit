@@ -910,3 +910,143 @@ func TestValidate_MissingHookID(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// --- Deprecated stage-name warnings ---
+
+func writeTemp(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestLoadConfigWarnsDeprecatedStages(t *testing.T) {
+	path := writeTemp(t, ".pre-commit-config.yaml", "default_stages: [commit, push]\n"+
+		"repos:\n"+
+		"-   repo: https://example.com/r\n    rev: v1\n    hooks:\n"+
+		"    -   id: a\n        stages: [push, pre-commit, commit, push]\n"+
+		"    -   id: b\n        stages: [pre-push]\n"+
+		"-   repo: local\n    hooks:\n"+
+		"    -   id: c\n        name: c\n        entry: c\n        language: system\n        stages: [merge-commit]\n")
+	var cfg *Config
+	var err error
+	got := captureStdout(t, func() { cfg, err = LoadConfig(path) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tail = " which will be removed in a future version.  " +
+		"run: `pre-commit migrate-config` to automatically fix this.\n"
+	// Upstream's order: each repo's hooks, then its rev, then default_stages.
+	want := "[WARNING] hook id `a` uses deprecated stage names (push, commit, push)" + tail +
+		"[WARNING] The 'rev' field of repo 'https://example.com/r' appears to be a mutable reference " +
+		"(moving tag / branch).  Mutable references are never updated after first install and are not " +
+		"supported.  See https://pre-commit.com/#using-the-latest-version-for-a-repository for more " +
+		"details.  Hint: `pre-commit autoupdate` often fixes this.\n" +
+		"[WARNING] hook id `c` uses deprecated stage names (merge-commit)" + tail +
+		"[WARNING] top-level `default_stages` uses deprecated stage names (commit, push)" + tail
+	if got != want {
+		t.Errorf("warnings:\n got: %q\nwant: %q", got, want)
+	}
+
+	// The old names still work: they are migrated after warning.
+	if s := cfg.DefaultStages; len(s) != 2 || s[0] != HookTypePreCommit || s[1] != HookTypePrePush {
+		t.Errorf("default_stages not migrated: %v", s)
+	}
+	if s := cfg.Repos[1].Hooks[0].Stages; len(s) != 1 || s[0] != HookTypePreMergeCommit {
+		t.Errorf("hook stages not migrated: %v", s)
+	}
+}
+
+func TestLoadConfigNoDeprecatedStagesNoWarning(t *testing.T) {
+	path := writeTemp(t, ".pre-commit-config.yaml", "default_stages: [pre-commit]\n"+
+		"repos:\n-   repo: https://example.com/r\n    rev: v1.0.0\n    hooks:\n"+
+		"    -   id: a\n        stages: [pre-push, manual]\n")
+	var err error
+	got := captureStdout(t, func() { _, err = LoadConfig(path) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("expected no warnings, got %q", got)
+	}
+}
+
+func TestLoadManifestMigratesLegacyStages(t *testing.T) {
+	path := writeTemp(t, ManifestFile,
+		"- id: a\n  name: a\n  entry: a\n  language: system\n  stages: [commit, merge-commit, push, manual]\n")
+	hooks, err := LoadManifest(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Stage{HookTypePreCommit, HookTypePreMergeCommit, HookTypePrePush, "manual"}
+	if got := hooks[0].Stages; len(got) != len(want) {
+		t.Fatalf("stages = %v, want %v", got, want)
+	} else {
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("stages = %v, want %v", got, want)
+			}
+		}
+	}
+}
+
+func TestWarnForStagesOnRepoInit(t *testing.T) {
+	cases := []struct {
+		name, manifest, repo, want string
+	}{
+		{
+			name:     "deduplicated in first-seen order",
+			manifest: "- id: a\n  stages: [push, commit]\n- id: b\n  stages: [commit, pre-commit, merge-commit]\n- id: c\n",
+			repo:     "https://example.com/r",
+			want: "[WARNING] repo `https://example.com/r` uses deprecated stage names " +
+				"(push, commit, merge-commit) which will be removed in a future version.  " +
+				"Hint: often `pre-commit autoupdate --repo https://example.com/r` will fix this.  " +
+				"if it does not -- consider reporting an issue to that repo.\n",
+		},
+		{
+			name:     "repo shell-quoted in the hint",
+			manifest: "- id: a\n  stages: [commit]\n",
+			repo:     "/tmp/my repo",
+			want: "[WARNING] repo `/tmp/my repo` uses deprecated stage names " +
+				"(commit) which will be removed in a future version.  " +
+				"Hint: often `pre-commit autoupdate --repo '/tmp/my repo'` will fix this.  " +
+				"if it does not -- consider reporting an issue to that repo.\n",
+		},
+		{name: "current names", manifest: "- id: a\n  stages: [pre-commit, pre-push]\n", repo: "r"},
+		{name: "no manifest", repo: "r"},
+		{name: "invalid manifest", manifest: "- id: a\n  stages: commit\n", repo: "r"},
+		{name: "hook without id", manifest: "- stages: [commit]\n", repo: "r"},
+		{name: "not a list", manifest: "id: a\n", repo: "r"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.manifest != "" {
+				if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(tc.manifest), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := captureStdout(t, func() { WarnForStagesOnRepoInit(tc.repo, dir) })
+			if got != tc.want {
+				t.Errorf("\n got: %q\nwant: %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShlexQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                          "''",
+		"https://example.com/r.git": "https://example.com/r.git",
+		"a@b%c+d=e:f,g.h/i-j_k":     "a@b%c+d=e:f,g.h/i-j_k",
+		"my repo":                   "'my repo'",
+		"it's":                      `'it'"'"'s'`,
+		"$HOME":                     "'$HOME'",
+	} {
+		if got := shlexQuote(in); got != want {
+			t.Errorf("shlexQuote(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -1902,6 +1902,75 @@ func TestRemoteRepoFirstInstall(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Tests: deprecated stage names (#136)
+// ---------------------------------------------------------------------------
+
+// TestDeprecatedStagesWarning compares upstream's three deprecated-stage
+// warnings: a hook's stages and the top-level default_stages in the config,
+// and a cloned repo whose manifest still uses the old names. The old names
+// must keep working, so the manifest's hooks run at pre-commit.
+func TestDeprecatedStagesWarning(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}, {"config", "commit.gpgsign", "false"}} {
+		runCmd(t, dir, "git", args...)
+	}
+	manifest := "-   id: legacy\n    name: legacy\n    entry: B[A]D\n    language: pygrep\n    stages: [push, commit]\n" +
+		"-   id: legacy2\n    name: legacy2\n    entry: B[A]D\n    language: pygrep\n    stages: [commit, merge-commit]\n"
+	if err := os.WriteFile(filepath.Join(dir, ".pre-commit-hooks.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runCmd(t, dir, "git", "add", "-A")
+	if out, code := runCmd(t, dir, "git", "commit", "-qm", "hook"); code != 0 {
+		t.Fatalf("committing the hook repo failed:\n%s", out)
+	}
+	sha, _ := runCmd(t, dir, "git", "rev-parse", "HEAD")
+	sha = strings.TrimSpace(sha)
+
+	for _, tc := range []struct {
+		name, cfg string
+		warnings  int
+	}{
+		{
+			"hook stages",
+			fmt.Sprintf("repos:\n-   repo: %s\n    rev: %s\n    hooks:\n    -   id: legacy\n        stages: [push, pre-commit, commit]\n    -   id: legacy2\n", dir, sha),
+			2,
+		},
+		{
+			"default_stages",
+			fmt.Sprintf("default_stages: [commit, push]\nrepos:\n-   repo: %s\n    rev: %s\n    hooks:\n    -   id: legacy2\n", dir, sha),
+			2,
+		},
+		{
+			"local hook stages",
+			fmt.Sprintf("repos:\n-   repo: %s\n    rev: %s\n    hooks:\n    -   id: legacy2\n"+
+				"-   repo: local\n    hooks:\n    -   id: c\n        name: c\n        entry: B[A]D\n        language: pygrep\n        stages: [merge-commit, commit]\n", dir, sha),
+			2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pyRepo := initTestRepo(t, tc.cfg, "fine\n")
+			goRepo := initTestRepo(t, tc.cfg, "fine\n")
+			t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+			pyOut, pyExit := runCmd(t, pyRepo, pyBin, "run", "--all-files", "--color=never")
+			t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+			goOut, goExit := runCmd(t, goRepo, goBinary, "run", "--all-files", "--color=never")
+
+			detail := fmt.Sprintf("py:\n%s\ngo:\n%s", pyOut, goOut)
+			// Every case clones the repo, so the repo-init warning is one of them.
+			match := pyOut == goOut && pyExit == goExit &&
+				len(warningLines(pyOut)) == tc.warnings &&
+				strings.Contains(pyOut, "Passed")
+			if !match {
+				t.Errorf("deprecated-stage warnings differ: %s", detail)
+			}
+			addOutputResult("run", "deprecated stages: "+tc.name, match, detail)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Tests: language: julia (#118)
 // ---------------------------------------------------------------------------
 

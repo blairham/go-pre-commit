@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	gitutil "github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
@@ -165,6 +166,8 @@ func (s *Store) CloneWithDeps(repo, rev string, deps []string) (string, error) {
 	if err := s.save(name, rev, dest); err != nil {
 		return "", err
 	}
+
+	config.WarnForStagesOnRepoInit(repo, dest)
 
 	return dest, nil
 }
