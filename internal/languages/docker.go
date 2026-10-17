@@ -126,13 +126,9 @@ func (d *Docker) Name() string              { return "docker" }
 func (d *Docker) EnvironmentDir() string    { return "docker" }
 func (d *Docker) GetDefaultVersion() string { return "default" }
 
-func (d *Docker) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("docker", "version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker not available: %w", err)
-	}
-	return nil
-}
+// HealthCheck is upstream's lang_base.basic_health_check: an installed
+// environment is always healthy. A missing toolchain shows when the hook runs.
+func (d *Docker) HealthCheck(_, _ string) error { return nil }
 
 func (d *Docker) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	// Build the Docker image.
@@ -181,13 +177,9 @@ func (d *DockerImage) Name() string              { return "docker_image" }
 func (d *DockerImage) EnvironmentDir() string    { return "" }
 func (d *DockerImage) GetDefaultVersion() string { return "default" }
 
-func (d *DockerImage) HealthCheck(prefix, version string) error {
-	cmd := exec.Command("docker", "version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker not available: %w", err)
-	}
-	return nil
-}
+// HealthCheck is upstream's lang_base.basic_health_check: an installed
+// environment is always healthy. A missing toolchain shows when the hook runs.
+func (d *DockerImage) HealthCheck(_, _ string) error { return nil }
 
 func (d *DockerImage) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	// No installation needed for docker_image.

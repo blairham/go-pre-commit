@@ -31,6 +31,16 @@ file was introduced; the full notes are on the
   and exit 1, rather than warning and writing into that directory; the
   `config file ... not found` warning, which upstream does not print, is
   gone. (#130)
+- Health checks are upstream's, and are used where upstream uses them. An
+  installed environment is reused only while its language's health check
+  passes, and a fresh one that fails it is an error ("BUG: expected
+  environment for … to be healthy immediately after install"); before, the
+  checks were never consulted. Every language upstream gives the basic check
+  (conda, coursier, dart, docker, dotnet, golang, haskell, julia, lua, perl,
+  ruby, rust, swift, …) is now always healthy, rather than failing when its
+  tool is not on PATH; node runs `node --version` inside the env; python
+  compares the versions `pyvenv.cfg` records with the env's and the base
+  interpreter's, so an upgraded host Python gets its envs rebuilt. (#140)
 - `run <hook-id>` selects and reports as upstream does. A miss prints
   ``No hook with id `<id>` in stage `<stage>` `` on stdout, where this port
   printed `[ERROR] No hook with id "<id>" found` on stderr. A `repo: local`

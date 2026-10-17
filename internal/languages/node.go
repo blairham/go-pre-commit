@@ -63,12 +63,13 @@ func nodeenvArgs(envDir, version, defaultVersion string) []string {
 	return args
 }
 
+// HealthCheck is upstream node.health_check: `node --version`, run inside
+// the env (so the env's node, or the host's for a system env, answers),
+// must succeed.
 func (n *Node) HealthCheck(prefix, version string) error {
 	envDir := filepath.Join(prefix, n.EnvironmentDir()+"-"+version)
-	nodePath := filepath.Join(venvBinDir(envDir), "node")
-	cmd := exec.Command(nodePath, "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("node environment unhealthy: %w", err)
+	if code := envCommandExitCode(nodeEnvVars(envDir), "node", "--version"); code != 0 {
+		return fmt.Errorf("`node --version` returned %d", code)
 	}
 	return nil
 }

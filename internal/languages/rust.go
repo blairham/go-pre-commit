@@ -36,19 +36,9 @@ func rustDefaultVersion() string {
 	return "default"
 }
 
-func (r *Rust) HealthCheck(prefix, version string) error {
-	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	cmd := exec.Command(filepath.Join(binDir, "cargo"), "--version")
-	if err := cmd.Run(); err != nil {
-		// Fall back to system cargo.
-		cmd = exec.Command("cargo", "--version")
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("rust environment unhealthy: %w", err)
-		}
-	}
-	return nil
-}
+// HealthCheck is upstream's lang_base.basic_health_check: an installed
+// environment is always healthy. A missing toolchain shows when the hook runs.
+func (r *Rust) HealthCheck(_, _ string) error { return nil }
 
 func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)

@@ -5,6 +5,7 @@ package languages
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -162,14 +163,102 @@ func normPythonVersion(version string, host pythonHost) string {
 	return version
 }
 
+// HealthCheck is upstream python.health_check (4.7.0): the env's
+// pyvenv.cfg must exist and record the interpreter version, the env's python
+// must still be that version, and so must the base interpreter it was made
+// from — an upgraded or removed host Python leaves a broken env behind,
+// which this sends back to be rebuilt.
+//
+// Upstream always builds with virtualenv, which records `version_info`.
+// This port falls back to the standard library's venv where virtualenv is
+// not installed, and venv records only `version` (X.Y.Z); such an env is
+// checked against the same version, compared on those three parts.
 func (p *Python) HealthCheck(prefix, version string) error {
 	envDir := filepath.Join(prefix, p.EnvironmentDir()+"-"+version)
-	pythonPath := filepath.Join(venvBinDir(envDir), "python")
-	cmd := exec.Command(pythonPath, "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("python environment unhealthy: %w", err)
+	cfgPath := filepath.Join(envDir, "pyvenv.cfg")
+	if _, err := os.Stat(cfgPath); err != nil {
+		return errors.New("pyvenv.cfg does not exist (old virtualenv?)")
+	}
+	cfg, err := readPyvenvCfg(cfgPath)
+	if err != nil {
+		return err
+	}
+
+	want, ok := cfg["version_info"]
+	trim := func(v string) string { return v }
+	if !ok {
+		if want, ok = cfg["version"]; !ok {
+			return errors.New("created virtualenv's pyvenv.cfg is missing `version_info`")
+		}
+		trim = firstVersionParts
+	}
+
+	pyExe := filepath.Join(venvBinDir(envDir), "python")
+	if runtime.GOOS == "windows" {
+		pyExe += ".exe"
+	}
+	if got := trim(pythonVersionInfo(pyExe)); got != want {
+		return fmt.Errorf( //nolint:staticcheck // upstream's wording, trailing newline and all
+			"virtualenv python version did not match created version:\n"+
+				"- actual version: %s\n"+
+				"- expected version: %s\n",
+			got, want,
+		)
+	}
+
+	// Made with an older virtualenv: no base-executable to check.
+	base, ok := cfg["base-executable"]
+	if !ok {
+		return nil
+	}
+	if got := trim(pythonVersionInfo(base)); got != want {
+		return fmt.Errorf( //nolint:staticcheck // upstream's wording, trailing newline and all
+			"base executable python version does not match created version:\n"+
+				"- base-executable version: %s\n"+
+				"- expected version: %s\n",
+			got, want,
+		)
 	}
 	return nil
+}
+
+// firstVersionParts is the X.Y.Z of a version_info string, as venv's
+// pyvenv.cfg spells the version.
+func firstVersionParts(v string) string {
+	parts := strings.Split(v, ".")
+	if len(parts) > 3 {
+		parts = parts[:3]
+	}
+	return strings.Join(parts, ".")
+}
+
+// pythonVersionInfo is upstream's _version_info (uncached): exe's
+// sys.version_info joined with dots, or a marker naming exe when it cannot
+// be run.
+func pythonVersionInfo(exe string) string {
+	out, err := exec.Command(exe, "-S", "-c", `import sys;print(".".join(str(p) for p in sys.version_info))`).Output()
+	if err != nil {
+		return fmt.Sprintf("<<error retrieving version from %s>>", exe)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// readPyvenvCfg is upstream's _read_pyvenv_cfg: `key = value` lines, and a
+// line without exactly one `=` skipped.
+func readPyvenvCfg(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Count(line, "=") != 1 {
+			continue
+		}
+		k, v, _ := strings.Cut(line, "=")
+		cfg[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return cfg, nil
 }
 
 // InstallEnvironment is upstream's install_environment: virtualenv, run by

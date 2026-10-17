@@ -57,15 +57,9 @@ func (g *Golang) effectiveVersion(version string) string {
 	return version
 }
 
-func (g *Golang) HealthCheck(prefix, version string) error {
-	envDir := filepath.Join(prefix, g.EnvironmentDir()+"-"+version)
-	binDir := filepath.Join(envDir, "bin")
-	entries, err := os.ReadDir(binDir)
-	if err != nil || len(entries) == 0 {
-		return fmt.Errorf("golang environment unhealthy: no binaries in %s", binDir)
-	}
-	return nil
-}
+// HealthCheck is upstream's lang_base.basic_health_check: an installed
+// environment is always healthy. A missing toolchain shows when the hook runs.
+func (g *Golang) HealthCheck(_, _ string) error { return nil }
 
 // goInstallEnv is the environment upstream's golang.install_environment
 // (4.7.0) gives `go install` for a system Go: the caller's environment

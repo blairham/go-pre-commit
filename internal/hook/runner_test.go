@@ -5,6 +5,7 @@ package hook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/languages"
 )
 
 // ---------------------------------------------------------------------------
@@ -866,5 +868,63 @@ func TestInstallEnvironmentsRechecksUnderLock(t *testing.T) {
 	}
 	if locked != 1 {
 		t.Errorf("an installed env should not take the lock, taken %d times", locked)
+	}
+}
+
+// healthLang is a language whose health and installs a test controls.
+type healthLang struct {
+	healthy  bool
+	installs int
+}
+
+func (l *healthLang) Name() string              { return "healthtest" }
+func (l *healthLang) EnvironmentDir() string    { return "health_env" }
+func (l *healthLang) GetDefaultVersion() string { return "default" }
+func (l *healthLang) HealthCheck(_, _ string) error {
+	if l.healthy {
+		return nil
+	}
+	return errors.New("the env went bad")
+}
+
+func (l *healthLang) InstallEnvironment(prefix, version string, _ []string) error {
+	l.installs++
+	return os.MkdirAll(filepath.Join(prefix, "health_env-"+version), 0o755)
+}
+
+func (l *healthLang) Run(context.Context, string, string, string, []string, []string, string) (int, []byte, error) {
+	return 0, nil, nil
+}
+
+// upstream's _hook_installed counts an env as installed only while its
+// health_check passes, and _hook_install refuses an env that is unhealthy
+// straight after installing it.
+func TestInstallEnvironmentsHealthCheck(t *testing.T) {
+	lang := &healthLang{healthy: true}
+	languages.Register("healthtest", lang)
+	h := &Hook{ID: "h", Repo: "r", RepoDir: t.TempDir(), Language: "healthtest", LanguageVersion: "default"}
+
+	if err := InstallEnvironments(context.Background(), []*Hook{h}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallEnvironments(context.Background(), []*Hook{h}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if lang.installs != 1 {
+		t.Fatalf("a healthy installed env was installed %d times, want 1", lang.installs)
+	}
+
+	lang.healthy = false
+	err := InstallEnvironments(context.Background(), []*Hook{h}, nil)
+	if lang.installs != 2 {
+		t.Errorf("an unhealthy env should be reinstalled; installs = %d", lang.installs)
+	}
+	want := "BUG: expected environment for healthtest to be healthy immediately after install, " +
+		"please open an issue describing your environment\n\nmore info:\n\nthe env went bad"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v\nwant %s", err, want)
+	}
+	if _, statErr := os.Stat(filepath.Join(h.RepoDir, "health_env-default")); !os.IsNotExist(statErr) {
+		t.Errorf("the unhealthy env should be removed (%v)", statErr)
 	}
 }

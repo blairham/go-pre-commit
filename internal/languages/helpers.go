@@ -6,6 +6,7 @@ package languages
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -254,4 +255,26 @@ func executableNames(goos, name, pathext string) []string {
 		}
 	}
 	return names
+}
+
+// envCommandExitCode is upstream's cmd_output_b(..., check=False) inside an
+// envcontext: argv runs with env applied over the process environment, its
+// executable resolved on env's PATH, and the exit code is returned. A
+// command that cannot be found or started is 1, as upstream's
+// ExecutableNotFoundError.to_output() makes it.
+func envCommandExitCode(env []string, argv ...string) int {
+	bin, err := lookPathInEnv(argv[0], env)
+	if err != nil {
+		return 1
+	}
+	cmd := exec.Command(bin, argv[1:]...)
+	cmd.Env = append(os.Environ(), env...)
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode()
+		}
+		return 1
+	}
+	return 0
 }

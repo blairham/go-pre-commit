@@ -23,7 +23,9 @@ type SimpleLanguage struct {
 	DefaultVersion string // returned by GetDefaultVersion(); defaults to "default"
 
 	// --- Health Check ---
-	// HealthCmd runs a command to verify the runtime exists (e.g. ["dotnet", "--version"]).
+	// With neither set, HealthCheck is upstream's basic_health_check (always
+	// healthy), which is what most upstream languages use.
+	// HealthCmd runs a command whose failure marks the env unhealthy.
 	// HealthCheckFn is a full override; when set, HealthCmd is ignored.
 	HealthCmd     []string
 	HealthCheckFn func(prefix, version string) error

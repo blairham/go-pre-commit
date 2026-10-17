@@ -57,16 +57,9 @@ func (r *Ruby) effectiveVersion(version string) string {
 	return version
 }
 
-func (r *Ruby) HealthCheck(prefix, version string) error {
-	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
-	gemHome := filepath.Join(envDir, "gems")
-	cmd := exec.Command("ruby", "--version")
-	cmd.Env = append(cmd.Environ(), fmt.Sprintf("GEM_HOME=%s", gemHome))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ruby environment unhealthy: %w", err)
-	}
-	return nil
-}
+// HealthCheck is upstream's lang_base.basic_health_check: an installed
+// environment is always healthy. A missing toolchain shows when the hook runs.
+func (r *Ruby) HealthCheck(_, _ string) error { return nil }
 
 // rubyUnset is the GEM_PATH upstream's get_env_patch removes.
 var rubyUnset = []string{"GEM_PATH"}
