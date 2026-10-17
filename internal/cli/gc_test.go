@@ -68,8 +68,16 @@ func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 
 	// Run from b, whose config gc reads as the current one.
 	t.Chdir(filepath.Dir(cfgB))
-	if code := (&GCCommand{Meta: &Meta{}}).Run(nil); code != 0 {
+	var code int
+	stdout, _ := captureOutput(t, func() { code = (&GCCommand{Meta: &Meta{}}).Run(nil) })
+	if code != 0 {
 		t.Fatalf("gc exited %d", code)
+	}
+	// Upstream's gc reports the count it removed: used-by-gone and unused.
+	// (Config warnings for the dotless revs come first.)
+	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
+	if got, want := lines[len(lines)-1], "2 repo(s) removed."; got != want || !strings.HasSuffix(stdout, "\n") {
+		t.Errorf("gc stdout = %q, want it to end with the line %q", stdout, want)
 	}
 
 	left, err := s.ListRepos()

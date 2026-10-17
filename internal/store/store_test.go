@@ -204,8 +204,12 @@ func TestGCRemovesUnusedRepos(t *testing.T) {
 	used := map[string]bool{
 		"https://example.com/used@v1": true,
 	}
-	if err := s.GC(used); err != nil {
+	removed, err := s.GC(used)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Errorf("GC reported %d removed, want 1", removed)
 	}
 
 	// Verify unused directory was removed.
