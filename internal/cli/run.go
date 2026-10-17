@@ -4,11 +4,8 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"strings"
-
-	flags "github.com/jessevdk/go-flags"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
@@ -60,12 +57,11 @@ func (c *RunCommand) Run(args []string) int {
 
 	var opts runFlags
 
-	p := flags.NewParser(&opts, flags.HelpFlag|flags.PassDoubleDash)
-	remaining, err := p.ParseArgs(expandFilesFlag(args))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	remaining, code, ok := parseArgs("run", &opts, args, expandFilesFlag(args))
+	if !ok {
+		return code
 	}
+	var err error
 
 	// Handle deprecated flags.
 	if opts.Source != "" && opts.FromRef == "" {
@@ -75,19 +71,7 @@ func (c *RunCommand) Run(args []string) int {
 		opts.ToRef = opts.Origin
 	}
 
-	// At most one positional arg (hook-id).
-	if len(remaining) > 1 {
-		fmt.Fprintf(os.Stderr, "Error: expected at most 1 argument, got %d\n", len(remaining))
-		return 1
-	}
-
 	output.SetColorModeFromString(opts.Color)
-
-	// --files and --all-files are mutually exclusive.
-	if opts.AllFiles && len(opts.Files) > 0 {
-		fmt.Fprintf(os.Stderr, "Error: --all-files and --files are mutually exclusive\n")
-		return 1
-	}
 
 	if err = adjustArgsAndChdir(rootArgs{
 		Config:            &opts.Config,

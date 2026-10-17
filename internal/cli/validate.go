@@ -6,10 +6,7 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
-
-	flags "github.com/jessevdk/go-flags"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fatal"
@@ -21,11 +18,10 @@ type ValidateConfigCommand struct {
 }
 
 func (c *ValidateConfigCommand) Run(args []string) int {
-	var opts GlobalFlags
-	remaining, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	var opts ColorFlags
+	remaining, code, ok := parseArgs("validate-config", &opts, args, args)
+	if !ok {
+		return code
 	}
 
 	return validateFiles(remaining, func(filename string) error {
@@ -57,11 +53,10 @@ type ValidateManifestCommand struct {
 }
 
 func (c *ValidateManifestCommand) Run(args []string) int {
-	var opts GlobalFlags
-	remaining, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	var opts ColorFlags
+	remaining, code, ok := parseArgs("validate-manifest", &opts, args, args)
+	if !ok {
+		return code
 	}
 
 	return validateFiles(remaining, func(filename string) error {

@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	flags "github.com/jessevdk/go-flags"
 )
 
 // MigrateConfigCommand implements the "migrate-config" command.
@@ -18,11 +16,10 @@ type MigrateConfigCommand struct {
 
 func (c *MigrateConfigCommand) Run(args []string) int {
 	var opts GlobalFlags
-	_, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	if _, code, ok := parseArgs("migrate-config", &opts, args, args); !ok {
+		return code
 	}
+	var err error
 
 	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
 		return fatalError(err)

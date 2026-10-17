@@ -8,8 +8,6 @@ import (
 	"os"
 	"strings"
 
-	flags "github.com/jessevdk/go-flags"
-
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
@@ -19,11 +17,9 @@ type CleanCommand struct {
 }
 
 func (c *CleanCommand) Run(args []string) int {
-	var opts GlobalFlags
-	_, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	var opts ColorFlags
+	if _, code, ok := parseArgs("clean", &opts, args, args); !ok {
+		return code
 	}
 
 	s := store.New("")

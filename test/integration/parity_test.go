@@ -1357,7 +1357,7 @@ func TestRun(t *testing.T) {
 		// The regression was a parse error, so assert the run actually happened
 		// rather than only that the exit codes agree.
 		addOutputResult("run", "--files with several paths does not fail to parse",
-			!strings.Contains(goOut, "expected at most"),
+			!strings.Contains(goOut, "expected at most") && !strings.Contains(goOut, "unrecognized arguments"),
 			fmt.Sprintf("go output=%q", goOut))
 		_ = pyOut
 

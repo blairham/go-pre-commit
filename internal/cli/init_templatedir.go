@@ -4,13 +4,11 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	flags "github.com/jessevdk/go-flags"
 
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
@@ -28,22 +26,12 @@ type initTemplateDirFlags struct {
 
 func (c *InitTemplateDirCommand) Run(args []string) int {
 	var opts initTemplateDirFlags
-	remaining, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
-	}
-
-	if len(remaining) != 1 {
-		fmt.Fprintf(os.Stderr, "Error: expected exactly 1 argument (directory), got %d\n", len(remaining))
-		return 1
+	remaining, code, ok := parseArgs("init-templatedir", &opts, args, args)
+	if !ok {
+		return code
 	}
 	templateDir := remaining[0]
 
-	// argparse rejects an unknown -t before the command runs.
-	if !validHookTypes(opts.HookTypes) {
-		return 1
-	}
 	output.SetColorModeFromString(opts.Color)
 
 	// Upstream's init_templatedir: install into the directory, overwriting

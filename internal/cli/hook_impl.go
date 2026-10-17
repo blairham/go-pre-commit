@@ -14,8 +14,6 @@ import (
 	"slices"
 	"strings"
 
-	flags "github.com/jessevdk/go-flags"
-
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
@@ -43,11 +41,11 @@ func (c *HookImplCommand) Run(args []string) int {
 	git.ScrubProcessEnv()
 
 	var opts hookImplFlags
-	remaining, err := flags.NewParser(&opts, flags.HelpFlag|flags.PassDoubleDash).ParseArgs(args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	remaining, code, ok := parseArgs("hook-impl", &opts, args, args)
+	if !ok {
+		return code
 	}
+	var err error
 
 	output.SetColorModeFromString(opts.Color)
 

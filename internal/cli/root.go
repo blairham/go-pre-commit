@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"slices"
+	"strings"
 
 	mcli "github.com/mitchellh/cli"
 
@@ -79,6 +81,20 @@ func Run(args []string, build BuildInfo) (code int) {
 	// subparser" — a bare `pre-commit` is `pre-commit run`.
 	if len(args) == 0 {
 		args = []string{"run"}
+	}
+	// The top-level parser's own rejections: an option it does not know, and
+	// a subcommand that is not one of its choices.
+	if args[0] == "-V" {
+		// argparse's short form; mitchellh/cli knows only the long one.
+		args = append([]string{"--version"}, args[1:]...)
+	}
+	switch first := args[0]; {
+	case first == "-h" || first == "--help" || first == "-V" || first == "--version" || first == "help":
+	case len(first) > 1 && first[0] == '-':
+		return argparseError(topLevelSpec, "unrecognized arguments: "+first)
+	case !slices.Contains(commandNames, first):
+		return argparseError(topLevelSpec, fmt.Sprintf("argument command: invalid choice: %s (choose from %s)",
+			config.PyRepr(first), strings.Join(commandNames, ", ")))
 	}
 	ui := &mcli.BasicUi{
 		Reader:      os.Stdin,

@@ -397,8 +397,9 @@ func TestInitTemplateDirCommand_CustomHookType(t *testing.T) {
 func TestInitTemplateDirCommand_NoArgs(t *testing.T) {
 	cmd := &InitTemplateDirCommand{Meta: &Meta{}}
 	code := cmd.Run(nil)
-	if code != 1 {
-		t.Fatalf("expected exit code 1 for missing args, got %d", code)
+	// argparse: "the following arguments are required: directory", exit 2.
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for missing args, got %d", code)
 	}
 }
 
