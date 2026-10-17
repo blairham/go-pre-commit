@@ -16,7 +16,7 @@ import (
 // hookOutputRepo is a repo holding the given local hook plus four files: a.txt
 // matches BAD on two lines (one CRLF, one with no final newline), b.txt and
 // c.txt do not, and d.txt holds a non-ASCII digit, an ASCII one, trailing
-// whitespace and a last line with no newline.
+// whitespace and a last line with no newline; e.txt has a vertical tab.
 func hookOutputRepo(t *testing.T, hook string) string {
 	t.Helper()
 	cfg := "repos:\n- repo: local\n  hooks:\n  - id: h\n    name: h\n    " + hook + "\n    files: \\.txt$\n"
@@ -26,6 +26,7 @@ func hookOutputRepo(t *testing.T, hook string) string {
 		"b.txt": "clean\n",
 		"c.txt": "foo\nbar\nbaz\n",
 		"d.txt": "x\u0663\nnum 7\ntail \t\nbar",
+		"e.txt": "a\vb\naxb\n",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
@@ -66,6 +67,9 @@ func TestHookOutput(t *testing.T) {
 			"entry: 'x..\\n'\n    language: pygrep\n    args: [--multiline]",
 			"d.txt:1:x\u0663",
 		},
+		// Python's bytes \\s includes \\v; RE2's does not (#181).
+		{"pygrep by line, \\s matches \\v", "entry: 'a\\sb'\n    language: pygrep", "e.txt:1:a\vb"},
+		{"pygrep by line, [\\S] skips \\v", "entry: '^a[\\S]b'\n    language: pygrep", "e.txt:2:axb"},
 		{"pygrep --multiline", "entry: 'ar\\nba'\n    language: pygrep\n    args: [--multiline]", "c.txt:2:bar"},
 		{"pygrep --negate", "entry: BAD\n    language: pygrep\n    args: [--negate]", "b.txt"},
 		{"pygrep --multiline --negate", "entry: BAD\n    language: pygrep\n    args: [--multiline, --negate]", "c.txt"},

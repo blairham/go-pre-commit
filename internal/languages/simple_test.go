@@ -405,3 +405,31 @@ func TestPygrepMatchesBytes(t *testing.T) {
 		})
 	}
 }
+
+// Python's bytes-pattern \s is [ \t\n\r\f\v]; RE2's class leaves out \v
+// (#181). Measured against pre-commit 4.7.0.
+func TestPygrepSpaceIncludesVerticalTab(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "v.txt")
+	if err := os.WriteFile(f, []byte("a\vb\naxb\na\xc2\xa0b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vt, x := f+":1:a\vb\n", f+":2:axb\n"
+	for _, tc := range []struct{ entry, want string }{
+		{`a\sb`, vt},
+		{`^a\Sb`, x},
+		{`^a[\s]b`, vt},
+		{`^a[\S]b`, x},
+		{`^a[^\s]b`, x},
+		{`^a[^\S]b`, vt},
+		{`^a\S\Sb`, f + ":3:a\xc2\xa0b\n"},
+	} {
+		_, out, err := (&Pygrep{}).Run(context.Background(), "", dir, tc.entry, nil, []string{f}, "default")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(out) != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.entry, out, tc.want)
+		}
+	}
+}

@@ -299,13 +299,31 @@ func pygrepByteRune(c byte) rune {
 // up, becomes that byte's rune. Every other escape is left as written.
 func pygrepBytesPattern(pattern string) string {
 	var b strings.Builder
+	inClass := false
 	for i := 0; i < len(pattern); i++ {
 		c := pattern[i]
-		if c >= 0x80 {
+		switch {
+		case c >= 0x80:
 			b.WriteRune(pygrepByteRune(c))
 			continue
-		}
-		if c != '\\' || i+1 >= len(pattern) {
+		case c == '[' && !inClass:
+			inClass = true
+			b.WriteByte(c)
+			// A ']' first in the set (after an optional '^') is literal.
+			if i+1 < len(pattern) && pattern[i+1] == '^' {
+				b.WriteByte('^')
+				i++
+			}
+			if i+1 < len(pattern) && pattern[i+1] == ']' {
+				b.WriteByte(']')
+				i++
+			}
+			continue
+		case c == ']' && inClass:
+			inClass = false
+			b.WriteByte(c)
+			continue
+		case c != '\\' || i+1 >= len(pattern):
 			b.WriteByte(c)
 			continue
 		}
@@ -314,10 +332,35 @@ func pygrepBytesPattern(pattern string) string {
 			i += n
 			continue
 		}
-		b.WriteString(pattern[i : i+2])
+		switch pattern[i+1] {
+		case 's':
+			b.WriteString(pygrepSpace(inClass, false))
+		case 'S':
+			b.WriteString(pygrepSpace(inClass, true))
+		default:
+			b.WriteString(pattern[i : i+2])
+		}
 		i++
 	}
 	return b.String()
+}
+
+// pygrepSpace spells a bytes pattern's \s or \S. Python's is the six ASCII
+// whitespace bytes, \v among them; regexp2's RE2-mode \s leaves \v out. In
+// a class, \S is written as the ranges of every other subject rune: the rest
+// of ASCII, and the runes pygrepSubject gives the high bytes.
+func pygrepSpace(inClass, negated bool) string {
+	const space = `\t\n\v\f\r `
+	switch {
+	case !inClass && !negated:
+		return "[" + space + "]"
+	case !inClass:
+		return "[^" + space + "]"
+	case !negated:
+		return space
+	default:
+		return `\x00-\x08\x0e-\x1f!-\x7f` + string(pygrepByteRune(0x80)) + "-" + string(pygrepByteRune(0xff))
+	}
 }
 
 // pygrepHighEscape reads, after a backslash, an escape Python's re turns into
