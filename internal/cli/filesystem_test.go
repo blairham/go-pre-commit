@@ -275,7 +275,16 @@ func TestMigrateConfigCommand_AlreadyUpToDate(t *testing.T) {
 }
 
 func TestMigrateConfigCommand_MissingFile(t *testing.T) {
+	// The error handler writes pre-commit.log into the store: keep it here.
+	home := t.TempDir()
+	t.Setenv("PRE_COMMIT_HOME", home)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Chdir(tempRepo(t)) // migrate-config changes to the repository root
+	defer func() {
+		if _, err := os.Stat(filepath.Join(home, "pre-commit.log")); err != nil {
+			t.Errorf("the crash log did not land in PRE_COMMIT_HOME: %v", err)
+		}
+	}()
 	cmd := &MigrateConfigCommand{Meta: &Meta{}}
 	code := cmd.Run([]string{"--config", "/nonexistent/config.yaml"})
 	if code != 1 {
