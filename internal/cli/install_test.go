@@ -267,3 +267,102 @@ func TestInitTemplateDirSkipOnMissingConfig(t *testing.T) {
 		}
 	}
 }
+
+// init-templatedir's warnings, measured against pre-commit 4.7.0: none when
+// init.templateDir resolves to the target (through a relative path, ~ or a
+// symlink), two on stdout otherwise, naming the target's realpath. It goes
+// through install, so default_install_hook_types applies and a legacy hook
+// is dropped.
+func TestInitTemplateDirWarnings(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(base, "w")
+	if err := os.Mkdir(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(base, filepath.Join(base, "link")); err != nil {
+		t.Fatal(err)
+	}
+	gitconfig := filepath.Join(base, "gitconfig")
+	t.Setenv("GIT_CONFIG_GLOBAL", gitconfig)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("HOME", base)
+	t.Chdir(work)
+
+	tmpl := filepath.Join(base, "tmpl")
+	warn := "[WARNING] `init.templateDir` not set to the target directory\n" +
+		"[WARNING] maybe `git config --global init.templateDir " + tmpl + "`?\n"
+	installed := "pre-commit installed at ../tmpl/hooks/pre-commit\n"
+	run := func(args ...string) (string, int) {
+		return runStdout(t, func() int { return (&InitTemplateDirCommand{Meta: &Meta{}}).Run(args) })
+	}
+	for _, tc := range []struct {
+		name, configured string
+		want             string
+	}{
+		{"unset", "", installed + warn},
+		{"relative", "../tmpl", installed},
+		{"tilde", "~/tmpl", installed},
+		{"through a symlink", filepath.Join(base, "link", "tmpl"), installed},
+		{"elsewhere", "/elsewhere", installed + warn},
+	} {
+		content := ""
+		if tc.configured != "" {
+			content = "[init]\n\ttemplateDir = " + tc.configured + "\n"
+		}
+		if err := os.WriteFile(gitconfig, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, code := run("../tmpl")
+		wantOut(t, tc.name, out, code, tc.want, 0)
+	}
+
+	// A legacy hook is dropped (overwrite=True), and the config's
+	// default_install_hook_types decides the types.
+	if err := os.WriteFile(filepath.Join(tmpl, "hooks", "pre-commit.legacy"), []byte("old\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpl, "hooks", "pre-commit"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, code := run("../tmpl")
+	wantOut(t, "over a foreign hook", out, code, installed+warn, 0)
+	if _, err := os.Stat(filepath.Join(tmpl, "hooks", "pre-commit.legacy")); !os.IsNotExist(err) {
+		t.Errorf("legacy hook kept: %v", err)
+	}
+	cfg := "default_install_hook_types: [pre-push, commit-msg]\nrepos: []\n"
+	if err := os.WriteFile(".pre-commit-config.yaml", []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code = run("../tmpl")
+	wantOut(t, "default_install_hook_types", out, code,
+		"pre-commit installed at ../tmpl/hooks/pre-push\npre-commit installed at ../tmpl/hooks/commit-msg\n"+warn, 0)
+
+	// --no-allow-missing-config prints nothing on stderr either.
+	if err := os.Remove(".pre-commit-config.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	stderr := captureStderr(t, func() { out, code = run("--no-allow-missing-config", "../tmpl") })
+	wantOut(t, "--no-allow-missing-config", out, code, installed+warn, 0)
+	if stderr != "" {
+		t.Errorf("--no-allow-missing-config: stderr %q", stderr)
+	}
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	fn()
+	w.Close()
+	os.Stderr = old
+	b, _ := io.ReadAll(r)
+	r.Close()
+	return string(b)
+}

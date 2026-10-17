@@ -145,52 +145,8 @@ func (c *InstallCommand) Run(args []string) int {
 		return 1
 	}
 
-	// Determine hook types to install.
-	typesToInstall := installHookTypes(opts.Config, opts.HookTypes)
-
-	// Validate hook types.
-	if !validHookTypes(typesToInstall) {
-		return 1
-	}
-
-	for _, hookType := range typesToInstall {
-		hookFile, legacyFile, err := hookPaths(hookType)
-		if err != nil {
-			return reportError(err)
-		}
-		if err := os.MkdirAll(filepath.Dir(hookFile), 0o755); err != nil {
-			return reportError(err)
-		}
-
-		// An existing hook that is not ours becomes the legacy hook, which
-		// the installed script runs first ("migration mode").
-		if _, err := os.Lstat(hookFile); err == nil && !isOurScript(hookFile) {
-			if err := os.Rename(hookFile, legacyFile); err != nil {
-				return reportError(err)
-			}
-		}
-
-		if _, err := os.Stat(legacyFile); err == nil {
-			if opts.Overwrite {
-				if err := os.Remove(legacyFile); err != nil {
-					return reportError(err)
-				}
-			} else {
-				fmt.Printf("Running in migration mode with existing hooks at %s\nUse -f to use only pre-commit.\n", legacyFile)
-			}
-		}
-
-		content := hookScript(opts.Config, hookType, opts.AllowMissing)
-
-		if err := os.WriteFile(hookFile, []byte(content), 0o755); err != nil {
-			return reportError(err)
-		}
-		// WriteFile keeps an existing file's mode; make_executable does not.
-		if err := os.Chmod(hookFile, 0o755); err != nil {
-			return reportError(err)
-		}
-
-		fmt.Printf("pre-commit installed at %s\n", hookFile)
+	if code := installHookScripts(opts.Config, opts.HookTypes, opts.Overwrite, opts.AllowMissing, ""); code != 0 {
+		return code
 	}
 
 	// Install hook environments if requested.
@@ -254,7 +210,7 @@ func (c *UninstallCommand) Run(args []string) int {
 
 	exit := 0
 	for _, ht := range installHookTypes(opts.Config, opts.HookTypes) {
-		hookFile, legacyFile, err := hookPaths(ht)
+		hookFile, legacyFile, err := hookPaths(ht, "")
 		if err != nil {
 			return reportError(err)
 		}
@@ -358,6 +314,61 @@ func installAllHookEnvironments(ctx context.Context, cfgPath string) error {
 	return hook.InstallEnvironments(ctx, hooks, s.ExclusiveLock)
 }
 
+// installHookScripts is upstream's install loop over _install_hook_script:
+// for each hook type, move a foreign hook aside as .legacy (dropping it with
+// overwrite), then write the script into gitDir's hooks, or the repository's
+// common dir when gitDir is empty.
+func installHookScripts(configFile string, given []string, overwrite, skipOnMissingConfig bool, gitDir string) int {
+	// Determine hook types to install.
+	typesToInstall := installHookTypes(configFile, given)
+
+	// Validate hook types.
+	if !validHookTypes(typesToInstall) {
+		return 1
+	}
+
+	for _, hookType := range typesToInstall {
+		hookFile, legacyFile, err := hookPaths(hookType, gitDir)
+		if err != nil {
+			return reportError(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(hookFile), 0o755); err != nil {
+			return reportError(err)
+		}
+
+		// An existing hook that is not ours becomes the legacy hook, which
+		// the installed script runs first ("migration mode").
+		if _, err := os.Lstat(hookFile); err == nil && !isOurScript(hookFile) {
+			if err := os.Rename(hookFile, legacyFile); err != nil {
+				return reportError(err)
+			}
+		}
+
+		if _, err := os.Stat(legacyFile); err == nil {
+			if overwrite {
+				if err := os.Remove(legacyFile); err != nil {
+					return reportError(err)
+				}
+			} else {
+				fmt.Printf("Running in migration mode with existing hooks at %s\nUse -f to use only pre-commit.\n", legacyFile)
+			}
+		}
+
+		content := hookScript(configFile, hookType, skipOnMissingConfig)
+
+		if err := os.WriteFile(hookFile, []byte(content), 0o755); err != nil {
+			return reportError(err)
+		}
+		// WriteFile keeps an existing file's mode; make_executable does not.
+		if err := os.Chmod(hookFile, 0o755); err != nil {
+			return reportError(err)
+		}
+
+		fmt.Printf("pre-commit installed at %s\n", hookFile)
+	}
+	return 0
+}
+
 // installHookTypes is upstream's _hook_types: the -t types given, else the
 // config's default_install_hook_types, else pre-commit when the config does
 // not load.
@@ -376,16 +387,17 @@ func installHookTypes(configFile string, given []string) []string {
 	return types
 }
 
-// hookPaths is upstream's _hook_paths: the hook and its .legacy under the
-// common git dir, as `git rev-parse --git-common-dir` names it from the
+// hookPaths is upstream's _hook_paths: the hook and its .legacy under gitDir
+// (init-templatedir's directory) or, when that is empty, the common git dir, as `git rev-parse --git-common-dir` names it from the
 // repository root. That is ".git" in a plain checkout, so the paths install
 // prints are root-relative there, and absolute in a linked worktree.
-func hookPaths(hookType string) (hookFile, legacyFile string, err error) {
-	commonDir, err := git.GetGitCommonDir(".")
-	if err != nil {
-		return "", "", err
+func hookPaths(hookType, gitDir string) (hookFile, legacyFile string, err error) {
+	if gitDir == "" {
+		if gitDir, err = git.GetGitCommonDir("."); err != nil {
+			return "", "", err
+		}
 	}
-	hookFile = filepath.Join(commonDir, "hooks", hookType)
+	hookFile = filepath.Join(gitDir, "hooks", hookType)
 	return hookFile, hookFile + ".legacy", nil
 }
 

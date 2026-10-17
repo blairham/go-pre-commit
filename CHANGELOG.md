@@ -44,6 +44,17 @@ file was introduced; the full notes are on the
   `cargo install`ed into the env, and any other is a library crate added to
   the hook's Cargo.toml with `cargo add name@spec`; before, every one was
   `cargo install`ed. (#166)
+- `init-templatedir` is ported from upstream's `init_templatedir.py`. It
+  installs through `install`'s path, so it takes the config's
+  `default_install_hook_types` when no `-t` is given and drops an existing
+  `.legacy` hook as `install -f` does. When git's `init.templateDir`
+  (`~` expanded, symlinks resolved) is not the target directory, it prints
+  upstream's two warnings on stdout:
+  ``[WARNING] `init.templateDir` not set to the target directory`` and
+  ``[WARNING] maybe `git config --global init.templateDir <dir>`?``. The
+  stderr `Warning: config file ... not found.` under
+  `--no-allow-missing-config`, which upstream does not print, is gone.
+  (#163)
 - `validate-config` and `validate-manifest` print nothing for a valid file,
   as upstream does, instead of `Config file(s) are valid.` /
   `Manifest file(s) are valid.`. A failure is printed to stdout in cfgv's
