@@ -55,7 +55,7 @@ func (c *AutoupdateCommand) Run(args []string) int {
 	// Upstream's autoupdate opens the config (in migrate_config) before it
 	// loads it, so a missing file is open()'s FileNotFoundError, not an
 	// InvalidConfigError.
-	if _, err := os.ReadFile(opts.Config); err != nil {
+	if _, err = os.ReadFile(opts.Config); err != nil {
 		return reportError(err)
 	}
 
