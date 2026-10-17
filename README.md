@@ -16,7 +16,10 @@ single binary. An independent Go reimplementation of
 affiliated with it.
 
 Measured against Python pre-commit 4.7.0 on every pull request that changes code:
-**149 of 149 differential checks pass** ([how that is measured](docs/parity.md)).
+**554 of 554 differential checks pass** ([how that is measured](docs/parity.md)).
+
+Requires **git 2.31 or newer**, as upstream pre-commit does: `run --all-files`
+lists files with `git ls-files --deduplicate`, which 2.31 added.
 
 ## Is this for you?
 

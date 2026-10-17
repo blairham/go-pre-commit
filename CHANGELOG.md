@@ -13,6 +13,14 @@ file was introduced; the full notes are on the
 
 ## [Unreleased]
 
+### Documentation
+
+- The parity headline in the README, docs/parity.md and docs/announcement.md
+  is 554 of 554 checks: the count from the CI parity job on `main` at
+  2aa91c9, which docs/parity.md now records. It said 149. The minimum git
+  version, 2.31 (for `git ls-files --deduplicate`, as upstream), is now
+  stated in the README, docs/parity.md and AGENTS.md. (#142)
+
 ### Fixed
 
 - A config or manifest that is not valid YAML is reported in PyYAML's words,
