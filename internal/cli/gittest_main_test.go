@@ -18,5 +18,14 @@ func TestMain(m *testing.M) {
 	if os.Getenv(actAsBinaryEnv) == "1" {
 		os.Exit(Run(os.Args[1:], BuildInfo{}))
 	}
-	os.Exit(gittest.Main(m))
+	// Every command that changes to the repository root records its config
+	// in the store, so the store must never be the user's own.
+	home, err := os.MkdirTemp("", "pre-commit-home-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("PRE_COMMIT_HOME", home)
+	code := gittest.Main(m)
+	os.RemoveAll(home)
+	os.Exit(code)
 }

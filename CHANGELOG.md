@@ -20,6 +20,13 @@ file was introduced; the full notes are on the
   words; it now fires for any `rev` with no `.` that is not all hex (so `v1`
   and `stable` warn, as do path repos), with upstream's wording, as a
   `[WARNING]` line on stdout. (#135)
+- `gc` no longer deletes repos that another checkout's config still uses.
+  Every command upstream runs inside a repository now records its config in
+  the store, as upstream's `store.mark_config_used` does (the path
+  realpath'd, a missing config skipped, an unwritable store left alone), so
+  `gc` sees every config that uses the cache rather than only the current
+  one. `gc` also forgets tracked configs that no longer load, as upstream's
+  `_gc` does. (#133)
 - Hooks receive their files in upstream's order. Upstream shuffles each
   hook's file list with a fixed-seed `random.Random` before splitting it into
   xargs batches, unless the hook is `require_serial`; this port never

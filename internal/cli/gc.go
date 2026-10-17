@@ -53,25 +53,42 @@ func (c *GCCommand) Run(args []string) int {
 		}
 	}
 
+	tracked := make(map[string]bool, len(trackedConfigs))
+	for _, c := range trackedConfigs {
+		tracked[c] = true
+	}
+
+	// A tracked config that no longer loads is dropped from the list, as
+	// upstream's _gc deletes its dead configs rows.
+	var dead []string
 	for _, cfgPath := range configPaths {
-		if cfg, err := config.LoadConfig(cfgPath); err == nil {
-			for _, repo := range cfg.Repos {
-				switch {
-				case repo.IsMeta():
-					// Meta hooks are built in — nothing cached.
-				case repo.IsLocal():
-					// Local hooks that install an environment are backed by a
-					// synthetic repo keyed on their additional_dependencies.
-					for _, h := range repo.Hooks {
-						usedRepos[store.LocalRepoKey(h.AdditionalDependencies)] = true
-					}
-				default:
-					usedRepos[repo.Repo+"@"+repo.Rev] = true
+		cfg, err := config.LoadConfig(cfgPath)
+		if err != nil {
+			if tracked[cfgPath] {
+				dead = append(dead, cfgPath)
+			}
+			continue
+		}
+		for _, repo := range cfg.Repos {
+			switch {
+			case repo.IsMeta():
+				// Meta hooks are built in — nothing cached.
+			case repo.IsLocal():
+				// Local hooks that install an environment are backed by a
+				// synthetic repo keyed on their additional_dependencies.
+				for _, h := range repo.Hooks {
+					usedRepos[store.LocalRepoKey(h.AdditionalDependencies)] = true
 				}
+			default:
+				usedRepos[repo.Repo+"@"+repo.Rev] = true
 			}
 		}
 	}
 
+	if err := s.ForgetConfigs(dead); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to run GC: %v\n", err)
+		return 1
+	}
 	if err := s.GC(usedRepos); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to run GC: %v\n", err)
 		return 1
