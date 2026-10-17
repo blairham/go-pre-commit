@@ -66,22 +66,119 @@ func Parse(src string) (*yaml.Node, error) {
 		if errors.Is(err, io.EOF) {
 			return nil, nil
 		}
+		return nil, composeError(src, err)
+	}
+	var root *yaml.Node
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+		root = doc.Content[0]
+	}
+	if err := duplicateAnchor(root); err != nil {
 		return nil, err
 	}
 	var next yaml.Node
 	if err := dec.Decode(&next); !errors.Is(err, io.EOF) {
+		// _yaml.pyx's get_single_node: the next event is checked before
+		// any of the second document is read.
+		second := nodeMark(&next)
 		if err != nil {
-			return nil, err
+			second = secondDocumentMark(src, root)
 		}
-		return nil, errors.New("expected a single document in the stream")
-	}
-	if doc.Kind == yaml.DocumentNode {
-		if len(doc.Content) == 0 {
-			return nil, nil
+		if second == nil || root == nil {
+			if err != nil {
+				return nil, composeError(src, err)
+			}
+			return nil, errors.New("expected a single document in the stream")
 		}
-		return doc.Content[0], nil
+		return nil, &MarkedError{
+			Context: "expected a single document in the stream", ContextMark: nodeMark(root),
+			Problem: "but found another document", ProblemMark: second,
+		}
 	}
-	return &doc, nil
+	return root, nil
+}
+
+// composeError is a yaml.v3 error as the libyaml loader reports it: an
+// unknown alias is the composer's, anything else the scanner's or parser's.
+func composeError(src string, err error) error {
+	msg := strings.TrimPrefix(err.Error(), "yaml: ")
+	if name, ok := strings.CutPrefix(msg, "unknown anchor '"); ok {
+		name = strings.TrimSuffix(name, "' referenced")
+		if off := aliasOffset(src, name); off >= 0 {
+			return &MarkedError{Problem: "found undefined alias", ProblemMark: markAt(src, off)}
+		}
+		return err
+	}
+	return syntaxError(src, err)
+}
+
+// aliasOffset is the offset of the first "*name" alias token in src, or -1.
+func aliasOffset(src, name string) int {
+	tok := "*" + name
+	for i := 0; ; {
+		j := strings.Index(src[i:], tok)
+		if j < 0 {
+			return -1
+		}
+		at := i + j
+		end := at + len(tok)
+		before := at == 0 || strings.ContainsRune(" \t\n[{,:", rune(src[at-1]))
+		after := end == len(src) || strings.ContainsRune(" \t\n]},", rune(src[end]))
+		if before && after {
+			return at
+		}
+		i = at + 1
+	}
+}
+
+// duplicateAnchor is _yaml.pyx's check that an anchor names one node.
+func duplicateAnchor(root *yaml.Node) error {
+	seen := map[string]*yaml.Node{}
+	var walk func(n *yaml.Node) error
+	walk = func(n *yaml.Node) error {
+		if n == nil || n.Kind == yaml.AliasNode {
+			return nil
+		}
+		if n.Anchor != "" {
+			if first, ok := seen[n.Anchor]; ok {
+				return &MarkedError{
+					Context: "found duplicate anchor; first occurrence", ContextMark: nodeMark(first),
+					Problem: "second occurrence", ProblemMark: nodeMark(n),
+				}
+			}
+			seen[n.Anchor] = n
+		}
+		for _, c := range n.Content {
+			if err := walk(c); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(root)
+}
+
+// secondDocumentMark finds the "---" that starts a second document when
+// that document does not parse, so its own position is unknown.
+func secondDocumentMark(src string, root *yaml.Node) *Mark {
+	if root == nil {
+		return nil
+	}
+	off := 0
+	for line := 0; off < len(src); line++ {
+		end := strings.IndexByte(src[off:], '\n')
+		text := src[off:]
+		if end >= 0 {
+			text = src[off : off+end]
+		}
+		if line >= root.Line && (text == "---" || strings.HasPrefix(text, "--- ") || strings.HasPrefix(text, "---\t")) {
+			return &Mark{Line: line}
+		}
+		if end < 0 {
+			break
+		}
+		off += end + 1
+	}
+	return nil
 }
 
 // Load is yaml_load: Parse, then construct the value. A nil Value is None.
@@ -120,7 +217,7 @@ func (c *constructor) construct(n *yaml.Node) (*Value, error) {
 func (c *constructor) build(n *yaml.Node) (*Value, error) {
 	switch n.Kind {
 	case yaml.ScalarNode:
-		return constructScalar(n), nil
+		return constructScalar(n)
 	case yaml.SequenceNode:
 		v := &Value{Kind: List}
 		for _, item := range n.Content {
@@ -143,7 +240,10 @@ func (c *constructor) build(n *yaml.Node) (*Value, error) {
 				return nil, err
 			}
 			if k.Kind == List || k.Kind == Map {
-				return nil, errors.New("while constructing a mapping: found unhashable key")
+				return nil, &MarkedError{
+					Context: "while constructing a mapping", ContextMark: nodeMark(n),
+					Problem: "found unhashable key", ProblemMark: nodeMark(p[0]),
+				}
 			}
 			val, err := c.construct(p[1])
 			if err != nil {
@@ -242,7 +342,11 @@ func flatten(n *yaml.Node) ([][2]*yaml.Node, error) {
 					s = s.Alias
 				}
 				if s.Kind != yaml.MappingNode {
-					return nil, errors.New("while constructing a mapping: expected a mapping for merging")
+					return nil, &MarkedError{
+						Context: "while constructing a mapping", ContextMark: nodeMark(n),
+						Problem:     "expected a mapping for merging, but found " + nodeID(s),
+						ProblemMark: nodeMark(s),
+					}
 				}
 				sub, err := flatten(s)
 				if err != nil {
@@ -254,10 +358,25 @@ func flatten(n *yaml.Node) ([][2]*yaml.Node, error) {
 				merge = append(merge, subs[i]...)
 			}
 		default:
-			return nil, errors.New("while constructing a mapping: expected a mapping or list of mappings for merging")
+			return nil, &MarkedError{
+				Context: "while constructing a mapping", ContextMark: nodeMark(n),
+				Problem:     "expected a mapping or list of mappings for merging, but found " + nodeID(v),
+				ProblemMark: nodeMark(v),
+			}
 		}
 	}
 	return append(merge, own...), nil
+}
+
+// nodeID is PyYAML's Node.id: the kind of node, as error messages name it.
+func nodeID(n *yaml.Node) string {
+	switch n.Kind {
+	case yaml.SequenceNode:
+		return "sequence"
+	case yaml.MappingNode:
+		return "mapping"
+	}
+	return "scalar"
 }
 
 func isMergeKey(k *yaml.Node) bool {
@@ -271,7 +390,7 @@ func isMergeKey(k *yaml.Node) bool {
 		k.Value == "<<"
 }
 
-func constructScalar(n *yaml.Node) *Value {
+func constructScalar(n *yaml.Node) (*Value, error) {
 	tag := ""
 	switch {
 	case n.Style&yaml.TaggedStyle != 0:
@@ -281,7 +400,16 @@ func constructScalar(n *yaml.Node) *Value {
 	default:
 		tag = Resolve(n.Value)
 	}
-	return scalarOf(tag, n.Value)
+	if tag == "timestamp" {
+		iso, ok, err := isoTimestamp(n.Value)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return &Value{Kind: Timestamp, Str: iso}, nil
+		}
+	}
+	return scalarOf(tag, n.Value), nil
 }
 
 func scalarOf(tag, s string) *Value {
@@ -304,7 +432,7 @@ func scalarOf(tag, s string) *Value {
 			return &Value{Kind: Float, Float: f}
 		}
 	case "timestamp":
-		if iso, ok := isoTimestamp(s); ok {
+		if iso, ok, err := isoTimestamp(s); ok && err == nil {
 			return &Value{Kind: Timestamp, Str: iso}
 		}
 	}
@@ -450,11 +578,13 @@ var timestampParts = regexp.MustCompile(`^([0-9]{4})-([0-9][0-9]?)-([0-9][0-9]?)
 	`(?:[ \t]*(Z|([-+])([0-9][0-9]?)(?::([0-9][0-9]))?))?)?$`)
 
 // isoTimestamp is construct_yaml_timestamp followed by the representer's
-// isoformat: a date as YYYY-MM-DD, a datetime as isoformat(' ').
-func isoTimestamp(s string) (string, bool) {
+// isoformat: a date as YYYY-MM-DD, a datetime as isoformat(' '). A value
+// the datetime constructors refuse is their ValueError, worded as Python
+// 3.13's (the parity suite's reference).
+func isoTimestamp(s string) (string, bool, error) {
 	m := timestampParts.FindStringSubmatch(s)
 	if m == nil {
-		return "", false
+		return "", false, nil
 	}
 	// Every group atoi reads matched digits only, so it cannot fail.
 	atoi := func(x string) int {
@@ -465,17 +595,43 @@ func isoTimestamp(s string) (string, bool) {
 		return n
 	}
 	year, month, day := atoi(m[1]), atoi(m[2]), atoi(m[3])
-	date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-	if date.Year() != year || int(date.Month()) != month || date.Day() != day {
-		return "", false
+
+	// datetime.timezone(delta) is built before the datetime itself.
+	var tz string
+	switch {
+	case m[9] != "":
+		offset := atoi(m[10])*60 + atoi(m[11])
+		if m[9] == "-" {
+			offset = -offset
+		}
+		if offset <= -24*60 || offset >= 24*60 {
+			return "", false, valueError(fmt.Sprintf("offset must be a timedelta strictly between "+
+				"-timedelta(hours=24) and timedelta(hours=24), not %s.", timedeltaRepr(offset*60)))
+		}
+		sign := "+"
+		if offset < 0 {
+			sign, offset = "-", -offset
+		}
+		tz = fmt.Sprintf("%s%02d:%02d", sign, offset/60, offset%60)
+	case m[8] == "Z":
+		tz = "+00:00"
+	}
+
+	if err := checkDate(year, month, day); err != nil {
+		return "", false, err
 	}
 	out := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
 	if m[4] == "" {
-		return out, true
+		return out, true, nil
 	}
 	hour, minute, second := atoi(m[4]), atoi(m[5]), atoi(m[6])
-	if hour > 23 || minute > 59 || second > 59 {
-		return "", false
+	switch {
+	case hour > 23:
+		return "", false, errors.New("hour must be in 0..23")
+	case minute > 59:
+		return "", false, errors.New("minute must be in 0..59")
+	case second > 59:
+		return "", false, errors.New("second must be in 0..59")
 	}
 	out += fmt.Sprintf(" %02d:%02d:%02d", hour, minute, second)
 	if frac := m[7]; frac != "" {
@@ -487,18 +643,49 @@ func isoTimestamp(s string) (string, bool) {
 			out += "." + frac
 		}
 	}
+	return out + tz, true, nil
+}
+
+// valueError is a Python ValueError's message, kept verbatim (CPython's
+// end with a full stop where Go's would not).
+type valueError string
+
+func (e valueError) Error() string { return string(e) }
+
+// checkDate is CPython's check_date_args.
+func checkDate(year, month, day int) error {
 	switch {
-	case m[9] != "":
-		offset := atoi(m[10])*60 + atoi(m[11])
-		if m[9] == "-" && offset != 0 {
-			out += fmt.Sprintf("-%02d:%02d", offset/60, offset%60)
-		} else {
-			out += fmt.Sprintf("+%02d:%02d", offset/60, offset%60)
-		}
-	case m[8] == "Z":
-		out += "+00:00"
+	case year < 1 || year > 9999:
+		return fmt.Errorf("year %d is out of range", year)
+	case month < 1 || month > 12:
+		return errors.New("month must be in 1..12")
 	}
-	return out, true
+	last := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	if day < 1 || day > last {
+		return errors.New("day is out of range for month")
+	}
+	return nil
+}
+
+// timedeltaRepr is repr(datetime.timedelta(seconds=secs)).
+func timedeltaRepr(secs int) string {
+	days := secs / 86400
+	rem := secs % 86400
+	if rem < 0 {
+		days--
+		rem += 86400
+	}
+	var parts []string
+	if days != 0 {
+		parts = append(parts, fmt.Sprintf("days=%d", days))
+	}
+	if rem != 0 {
+		parts = append(parts, fmt.Sprintf("seconds=%d", rem))
+	}
+	if len(parts) == 0 {
+		return "datetime.timedelta(0)"
+	}
+	return "datetime.timedelta(" + strings.Join(parts, ", ") + ")"
 }
 
 // PyTimestamp is a timestamp as LoadAny returns it: Date for a

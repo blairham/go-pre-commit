@@ -15,6 +15,17 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- A config or manifest that is not valid YAML is reported in PyYAML's words,
+  as upstream's libyaml-backed loader prints them: the scanner or parser
+  context, the problem, and their `in "<unicode string>", line L, column C`
+  marks, rather than yaml.v3's one-line `yaml: line N: ...`. This covers
+  unclosed quotes and flow collections, bad indentation in block mappings and
+  sequences, tabs, `mapping values are not allowed`, simple keys missing their
+  `:`, bad escapes, anchors, aliases, tags, block scalar headers and
+  directives. Duplicate anchors, undefined aliases, a second document,
+  unhashable keys and impossible dates (`month must be in 1..12`) are now
+  errors as upstream's, where duplicate anchors and bad dates used to load.
+  (#186)
 - Config validation emits upstream's schema warnings, in its schema order:
   "Unexpected key(s) present at root/on <repo>", the regex-not-glob and
   slash-normalising hints for `files`/`exclude`, and (now in place, before

@@ -322,11 +322,11 @@ type analysis struct {
 }
 
 func isSpaceOrBreakOrNul(r rune) bool {
-	return strings.ContainsRune("\x00 \t\r\n\u0085  ", r)
+	return strings.ContainsRune("\x00 \t\r\n\u0085\u2028\u2029", r)
 }
 
 func isBreak(r rune) bool {
-	return r == '\n' || r == '\u0085' || r == ' ' || r == ' '
+	return r == '\n' || r == '\u0085' || r == '\u2028' || r == '\u2029'
 }
 
 // analyze is Emitter.analyze_scalar with allow_unicode off.
