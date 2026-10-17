@@ -52,36 +52,114 @@ func TestPygrepNoMatch(t *testing.T) {
 // Pygrep — --negate flag
 // ---------------------------------------------------------------------------
 
-func TestPygrepNegatePassesWhenNoMatch(t *testing.T) {
+// --negate inverts the question per file, as upstream does: a file fails, and
+// is named, when the pattern is nowhere in it.
+func TestPygrepNegatePassesWhenMatch(t *testing.T) {
 	dir := t.TempDir()
-	f := filepath.Join(dir, "clean.py")
-	os.WriteFile(f, []byte("print('hello')\n"), 0o644)
+	f := filepath.Join(dir, "has.py")
+	os.WriteFile(f, []byte("# license\nprint('hello')\n"), 0o644)
 
 	p := &Pygrep{}
-	code, _, err := p.Run(context.Background(), "", dir, `debugger`, []string{"--negate"}, []string{f}, "default")
+	code, out, err := p.Run(context.Background(), "", dir, `license`, []string{"--negate"}, []string{f}, "default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code != 0 {
-		t.Errorf("exit code = %d, want 0 (--negate: no files matched, should pass)", code)
+	if code != 0 || len(out) != 0 {
+		t.Errorf("got (%d, %q), want (0, \"\"): --negate passes a file that matches", code, out)
 	}
 }
 
-func TestPygrepNegateFailsWhenMatch(t *testing.T) {
+func TestPygrepNegateFailsWhenNoMatch(t *testing.T) {
 	dir := t.TempDir()
-	f := filepath.Join(dir, "bad.py")
-	os.WriteFile(f, []byte("debugger\n"), 0o644)
+	f := filepath.Join(dir, "lacks.py")
+	os.WriteFile(f, []byte("print('hello')\n"), 0o644)
 
 	p := &Pygrep{}
-	code, out, err := p.Run(context.Background(), "", dir, `debugger`, []string{"--negate"}, []string{f}, "default")
+	code, out, err := p.Run(context.Background(), "", dir, `license`, []string{"--negate"}, []string{f}, "default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code != 1 {
-		t.Errorf("exit code = %d, want 1 (--negate: file matched, should fail)", code)
+	if want := f + "\n"; code != 1 || string(out) != want {
+		t.Errorf("got (%d, %q), want (1, %q)", code, out, want)
 	}
-	if !strings.Contains(string(out), "bad.py") {
-		t.Errorf("output %q should reference the matching file", out)
+}
+
+// TestPygrepOutputMatchesUpstream pins each of upstream's four modes to the
+// bytes pre_commit/languages/pygrep.py writes, measured against 4.7.0.
+func TestPygrepOutputMatchesUpstream(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		t.Helper()
+		f := filepath.Join(dir, name)
+		if err := os.WriteFile(f, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	a := write("a.txt", "xx\nBAD one\r\nok\nBAD two")
+	b := write("b.txt", "clean\n")
+	c := write("c.txt", "foo\nbar\nbaz\n")
+	files := []string{a, b, c}
+
+	cases := []struct {
+		name  string
+		entry string
+		want  string
+		args  []string
+		code  int
+	}{
+		{name: "by line", entry: "BAD", code: 1, want: a + ":2:BAD one\n" + a + ":4:BAD two\n"},
+		{name: "by line, $ before the newline", entry: "o$", code: 1, want: a + ":4:BAD two\n" + c + ":1:foo\n"},
+		{name: "by line, $ is not before a CR", entry: "e$", code: 0, want: ""},
+		{name: "by line, no match", entry: "nope", code: 0, want: ""},
+		{
+			name:  "multiline prints the whole first line",
+			entry: "ar\nba",
+			args:  []string{"--multiline"},
+			code:  1,
+			want:  c + ":2:bar\nba\n",
+		},
+		{
+			name:  "multiline ^ and $ are per line",
+			entry: "^ba.$",
+			args:  []string{"--multiline"},
+			code:  1,
+			want:  c + ":2:bar\n",
+		},
+		{
+			name:  "negate names files without a match",
+			entry: "BAD",
+			args:  []string{"--negate"},
+			code:  1,
+			want:  b + "\n" + c + "\n",
+		},
+		{
+			name:  "multiline negate",
+			entry: "BAD",
+			args:  []string{"--multiline", "--negate"},
+			code:  1,
+			want:  b + "\n" + c + "\n",
+		},
+		{
+			name:  "abbreviated long options",
+			entry: "bad",
+			args:  []string{"--ign", "--neg"},
+			code:  1,
+			want:  b + "\n" + c + "\n",
+		},
+		{name: "ignore-case", entry: "bad two", args: []string{"--ignore-case"}, code: 1, want: a + ":4:BAD two\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Pygrep{}
+			code, out, err := p.Run(context.Background(), "", dir, tc.entry, tc.args, files, "default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if code != tc.code || string(out) != tc.want {
+				t.Errorf("got (%d, %q), want (%d, %q)", code, out, tc.code, tc.want)
+			}
+		})
 	}
 }
 

@@ -53,6 +53,15 @@ file was introduced; the full notes are on the
   than removed, which is the directory upstream installs into, so that a go
   shim exporting its own GOBIN (asdf's does) cannot send the binaries
   elsewhere. (#141)
+- `language: pygrep` prints what upstream's `pygrep.py` prints, in all four
+  modes. A matching line is `file:N:line` with no space after the line
+  number and without its line ending. `--multiline` reports the first match
+  at the line it starts on, printed as that whole line plus the rest of the
+  match, and its `^`/`$` are per line (upstream compiles with `MULTILINE |
+  DOTALL`; this port had only `DOTALL`). `--negate` was inverted: it now
+  fails, naming the file, when the pattern is nowhere in a file, rather than
+  when it is found. `--ignore-case` and argparse's abbreviations of the long
+  options are accepted. (#127)
 - Hooks receive their files in upstream's order. Upstream shuffles each
   hook's file list with a fixed-seed `random.Random` before splitting it into
   xargs batches, unless the hook is `require_serial`; this port never

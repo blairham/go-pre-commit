@@ -1882,6 +1882,7 @@ func TestRemoteRepoFirstInstall(t *testing.T) {
 		exit          int
 	}{
 		{"sha rev", "fine\n", 0},
+		{"sha rev, failing hook", "BAD\n", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pyRepo := initTestRepo(t, cfg, tc.content)
