@@ -169,6 +169,12 @@ func (v *Value) set(k, val *Value) {
 }
 
 func sameKey(a, b *Value) bool {
+	// Python's bool, int and float compare (and hash) by value:
+	// True == 1 == 1.0 is one dict key.
+	if an, ok := number(a); ok {
+		bn, ok := number(b)
+		return ok && an.Cmp(bn) == 0
+	}
 	if a.Kind != b.Kind {
 		return false
 	}
@@ -185,6 +191,28 @@ func sameKey(a, b *Value) bool {
 		return a.Str == b.Str
 	}
 	return false
+}
+
+// number is v's numeric value when v is a bool, int or finite float.
+func number(v *Value) (*big.Float, bool) {
+	switch v.Kind {
+	case Bool:
+		if v.Bool {
+			return big.NewFloat(1), true
+		}
+		return big.NewFloat(0), true
+	case Int:
+		return new(big.Float).SetInt(v.Int), true
+	case Float:
+		if math.IsNaN(v.Float) {
+			return nil, false
+		}
+		if math.IsInf(v.Float, 0) {
+			return new(big.Float).SetInf(v.Float < 0), true
+		}
+		return big.NewFloat(v.Float), true
+	}
+	return nil, false
 }
 
 // flatten is SafeConstructor.flatten_mapping: merge keys' mappings come

@@ -819,3 +819,20 @@ func TestShlexQuote(t *testing.T) {
 		}
 	}
 }
+
+// Upstream loads the config into a Python dict, so a repeated key is not
+// an error: the last value wins (#167).
+func TestLoadConfig_RepeatedKeyLastWins(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".pre-commit-config.yaml")
+	const cfg = "repos:\n- repo: local\n  hooks:\n  - id: x\n    name: first\n    entry: e\n    language: system\n    name: second\n"
+	if err := os.WriteFile(path, []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := c.Repos[0].Hooks[0].Name; got != "second" {
+		t.Errorf("name = %q, want the last value, %q", got, "second")
+	}
+}

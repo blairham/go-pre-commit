@@ -14,10 +14,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/blairham/go-pre-commit/v4/internal/fatal"
 	"github.com/blairham/go-pre-commit/v4/internal/pcre"
+	"github.com/blairham/go-pre-commit/v4/internal/pyyaml"
 )
 
 // This file ports the parts of cfgv (the schema library upstream validates
@@ -122,7 +121,7 @@ func loadFromFilename(
 	}
 
 	var doc any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	if err := pyyaml.Unmarshal(data, &doc); err != nil {
 		return nil, reraise(withContext(ctx, newValidationError("%s", err.Error())))
 	}
 
