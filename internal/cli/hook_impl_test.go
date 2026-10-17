@@ -7,29 +7,70 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 )
 
-func TestLegacyHookDir(t *testing.T) {
-	t.Setenv("GIT_DIR", "")
+// runLegacyHook is upstream's _run_legacy: nothing to run without a hook
+// dir or an executable legacy hook; otherwise the hook gets exactly the
+// stdin handed to it (empty, not ours, outside pre-push), the environment
+// plus PRE_COMMIT_RUNNING_LEGACY=1, and its status comes back as retv.
+func TestRunLegacyHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script legacy hooks")
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+	legacy := filepath.Join(dir, "pre-commit.legacy")
+	script := "#!/bin/sh\n{ echo \"args=$*\"; echo \"env=$PRE_COMMIT_RUNNING_LEGACY $KEEP\"; echo \"stdin=$(cat)\"; } > " + out + "\nexit 3\n"
+	if err := os.WriteFile(legacy, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
-	if got, want := legacyHookDir("/custom/hooks"), "/custom/hooks"; got != want {
-		t.Errorf("legacyHookDir with --hook-dir = %q, want %q", got, want)
+	retv, err := runLegacyHook(
+		"pre-commit",
+		dir,
+		[]string{"a", "b"},
+		[]byte("refs\n"),
+		[]string{"KEEP=kept", "PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil || retv != 3 {
+		t.Fatalf("retv=%d err=%v, want 3", retv, err)
 	}
-	if got, want := legacyHookDir(""), filepath.Join(".git", "hooks"); got != want {
-		t.Errorf("legacyHookDir without GIT_DIR = %q, want %q", got, want)
+	if got, want := readTestFile(t, out), "args=a b\nenv=1 kept\nstdin=refs\n"; got != want {
+		t.Errorf("legacy hook saw %q, want %q", got, want)
 	}
 
-	t.Setenv("GIT_DIR", "/repo/.git")
-	if got, want := legacyHookDir(""), filepath.Join("/repo/.git", "hooks"); got != want {
-		t.Errorf("legacyHookDir with GIT_DIR = %q, want %q", got, want)
+	// No hook dir: git 2.54+ config-based hooks, nothing to run, even with
+	// an executable legacy hook in the current directory.
+	if err := os.Remove(out); err != nil {
+		t.Fatal(err)
 	}
-	// --hook-dir wins over GIT_DIR, matching Python pre-commit's hook-impl.
-	if got, want := legacyHookDir("/custom/hooks"), "/custom/hooks"; got != want {
-		t.Errorf("legacyHookDir precedence = %q, want %q", got, want)
+	t.Chdir(dir)
+	if retv, err := runLegacyHook("pre-commit", "", nil, nil, os.Environ()); retv != 0 || err != nil {
+		t.Errorf("no hook dir: retv=%d err=%v", retv, err)
 	}
+	// Not executable: skipped, as os.access(X_OK) does.
+	if err := os.Chmod(legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if retv, err := runLegacyHook("pre-commit", dir, nil, nil, os.Environ()); retv != 0 || err != nil {
+		t.Errorf("non-executable: retv=%d err=%v", retv, err)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Errorf("a skipped legacy hook ran: %v", err)
+	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 // prePushRepo builds the repo the pre-push cases share: main (a.txt) pushed to
