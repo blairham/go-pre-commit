@@ -208,3 +208,161 @@ func TestPyCommonPathAndDirname(t *testing.T) {
 		}
 	}
 }
+
+// exeLayouts are upstream exe_exists's layouts for a set of tools that must
+// all be real installs, each with HOME and PATH set to an isolated tree; for
+// more than one tool, a layout missing each one.
+func exeLayouts(tools ...string) map[string]func(t *testing.T) {
+	layouts := map[string]func(t *testing.T){
+		"system": func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("HOME", filepath.Join(root, "home", "u"))
+			fakeTools(t, filepath.Join(root, "usr", "bin"), tools...)
+			t.Setenv("PATH", filepath.Join(root, "usr", "bin"))
+		},
+		"shim": func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("HOME", filepath.Join(root, "home", "u"))
+			fakeTools(t, filepath.Join(root, "opt", "asdf", "shims"), tools...)
+			t.Setenv("PATH", filepath.Join(root, "opt", "asdf", "shims"))
+		},
+		"in-home": func(t *testing.T) {
+			root := t.TempDir()
+			home := filepath.Join(root, "home", "u")
+			t.Setenv("HOME", home+"/")
+			fakeTools(t, filepath.Join(home, ".local", "bin"), tools...)
+			t.Setenv("PATH", filepath.Join(home, ".local", "bin"))
+		},
+		"home-is-root": func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("HOME", "/")
+			fakeTools(t, filepath.Join(root, "usr", "bin"), tools...)
+			t.Setenv("PATH", filepath.Join(root, "usr", "bin"))
+		},
+	}
+	if len(tools) > 1 {
+		for i, missing := range tools {
+			rest := append(append([]string{}, tools[:i]...), tools[i+1:]...)
+			layouts["no-"+missing] = func(t *testing.T) {
+				root := t.TempDir()
+				t.Setenv("HOME", filepath.Join(root, "home", "u"))
+				fakeTools(t, filepath.Join(root, "usr", "bin"), rest...)
+				t.Setenv("PATH", filepath.Join(root, "usr", "bin"))
+			}
+		}
+	}
+	return layouts
+}
+
+// exeLayoutWant is what get_default_version returns for each layout.
+func exeLayoutWant(name string) string {
+	if name == "system" || name == "home-is-root" {
+		return "system"
+	}
+	return "default"
+}
+
+func TestGolangAndRubyDefaultVersion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake tools are sh scripts")
+	}
+	for lang, c := range map[string]struct {
+		fn    func() string
+		tools []string
+	}{
+		"golang": {tools: []string{"go"}, fn: golangDefaultVersion},
+		"ruby":   {tools: []string{"ruby", "gem"}, fn: rubyDefaultVersion},
+	} {
+		for name, setup := range exeLayouts(c.tools...) {
+			t.Run(lang+"/"+name, func(t *testing.T) {
+				setup(t)
+				if got, want := c.fn(), exeLayoutWant(name); got != want {
+					t.Errorf("default version = %q, want %q", got, want)
+				}
+			})
+		}
+	}
+}
+
+// The Windows branches of exe_exists, checked against ntpath: drive letters
+// and UNC shares, either separator, case-insensitive comparison, and
+// commonpath's ValueError across drives (which counts as not in home).
+func TestExeIsSystemWindows(t *testing.T) {
+	for _, c := range []struct {
+		found, home string
+		want        bool
+	}{
+		{`C:\Go\bin\go.exe`, `C:\Users\u`, true},
+		{`D:\tools\go.exe`, `C:\Users\u`, true}, // different drives: ValueError
+		{`C:\Users\u\go\bin\go.exe`, `C:\Users\u`, false},
+		{`C:/Users/u/go/bin/go.exe`, `C:\Users\u`, false},
+		{`C:\Users\uu\go.exe`, `C:\Users\u`, true},
+		{`C:\Users\u\scoop\shims\go.exe`, `C:\Users\u`, false},
+		{`C:\ProgramData\chocolatey\shims\go.exe`, `C:\Users\u`, false},
+		// ntpath spells the common path as the first argument does, so a
+		// case difference makes it unequal to home, as upstream does.
+		{`c:\users\U\x\go.exe`, `C:\Users\u`, true},
+		{`\\srv\share\u\go.exe`, `\\srv\share\u`, false},
+		{`\\srv\share\tools\go.exe`, `\\srv\share\u`, true},
+		// A home at the drive root is everything, so the home check is off.
+		{`C:\Users\u\go.exe`, `C:\`, true},
+	} {
+		if got := exeIsSystem("windows", c.found, c.home); got != c.want {
+			t.Errorf("exeIsSystem(windows, %q, %q) = %v, want %v", c.found, c.home, got, c.want)
+		}
+	}
+}
+
+func TestPyCommonPathAndDirnameWindows(t *testing.T) {
+	for _, c := range []struct {
+		a, b, want string
+		ok         bool
+	}{
+		{`C:\Users\u\go\bin\go.exe`, `C:\Users\u`, `C:\Users\u`, true},
+		{`D:\tools\go.exe`, `C:\Users\u`, "", false},
+		{`c:\users\U\x\go.exe`, `C:\Users\u`, `c:\users\U`, true},
+		{`C:\Go\bin\go.exe`, `C:\Users\u`, `C:\`, true},
+		{`\\srv\share\u\go.exe`, `\\srv\share\u`, `\\srv\share\u`, true},
+		{`C:/Users/u/x`, `C:\Users\u`, `C:\Users\u`, true},
+		{`C:\Users\uu\go.exe`, `C:\Users\u`, `C:\Users`, true},
+	} {
+		got, ok := pyCommonPathFor("windows", c.a, c.b)
+		if got != c.want || ok != c.ok {
+			t.Errorf("ntpath.commonpath(%q, %q) = %q, %v; want %q, %v", c.a, c.b, got, ok, c.want, c.ok)
+		}
+	}
+	for in, want := range map[string]string{
+		`C:\`:           `C:\`,
+		`C:\Users`:      `C:\`,
+		`C:\Users\u\`:   `C:\Users\u`,
+		`C:`:            `C:`,
+		`\\srv\share\x`: `\\srv\share\`,
+		`\\srv\share`:   `\\srv\share`,
+		`\\srv\share\`:  `\\srv\share\`,
+		`a\b`:           `a`,
+		`D:/x/y`:        `D:/x`,
+	} {
+		if got := pyDirnameFor("windows", in); got != want {
+			t.Errorf("ntpath.dirname(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// With PATHEXT set, find_executable tries each extension before the bare
+// name, as it does on Windows.
+func TestPyFindExecutablePathext(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("posix exec bits")
+	}
+	dir := t.TempDir()
+	fakeTools(t, dir, "gem.BAT", "gem")
+	sep := string(os.PathListSeparator)
+	got, ok := pyFindExecutable("gem", dir, ".EXE"+sep+".BAT", true)
+	if !ok || got != filepath.Join(dir, "gem.BAT") {
+		t.Errorf("with PATHEXT: %q, %v; want %s", got, ok, filepath.Join(dir, "gem.BAT"))
+	}
+	got, ok = pyFindExecutable("gem", dir, "", false)
+	if !ok || got != filepath.Join(dir, "gem") {
+		t.Errorf("without PATHEXT: %q, %v; want the bare name", got, ok)
+	}
+}

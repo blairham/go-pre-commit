@@ -18,6 +18,20 @@ file was introduced; the full notes are on the
 - `language: fail` lists the files it failed on, as upstream's `fail.py`
   does: the entry, a blank line, then one file per line. It printed only the
   entry. (#128)
+- golang and ruby choose their default version as upstream does. A
+  `language_version: default` golang hook uses the host's Go only when
+  `go` is a real install (on PATH, not a version manager's shim, not inside
+  the home directory); otherwise the install downloads the newest Go from
+  go.dev into the env's `.go` and builds with it under `GOTOOLCHAIN=local`,
+  as an explicit `language_version` also now does. A ruby hook uses the
+  host's ruby only when both `ruby` and `gem` are real installs; otherwise
+  the install unpacks upstream's vendored rbenv into the env, and an explicit
+  version is downloaded (or built) through ruby-download/ruby-build. Ruby's
+  gem build and install now pass upstream's flags (every gemspec;
+  `--no-format-executable --no-user-install --install-dir --bindir`), and
+  hooks run with `GEM_PATH` unset and `BUNDLE_IGNORE_CONFIG=1`. The Windows
+  rules of `exe_exists` (drive letters and UNC shares, `commonpath` across
+  drives, a home at a drive root) now match ntpath. (#137)
 - A config with `repos: []` is valid, as it is upstream, where `repos` is
   `cfgv.Required` over an array: `run`, `validate-config`, `autoupdate` and
   `install-hooks` accept it instead of failing with `'repos' is required`. A
