@@ -15,7 +15,7 @@ func argMax() int {
 	}
 	// PlatformMaxLength clamps to 2**17 anyway, so anything past 2**30
 	// (an unlimited stack included) only has to stay positive.
-	if quarter := uint64(rl.Cur) / 4; quarter < 1<<30 {
+	if quarter := rl.Cur / 4; quarter < 1<<30 {
 		return max(legacy, int(quarter))
 	}
 	return 1 << 30
