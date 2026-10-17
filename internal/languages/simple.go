@@ -29,14 +29,16 @@ func (f *Fail) InstallEnvironment(prefix, version string, additionalDeps []strin
 	return nil
 }
 
-// Run implements Language.
+// Run implements Language. As upstream's fail.py does, it prints the entry, a
+// blank line, then the files it failed on, one per line.
 func (f *Fail) Run(
 	_ context.Context,
 	_, _, entry string,
-	_, _ []string,
+	_, fileArgs []string,
 	_ string,
 ) (int, []byte, error) {
-	return 1, []byte(entry + "\n"), nil
+	out := entry + "\n\n" + strings.Join(fileArgs, "\n") + "\n"
+	return 1, []byte(out), nil
 }
 
 // Pygrep implements the Language interface for pygrep hooks.

@@ -298,3 +298,26 @@ func TestFailAlwaysReturns1(t *testing.T) {
 		t.Errorf("output %q should contain the entry message", out)
 	}
 }
+
+// TestFailOutputMatchesUpstream pins the bytes upstream's fail.py returns:
+// the entry, a blank line, then each file on its own line.
+func TestFailOutputMatchesUpstream(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		want  string
+		files []string
+	}{
+		{name: "two files", files: []string{"a.txt", "b.txt"}, want: "nope\n\na.txt\nb.txt\n"},
+		{name: "no files", want: "nope\n\n\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, out, err := (&Fail{}).Run(context.Background(), "", t.TempDir(), "nope", nil, tc.files, "default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if code != 1 || string(out) != tc.want {
+				t.Errorf("got (%d, %q), want (1, %q)", code, out, tc.want)
+			}
+		})
+	}
+}
