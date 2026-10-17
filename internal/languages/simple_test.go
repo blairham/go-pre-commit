@@ -354,3 +354,54 @@ func TestPygrepLineAnchors(t *testing.T) {
 		}
 	}
 }
+
+// Upstream compiles a bytes pattern and searches bytes, so `.` and classes
+// step one byte, \w, \b and IGNORECASE know only ASCII, and \xHH or octal
+// escapes name bytes (#179). Measured against pre-commit 4.7.0.
+func TestPygrepMatchesBytes(t *testing.T) {
+	dir := t.TempDir()
+	u := filepath.Join(dir, "u.txt")
+	e := filepath.Join(dir, "e.txt")
+	if err := os.WriteFile(u, []byte("x\xd9\xa3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(e, []byte("caf\xc3\xa9 x\n\xc3\x89t\xc3\xa9\nplain\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{u, e}
+	uLine := u + ":1:x\xd9\xa3\n"
+	cases := []struct {
+		name, entry, want string
+		args              []string
+	}{
+		{name: ". is one byte", entry: `^x..$`, want: uLine},
+		{name: ". is not a character", entry: `^x.$`, want: ""},
+		{name: "counted repeat counts bytes", entry: `^.{3}$`, want: uLine},
+		{name: "\\xHH names a byte", entry: `\xd9\xa3`, want: uLine},
+		{name: "octal names a byte", entry: `\331\243`, want: uLine},
+		{
+			name:  "range of high bytes",
+			entry: `[\x80-\xff]`,
+			want:  uLine + e + ":1:caf\xc3\xa9 x\n" + e + ":2:\xc3\x89t\xc3\xa9\n",
+		},
+		{name: "\\b is ASCII", entry: `\bx`, want: uLine + e + ":1:caf\xc3\xa9 x\n"},
+		{
+			name:  "ignore-case folds only ASCII",
+			entry: "\u00c9",
+			args:  []string{"--ignore-case"},
+			want:  e + ":2:\xc3\x89t\xc3\xa9\n",
+		},
+		{name: "multiline . is one byte", entry: `x..\n`, args: []string{"--multiline"}, want: u + ":1:x\xd9\xa3\n\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, out, err := (&Pygrep{}).Run(context.Background(), "", dir, tc.entry, tc.args, files, "default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(out) != tc.want {
+				t.Errorf("got %q, want %q", out, tc.want)
+			}
+		})
+	}
+}

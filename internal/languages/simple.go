@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/dlclark/regexp2"
@@ -67,7 +68,7 @@ func (p *Pygrep) Run(
 ) (int, []byte, error) {
 	opts := parsePygrepArgs(args)
 
-	pattern := entry
+	pattern := pygrepBytesPattern(entry)
 	if opts.multiline {
 		// Upstream compiles with re.MULTILINE | re.DOTALL.
 		pattern = "(?ms)" + pattern
@@ -207,7 +208,7 @@ func pygrepLineAnchors(pattern string) string {
 func pygrepByLine(out *bytes.Buffer, re *regexp2.Regexp, filename, contents string) bool {
 	failed := false
 	for i, line := range pygrepLines(contents) {
-		if pcre.Match(re, line) {
+		if pcre.Match(re, pygrepSubject(line)) {
 			failed = true
 			fmt.Fprintf(out, "%s:%d:%s\n", filename, i+1, strings.TrimRight(line, "\r\n"))
 		}
@@ -219,12 +220,12 @@ func pygrepByLine(out *bytes.Buffer, re *regexp2.Regexp, filename, contents stri
 // whole file, reported at the line it starts on, printed as that whole line
 // followed by the rest of the matched text.
 func pygrepAtOnce(out *bytes.Buffer, re *regexp2.Regexp, filename, contents string) bool {
-	m, err := re.FindStringMatch(contents)
+	m, err := re.FindStringMatch(pygrepSubject(contents))
 	if err != nil || m == nil {
 		return false
 	}
-	start := runeToByteOffset(contents, m.Index)
-	end := runeToByteOffset(contents, m.Index+m.Length)
+	// One rune of the subject is one byte of contents.
+	start, end := m.Index, m.Index+m.Length
 	lineNo := strings.Count(contents[:start], "\n")
 
 	matched := strings.Split(contents[start:end], "\n")
@@ -237,7 +238,7 @@ func pygrepAtOnce(out *bytes.Buffer, re *regexp2.Regexp, filename, contents stri
 // fails, and is named, when no line of it matches.
 func pygrepByLineNegated(out *bytes.Buffer, re *regexp2.Regexp, filename, contents string) bool {
 	for _, line := range pygrepLines(contents) {
-		if pcre.Match(re, line) {
+		if pcre.Match(re, pygrepSubject(line)) {
 			return false
 		}
 	}
@@ -247,27 +248,96 @@ func pygrepByLineNegated(out *bytes.Buffer, re *regexp2.Regexp, filename, conten
 
 // pygrepAtOnceNegated is upstream's _process_filename_at_once_negated.
 func pygrepAtOnceNegated(out *bytes.Buffer, re *regexp2.Regexp, filename, contents string) bool {
-	if pcre.Match(re, contents) {
+	if pcre.Match(re, pygrepSubject(contents)) {
 		return false
 	}
 	fmt.Fprintf(out, "%s\n", filename)
 	return true
 }
 
-// runeToByteOffset converts regexp2's rune index into a byte offset in s.
-// Ranging over a string steps one byte at a time through invalid UTF-8, just
-// as regexp2's rune conversion turns each such byte into one U+FFFD, so the
-// two count alike.
-func runeToByteOffset(s string, runeIdx int) int {
-	n := 0
-	for i := range s {
-		if n == runeIdx {
-			return i
+// Upstream compiles the entry as a bytes pattern and searches bytes, so `.`,
+// a negated class or a counted repeat steps one byte at a time, and \w, \d,
+// \s, \b and IGNORECASE know only ASCII. regexp2 steps through runes, so the
+// subject is handed to it one rune per byte: an ASCII byte as itself, and a
+// byte from 0x80 up as a private-use rune (pygrepHighBase plus the byte),
+// which no class, word test or case fold treats as anything but itself. The
+// pattern's own non-ASCII bytes, and its \xHH and octal escapes for them,
+// are mapped the same way.
+const pygrepHighBase = 0xE000
+
+// pygrepSubject maps s byte by byte into the runes the pattern is matched
+// against; a match's rune offsets are byte offsets into s.
+func pygrepSubject(s string) string {
+	ascii := true
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			ascii = false
+			break
 		}
-		n++
 	}
-	return len(s)
+	if ascii {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) * 2)
+	for i := 0; i < len(s); i++ {
+		b.WriteRune(pygrepByteRune(s[i]))
+	}
+	return b.String()
 }
+
+func pygrepByteRune(c byte) rune {
+	if c < 0x80 {
+		return rune(c)
+	}
+	return pygrepHighBase + rune(c)
+}
+
+// pygrepBytesPattern is the entry as the bytes pattern upstream compiles
+// (args.pattern.encode()), spelled in pygrepSubject's runes: each non-ASCII
+// byte of it, and each \xHH or three-digit octal escape for a byte from 0x80
+// up, becomes that byte's rune. Every other escape is left as written.
+func pygrepBytesPattern(pattern string) string {
+	var b strings.Builder
+	for i := 0; i < len(pattern); i++ {
+		c := pattern[i]
+		if c >= 0x80 {
+			b.WriteRune(pygrepByteRune(c))
+			continue
+		}
+		if c != '\\' || i+1 >= len(pattern) {
+			b.WriteByte(c)
+			continue
+		}
+		if v, n, ok := pygrepHighEscape(pattern[i+1:]); ok {
+			b.WriteRune(pygrepByteRune(v))
+			i += n
+			continue
+		}
+		b.WriteString(pattern[i : i+2])
+		i++
+	}
+	return b.String()
+}
+
+// pygrepHighEscape reads, after a backslash, an escape Python's re turns into
+// a byte from 0x80 up: \xHH, or an octal \ooo (sre reads three octal digits
+// as a character, not a group reference). It reports the byte and how many
+// characters the escape takes after the backslash.
+func pygrepHighEscape(s string) (byte, int, bool) {
+	if len(s) >= 3 && s[0] == 'x' {
+		if v, err := strconv.ParseUint(s[1:3], 16, 8); err == nil && v >= 0x80 {
+			return byte(v), 3, true
+		}
+		return 0, 0, false
+	}
+	if len(s) >= 3 && (s[0] == '2' || s[0] == '3') && isOctal(s[1]) && isOctal(s[2]) {
+		return (s[0]-'0')<<6 | (s[1]-'0')<<3 | (s[2] - '0'), 3, true
+	}
+	return 0, 0, false
+}
+
+func isOctal(c byte) bool { return c >= '0' && c <= '7' }
 
 // Unsupported implements the Language interface for system hooks.
 type Unsupported struct{}

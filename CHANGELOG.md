@@ -15,6 +15,11 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `language: pygrep` matches bytes, as upstream's bytes pattern does: `.`, a
+  negated class and a counted repeat step one byte at a time, so `^x.$` no
+  longer matches `x٣` while `^x..$` does; `\xHH` and octal escapes name
+  bytes (`[\x80-\xff]` finds non-ASCII text); and `--ignore-case` folds only
+  ASCII. This holds in `--multiline` mode too. (#179)
 - `gc` decides what is in use from the configs recorded in the store only,
   as upstream's `_gc` does, instead of also reading the current directory's
   config, so a repo only an untracked config refers to is now removed. Like
