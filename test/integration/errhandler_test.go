@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +61,7 @@ func TestErrorHandler(t *testing.T) {
 			}
 			pyOut, pyErr, pyExit := runSplit(t, pyDir, pyBin, "run", "--all-files", "--color=never")
 			goOut, goErr, goExit := runSplit(t, goDir, goBinary, "run", "--all-files", "--color=never")
+			pyOut, goOut = installedVersion(pyOut), installedVersion(goOut)
 			addExitResult("run", "error handler: "+tc.name, pyExit, goExit, pyExit == goExit && goExit == tc.want, "")
 			addOutputResult("run", "error handler: "+tc.name,
 				pyOut == goOut && pyErr == goErr && strings.Contains(goOut, "\nCheck the log at "),
@@ -105,6 +107,7 @@ func TestErrorHandler(t *testing.T) {
 		args := []string{"validate-manifest", "bad.yaml", "v5.yaml", "missing.yaml"}
 		pyOut, pyErr, pyExit := runSplit(t, dir, pyBin, args...)
 		goOut, goErr, goExit := runSplit(t, dir, goBinary, args...)
+		pyOut, goOut = installedVersion(pyOut), installedVersion(goOut)
 		addExitResult("validate-manifest", "cfgv errors", pyExit, goExit, pyExit == goExit && goExit == 1, "")
 		addOutputResult("validate-manifest", "cfgv errors", pyOut == goOut && pyErr == goErr && goOut != "",
 			fmt.Sprintf("py=%q/%q go=%q/%q", pyOut, pyErr, goOut, goErr))
@@ -123,6 +126,15 @@ func TestErrorHandler(t *testing.T) {
 			pyOut == goOut && strings.Contains(goOut, "Interrupted (^C): KeyboardInterrupt: \nCheck the log at "),
 			fmt.Sprintf("py=%q go=%q", pyOut, goOut))
 	})
+}
+
+// installedVersionRe is the running version in check_min_version's
+// message. A build from a checkout stamps a pseudo-version (4.7.1-0.2026...),
+// which is the binary under test, not a divergence.
+var installedVersionRe = regexp.MustCompile(`but version \S+ is installed`)
+
+func installedVersion(s string) string {
+	return installedVersionRe.ReplaceAllString(s, "but version <version> is installed")
 }
 
 // checkErrorLog checks the log the error line pointed at has upstream's
