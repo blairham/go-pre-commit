@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
@@ -97,10 +96,7 @@ build = {
 // `local:dep1,dep2`. Different additional_dependencies therefore get different
 // environments instead of sharing (and clobbering) one.
 func LocalRepoName(deps []string) string {
-	if len(deps) == 0 {
-		return "local"
-	}
-	return "local:" + strings.Join(deps, ",")
+	return DBRepoName("local", deps)
 }
 
 // LocalRepoKey returns the "repo@rev" key GC uses to keep a local repo alive.

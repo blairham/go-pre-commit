@@ -31,6 +31,28 @@ file was introduced; the full notes are on the
   `gc` sees every config that uses the cache rather than only the current
   one. `gc` also forgets tracked configs that no longer load, as upstream's
   `_gc` does. (#133)
+- A hook repo whose hooks declare different `additional_dependencies` (such
+  as blairham/pre-commit-hooks' golang hooks and its `go-vulncheck`) no longer
+  reinstalls its environments on every run. All of a repo's hooks shared one
+  clone, so both dependency sets were installed into one environment
+  directory, concurrently, each overwriting the other's install state; the
+  next run saw a mismatch and reinstalled both, and the two `go install`s
+  sharing one module cache failed intermittently with `unknown revision`. As
+  upstream's `store.clone(repo, rev, deps)` does, each dependency set now gets
+  a clone of its own, recorded as `repo:dep1,dep2` (which `gc` keeps while a
+  config uses it). Existing caches are reinstalled once. Installs also take
+  the store's exclusive lock and re-check what still needs installing once
+  they hold it, as upstream's `install_hook_envs` does, so two commits in
+  sibling worktrees no longer build the same environment at once. (#141)
+- The golang backend builds `go install`'s environment as upstream does: the
+  caller's environment without git's variables, with GOPATH at the hook env.
+  It no longer forces `GOTOOLCHAIN=local`, and a hook runs with only PATH
+  changed rather than with GOPATH pointed at its env, so a hook that runs the
+  go tool uses the caller's module cache. The env's module cache is removed
+  after install, as upstream does. GOBIN is set to the env's `bin` rather
+  than removed, which is the directory upstream installs into, so that a go
+  shim exporting its own GOBIN (asdf's does) cannot send the binaries
+  elsewhere. (#141)
 - Hooks receive their files in upstream's order. Upstream shuffles each
   hook's file list with a fixed-seed `random.Random` before splitting it into
   xargs batches, unless the hook is `require_serial`; this port never

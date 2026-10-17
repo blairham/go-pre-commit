@@ -211,3 +211,64 @@ func TestCloneChecksOutSubmodules(t *testing.T) {
 		t.Errorf("submodule was not checked out: %v", err)
 	}
 }
+
+// Hooks of one repo that declare different additional_dependencies each get a
+// clone of their own, recorded under upstream's db_repo_name, so their
+// environments never share a directory.
+func TestCloneWithDepsSeparatesDependencySets(t *testing.T) {
+	origin, sha := hookOrigin(t)
+	s := New(t.TempDir())
+
+	plain, err := s.Clone(origin, sha)
+	if err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	same, err := s.CloneWithDeps(origin, sha, nil)
+	if err != nil {
+		t.Fatalf("CloneWithDeps(nil): %v", err)
+	}
+	if same != plain {
+		t.Errorf("no deps should reuse the plain clone: got %s, want %s", same, plain)
+	}
+
+	var withDeps string
+	stdout, _ := captureOutput(t, func() {
+		withDeps, err = s.CloneWithDeps(origin, sha, []string{"a@v1", "b"})
+	})
+	if err != nil {
+		t.Fatalf("CloneWithDeps: %v", err)
+	}
+	if withDeps == plain {
+		t.Fatalf("a dependency set must get its own clone, got the plain one %s", plain)
+	}
+	if want := "[INFO] Initializing environment for " + origin + ":a@v1,b.\n"; !strings.Contains(stdout, want) {
+		t.Errorf("stdout %q should name the clone as upstream does: %q", stdout, want)
+	}
+	if h := gitIn(t, withDeps, "rev-parse", "HEAD"); h != sha {
+		t.Errorf("deps clone checked out %s, want %s", h, sha)
+	}
+
+	again, err := s.CloneWithDeps(origin, sha, []string{"a@v1", "b"})
+	if err != nil || again != withDeps {
+		t.Errorf("the same dependency set should reuse its clone: got %s, %v; want %s", again, err, withDeps)
+	}
+	if got := s.GetPath(DBRepoName(origin, []string{"a@v1", "b"}), sha); got != withDeps {
+		t.Errorf("deps clone recorded at %q, want %q", got, withDeps)
+	}
+}
+
+func TestDBRepoName(t *testing.T) {
+	for _, tc := range []struct {
+		want string
+		deps []string
+	}{
+		{deps: nil, want: "r"},
+		{deps: []string{}, want: "r"},
+		{deps: []string{"x"}, want: "r:x"},
+		{deps: []string{"x", "y@1"}, want: "r:x,y@1"},
+	} {
+		if got := DBRepoName("r", tc.deps); got != tc.want {
+			t.Errorf("DBRepoName(r, %q) = %q, want %q", tc.deps, got, tc.want)
+		}
+	}
+}

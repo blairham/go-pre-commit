@@ -6,10 +6,13 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
@@ -92,5 +95,57 @@ func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 	}
 	if !slices.Equal(tracked, []string{realA}) {
 		t.Errorf("tracked configs = %q, want only %q", tracked, realA)
+	}
+}
+
+// gc keeps the per-dependency clones a config's hooks run from, as upstream's
+// _mark_used_repos does: the hook's own additional_dependencies, or else the
+// manifest's.
+func TestMarkDepsClonesUsed(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	origin := t.TempDir()
+	git := func(args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = origin
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "-b", "main")
+	manifest := "- {id: a, name: a, entry: a, language: golang, additional_dependencies: [m@v1]}\n" +
+		"- {id: b, name: b, entry: b, language: golang}\n"
+	if err := os.WriteFile(filepath.Join(origin, config.ManifestFile), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "init")
+	sha := git("rev-parse", "HEAD")
+
+	s := store.New(t.TempDir())
+	if _, err := s.Clone(origin, sha); err != nil {
+		t.Fatal(err)
+	}
+
+	used := map[string]bool{}
+	markDepsClonesUsed(s, config.RepoConfig{Repo: origin, Rev: sha, Hooks: []config.HookConfig{
+		{ID: "a"},
+		{ID: "b", AdditionalDependencies: []string{"x", "y"}},
+		{ID: "missing", AdditionalDependencies: []string{"z"}},
+	}}, used)
+
+	for _, key := range []string{origin + ":m@v1@" + sha, origin + ":x,y@" + sha} {
+		if !used[key] {
+			t.Errorf("%s should be marked used; got %v", key, used)
+		}
+	}
+	if used[origin+":z@"+sha] {
+		t.Error("a hook missing from the manifest marks nothing, as upstream")
 	}
 }
