@@ -178,20 +178,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, invalidConfig(inFile(path, newValidationError("%s", err.Error())))
 	}
 
-	// Upstream's schema warnings, in the order its schema checks them: each
-	// repo's hooks, then that repo's rev, then the top-level default_stages.
-	// They read the stages as written, so they run before ApplyDefaults
-	// migrates the legacy names.
-	for _, repo := range cfg.Repos {
-		for _, hook := range repo.Hooks {
-			warnDeprecatedStages("hook id `"+hook.ID+"`", hook.Stages)
-		}
-		if !repo.IsLocal() && !repo.IsMeta() && repo.Rev != "" {
-			WarnMutableRev(repo.Repo, repo.Rev)
-		}
-	}
-	warnDeprecatedStages("top-level `default_stages`", cfg.DefaultStages)
-
 	// Apply defaults.
 	cfg.ApplyDefaults()
 
@@ -204,26 +190,6 @@ var legacyStages = map[Stage]Stage{
 	"commit":       HookTypePreCommit,
 	"merge-commit": HookTypePreMergeCommit,
 	"push":         HookTypePrePush,
-}
-
-// warnDeprecatedStages ports upstream's DeprecatedStagesWarning and
-// DeprecatedDefaultStagesWarning; what names the hook or `default_stages`.
-func warnDeprecatedStages(what string, stages []Stage) {
-	var legacy []string
-	for _, s := range stages {
-		if _, ok := legacyStages[s]; ok {
-			legacy = append(legacy, string(s))
-		}
-	}
-	if len(legacy) == 0 {
-		return
-	}
-	output.Warn(
-		"%s uses deprecated stage names (%s) which will be removed in a "+
-			"future version.  "+
-			"run: `pre-commit migrate-config` to automatically fix this.",
-		what, strings.Join(legacy, ", "),
-	)
 }
 
 // WarnForStagesOnRepoInit ports upstream's warn_for_stages_on_repo_init,

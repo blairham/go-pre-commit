@@ -500,3 +500,71 @@ func isoTimestamp(s string) (string, bool) {
 	}
 	return out, true
 }
+
+// PyTimestamp is a timestamp as LoadAny returns it: Date for a
+// datetime.date, otherwise a datetime.datetime; Text is its isoformat.
+type PyTimestamp struct {
+	Text string
+	Date bool
+}
+
+// LoadAny is yaml_load as Go values with Python's types: nil, bool, int (or
+// *big.Int past int64), float64, string, PyTimestamp, []any, and
+// map[string]any -- or map[any]any when a key is not a string.
+func LoadAny(src string) (any, error) {
+	v, err := Load(src)
+	if err != nil || v == nil {
+		return nil, err
+	}
+	return v.ToAny(), nil
+}
+
+// ToAny is v as LoadAny returns it.
+func (v *Value) ToAny() any {
+	switch v.Kind {
+	case Bool:
+		return v.Bool
+	case Int:
+		if v.Int.IsInt64() {
+			return int(v.Int.Int64())
+		}
+		return v.Int
+	case Float:
+		return v.Float
+	case Str:
+		return v.Str
+	case Timestamp:
+		return PyTimestamp{Text: v.Str, Date: !strings.Contains(v.Str, " ")}
+	case List:
+		out := make([]any, len(v.Items))
+		for i, item := range v.Items {
+			out[i] = item.ToAny()
+		}
+		return out
+	case Map:
+		allStr := true
+		for _, p := range v.Pairs {
+			if p.Key.Kind != Str {
+				allStr = false
+				break
+			}
+		}
+		if allStr {
+			out := make(map[string]any, len(v.Pairs))
+			for _, p := range v.Pairs {
+				out[p.Key.Str] = p.Value.ToAny()
+			}
+			return out
+		}
+		out := make(map[any]any, len(v.Pairs))
+		for _, p := range v.Pairs {
+			k := p.Key.ToAny()
+			if b, ok := k.(*big.Int); ok {
+				k = b.String() // a *big.Int is not a usable map key
+			}
+			out[k] = p.Value.ToAny()
+		}
+		return out
+	}
+	return nil
+}

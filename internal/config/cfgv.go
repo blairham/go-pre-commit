@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"os"
 	"slices"
 	"strconv"
@@ -27,8 +28,8 @@ import (
 // the order upstream checks keys in, which decides which of two problems is
 // the one reported.
 //
-// The warnings upstream's schemas also emit (unknown keys, regex-not-glob,
-// deprecated stages) are not part of this port; they never fail a load.
+// The warnings upstream's schemas emit are schema items too (cfgv_warn.go),
+// so they fire in upstream's order, before a later key fails.
 
 // ValidationError is cfgv.ValidationError: a message wrapped in the contexts
 // it was raised under, outermost first.
@@ -120,8 +121,10 @@ func loadFromFilename(
 		return nil, reraise(withContext(ctx, newValidationError("%s", msg)))
 	}
 
-	var doc any
-	if err := pyyaml.Unmarshal(data, &doc); err != nil {
+	// Validation sees the values PyYAML builds: YAML 1.1 types (`yes` is a
+	// bool), repeated keys collapsed as a dict does, and keys of any type.
+	doc, err := pyyaml.LoadAny(string(data))
+	if err != nil {
 		return nil, reraise(withContext(ctx, newValidationError("%s", err.Error())))
 	}
 
@@ -262,12 +265,12 @@ func checkMinVersion(v any) error {
 
 // --- schema items: cfgv's Required, Optional, Conditional, ... ---
 
-type item func(m map[string]any) error
+type item func(m map[string]any, raw any) error
 
 func missing(key string) error { return newValidationError("Missing required key: %s", key) }
 
 func optional(key string, fn checkFn) item {
-	return func(m map[string]any) error {
+	return func(m map[string]any, _ any) error {
 		v, ok := m[key]
 		if !ok {
 			return nil
@@ -278,11 +281,11 @@ func optional(key string, fn checkFn) item {
 
 func required(key string, fn checkFn) item {
 	opt := optional(key, fn)
-	return func(m map[string]any) error {
+	return func(m map[string]any, _ any) error {
 		if _, ok := m[key]; !ok {
 			return missing(key)
 		}
-		return opt(m)
+		return opt(m, nil)
 	}
 }
 
@@ -321,9 +324,9 @@ func (c condition) describeOpposite() string {
 // while it is present and does not.
 func conditionalRequired(key string, fn checkFn, condKey string, cond condition, ensureAbsent bool) item {
 	req := required(key, fn)
-	return func(m map[string]any) error {
+	return func(m map[string]any, _ any) error {
 		if cond.matches(m, condKey) {
-			return req(m)
+			return req(m, nil)
 		}
 		_, hasCond := m[condKey]
 		if v, has := m[key]; hasCond && ensureAbsent && has {
@@ -335,7 +338,7 @@ func conditionalRequired(key string, fn checkFn, condKey string, cond condition,
 }
 
 func notAllowed(key string) item {
-	return func(m map[string]any) error {
+	return func(m map[string]any, _ any) error {
 		if _, ok := m[key]; ok {
 			return newValidationError("%s cannot be overridden", PyRepr(key))
 		}
@@ -344,19 +347,17 @@ func notAllowed(key string) item {
 }
 
 func noAdditionalKeys(keys []string) item {
-	return func(m map[string]any) error {
-		var extra []string
-		for k := range m {
-			if !slices.Contains(keys, k) {
-				extra = append(extra, k)
-			}
+	return func(_ map[string]any, raw any) error {
+		extra, err := pySortedExtraKeys(raw, keys)
+		if err != nil || len(extra) == 0 {
+			return err
 		}
-		if len(extra) == 0 {
-			return nil
+		strs := make([]string, len(extra))
+		for i, k := range extra {
+			strs[i] = pyStr(k)
 		}
-		slices.Sort(extra)
 		return newValidationError("Additional keys found: %s.  Only these keys are allowed: %s",
-			strings.Join(extra, ", "), strings.Join(keys, ", "))
+			strings.Join(strs, ", "), strings.Join(keys, ", "))
 	}
 }
 
@@ -397,11 +398,11 @@ func languageMigration(key string, isRequired bool) item {
 		}
 		return check(v)
 	})
-	return func(m map[string]any) error {
+	return func(m map[string]any, _ any) error {
 		if _, ok := m[key]; !ok && isRequired {
 			return missing(key)
 		}
-		return opt(m)
+		return opt(m, nil)
 	}
 }
 
@@ -426,7 +427,7 @@ func (s mapSchema) check(v any) error {
 		ctx = fmt.Sprintf("At %s(%s=%s)", s.name, s.idKey, id)
 	}
 	for _, it := range s.items {
-		if err := it(m); err != nil {
+		if err := it(m, v); err != nil {
 			return withContext(ctx, err)
 		}
 	}
@@ -522,6 +523,24 @@ func manifestHookSchema() mapSchema {
 	return s
 }
 
+// commonHookWarnings is clientlib._COMMON_HOOK_WARNINGS, which ends every
+// hook schema in a config (not a manifest's).
+func commonHookWarnings() []item {
+	return []item{
+		sensibleRegexAtHook("files"),
+		sensibleRegexAtHook("exclude"),
+		deprecatedStagesWarning("stages", hookWhat),
+	}
+}
+
+// localHookSchema is LOCAL_HOOK_DICT: the manifest's hook, with the
+// common warnings.
+func localHookSchema() mapSchema {
+	s := manifestHookSchema()
+	s.items = append(s.items, commonHookWarnings()...)
+	return s
+}
+
 func configHookSchema() mapSchema {
 	s := mapSchema{name: "Hook", idKey: "id", items: []item{required("id", checkString)}}
 	for _, k := range manifestHookItems() {
@@ -531,6 +550,7 @@ func configHookSchema() mapSchema {
 		s.items = append(s.items, optional(k.key, k.fn))
 	}
 	s.items = append(s.items, stagesMigration("stages"), languageMigration("language", false))
+	s.items = append(s.items, commonHookWarnings()...)
 	return s
 }
 
@@ -551,6 +571,7 @@ func metaHookSchema() mapSchema {
 			s.items = append(s.items, k.it)
 		}
 	}
+	s.items = append(s.items, commonHookWarnings()...)
 	return s
 }
 
@@ -561,9 +582,11 @@ func configSchema() mapSchema {
 	repo := mapSchema{name: "Repository", idKey: "repo", items: []item{
 		required("repo", checkString),
 		conditionalRequired("hooks", arrayOf(configHookSchema()), "repo", remote, false),
-		conditionalRequired("hooks", arrayOf(manifestHookSchema()), "repo", local, false),
+		conditionalRequired("hooks", arrayOf(localHookSchema()), "repo", local, false),
 		conditionalRequired("hooks", arrayOf(metaHookSchema()), "repo", meta, false),
 		conditionalRequired("rev", checkString, "repo", remote, true),
+		warnMutableRevItem,
+		warnAdditionalKeys([]string{"repo", "rev", "hooks"}, warnUnknownKeysRepo),
 	}}
 
 	langVersion := mapSchema{name: "DefaultLanguageVersion", items: []item{noAdditionalKeys(LanguageNames)}}
@@ -577,9 +600,17 @@ func configSchema() mapSchema {
 		optional("default_install_hook_types", checkArray(checkOneOf(hookTypeNames()))),
 		optional("default_language_version", langVersion.check),
 		stagesMigration("default_stages"),
+		deprecatedStagesWarning("default_stages", topWhat),
 		optional("files", checkStringRegex),
 		optional("exclude", checkStringRegex),
 		optional("fail_fast", checkBool),
+		warnAdditionalKeys([]string{
+			"repos", "default_install_hook_types", "default_language_version",
+			"default_stages", "files", "exclude", "fail_fast",
+			"minimum_pre_commit_version", "ci",
+		}, warnUnknownKeysRoot),
+		sensibleRegexAtTop("files"),
+		sensibleRegexAtTop("exclude"),
 		optional("ci", checkDict),
 	}}
 }
@@ -618,12 +649,18 @@ func asStringMap(v any) (map[string]any, bool) {
 
 // pyTypeName is type(v).__name__ for what PyYAML would have built.
 func pyTypeName(v any) string {
+	if ts, ok := v.(pyyaml.PyTimestamp); ok {
+		if ts.Date {
+			return "date"
+		}
+		return "datetime"
+	}
 	switch v.(type) {
 	case nil:
 		return "NoneType"
 	case bool:
 		return "bool"
-	case int, int64, uint64:
+	case int, int64, uint64, *big.Int:
 		return "int"
 	case float64:
 		return "float"
