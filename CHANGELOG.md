@@ -15,6 +15,11 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `gc` decides what is in use from the configs recorded in the store only,
+  as upstream's `_gc` does, instead of also reading the current directory's
+  config, so a repo only an untracked config refers to is now removed. Like
+  upstream's parser, `gc` takes only `--color`: `-c/--config` and extra
+  arguments are refused. (#174)
 - `language: pygrep` searches each line with its newline attached, as
   upstream does when it iterates a file opened `rb`, so a pattern that can
   consume the newline matches where upstream's does: `\s$` and `[^a-z]` now
