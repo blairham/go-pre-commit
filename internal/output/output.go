@@ -291,6 +291,13 @@ func Warn(format string, args ...any) {
 	fmt.Printf("%s %s\n", colorize("[WARNING]", yellow), msg)
 }
 
+// LogError prints an [ERROR] line to stdout, as upstream's logger.error does
+// through its logging handler.
+func LogError(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("%s %s\n", colorize("[ERROR]", red), msg)
+}
+
 // Error prints an error message.
 func Error(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)

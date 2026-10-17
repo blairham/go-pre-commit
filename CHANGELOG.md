@@ -15,6 +15,22 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `install` and `uninstall` are ported from upstream's
+  `install_uninstall.py`. The hook path comes from git's common dir after
+  changing to the root, so `install` prints
+  `pre-commit installed at .git/hooks/pre-commit` in a plain checkout (and
+  an absolute path in a linked worktree) rather than an absolute path
+  everywhere. A foreign hook moves to `.legacy` silently, and an existing
+  legacy hook is announced as upstream does (`Running in migration mode with
+  existing hooks at ...`); `-f` removes it. `uninstall` prints
+  `<type> uninstalled` and `Restored previous hooks to <path>`, says nothing
+  about a hook that is missing or not ours, and without `-t` takes the
+  config's `default_install_hook_types`, as `install` does. With
+  `core.hooksPath` set, `install` now refuses with upstream's
+  ``[ERROR] Cowardly refusing to install hooks with `core.hooksPath` set.``
+  and exit 1, rather than warning and writing into that directory; the
+  `config file ... not found` warning, which upstream does not print, is
+  gone. (#130)
 - `run <hook-id>` selects and reports as upstream does. A miss prints
   ``No hook with id `<id>` in stage `<stage>` `` on stdout, where this port
   printed `[ERROR] No hook with id "<id>" found` on stderr. A `repo: local`

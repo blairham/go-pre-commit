@@ -86,68 +86,50 @@ func (c *InstallCommand) Run(args []string) int {
 		return fatalError(err)
 	}
 
-	// Check for core.hooksPath.
-	warnIfCoreHooksPath()
+	// Upstream refuses outright: git would never run a hook written to
+	// .git/hooks while core.hooksPath points elsewhere.
+	if git.HasCoreHookPathsSet() {
+		output.LogError("Cowardly refusing to install hooks with `core.hooksPath` set.\n" +
+			"hint: `git config --unset-all core.hooksPath`")
+		return 1
+	}
 
 	// Determine hook types to install.
-	typesToInstall := opts.HookTypes
-	if len(typesToInstall) == 0 {
-		// Default from config's default_install_hook_types.
-		if cfg, err := config.LoadConfig(opts.Config); err == nil && len(cfg.DefaultInstallHookTypes) > 0 {
-			for _, ht := range cfg.DefaultInstallHookTypes {
-				typesToInstall = append(typesToInstall, string(ht))
-			}
-		} else {
-			typesToInstall = []string{"pre-commit"}
-		}
-	}
+	typesToInstall := installHookTypes(opts.Config, opts.HookTypes)
 
 	// Validate hook types.
 	if !validHookTypes(typesToInstall) {
 		return 1
 	}
 
-	hooksDir, err := resolveHooksDir("")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
-	}
-
-	// Warn if config is missing (but don't block installation — matches Python behavior).
-	if !opts.AllowMissing {
-		if _, err := os.Stat(opts.Config); os.IsNotExist(err) {
-			output.Warn("config file %s not found.", opts.Config)
-		}
-	}
-
-	// Make the hooks directory.
-	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to create hooks directory: %v\n", err)
-		return 1
-	}
-
-	// Install each hook type.
 	for _, hookType := range typesToInstall {
-		hookFile := filepath.Join(hooksDir, hookType)
+		hookFile, legacyFile, err := hookPaths(hookType)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+		if err := os.MkdirAll(filepath.Dir(hookFile), 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to create hooks directory: %v\n", err)
+			return 1
+		}
 
-		// Check for existing hook.
-		if !opts.Overwrite {
-			if info, err := os.Stat(hookFile); err == nil && info.Size() > 0 {
-				content, err := os.ReadFile(hookFile)
-				if err == nil && !isPreCommitHook(string(content)) {
-					// Back up the legacy hook.
-					legacyFile := hookFile + ".legacy"
-					if err := os.Rename(hookFile, legacyFile); err != nil {
-						fmt.Fprintf(
-							os.Stderr,
-							"Error: existing hook %s found and cannot be backed up: %v\nuse --overwrite to replace it\n",
-							hookFile,
-							err,
-						)
-						return 1
-					}
-					output.Info("Moving existing hook %s to %s", hookFile, legacyFile)
+		// An existing hook that is not ours becomes the legacy hook, which
+		// the installed script runs first ("migration mode").
+		if _, err := os.Lstat(hookFile); err == nil && !isOurScript(hookFile) {
+			if err := os.Rename(hookFile, legacyFile); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: failed to move existing hook %s: %v\n", hookFile, err)
+				return 1
+			}
+		}
+
+		if _, err := os.Stat(legacyFile); err == nil {
+			if opts.Overwrite {
+				if err := os.Remove(legacyFile); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: failed to remove %s: %v\n", legacyFile, err)
+					return 1
 				}
+			} else {
+				fmt.Printf("Running in migration mode with existing hooks at %s\nUse -f to use only pre-commit.\n", legacyFile)
 			}
 		}
 
@@ -157,6 +139,11 @@ func (c *InstallCommand) Run(args []string) int {
 
 		if err := os.WriteFile(hookFile, []byte(content), 0o755); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to write hook: %v\n", err)
+			return 1
+		}
+		// WriteFile keeps an existing file's mode; make_executable does not.
+		if err := os.Chmod(hookFile, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
 
@@ -223,33 +210,16 @@ func (c *UninstallCommand) Run(args []string) int {
 		return fatalError(err)
 	}
 
-	hooksDir, err := resolveHooksDir("")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
-	}
-
-	typesToUninstall := opts.HookTypes
-	if len(typesToUninstall) == 0 {
-		typesToUninstall = []string{"pre-commit"}
-	}
-
 	exit := 0
-	for _, ht := range typesToUninstall {
-		hookFile := filepath.Join(hooksDir, ht)
-		content, err := os.ReadFile(hookFile)
+	for _, ht := range installHookTypes(opts.Config, opts.HookTypes) {
+		hookFile, legacyFile, err := hookPaths(ht)
 		if err != nil {
-			if os.IsNotExist(err) {
-				fmt.Printf("%s does not exist, skipping.\n", ht)
-				continue
-			}
-			fmt.Fprintf(os.Stderr, "Error: failed to read hook: %v\n", err)
-			exit = 1
-			continue
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
 		}
 
-		if !isPreCommitHook(string(content)) {
-			fmt.Printf("%s is not a pre-commit hook, skipping.\n", hookFile)
+		// A hook that is missing or not ours is left alone, silently.
+		if !isOurScript(hookFile) {
 			continue
 		}
 
@@ -258,15 +228,16 @@ func (c *UninstallCommand) Run(args []string) int {
 			exit = 1
 			continue
 		}
+		fmt.Printf("%s uninstalled\n", ht)
 
-		legacyFile := hookFile + ".legacy"
 		if _, err := os.Stat(legacyFile); err == nil {
-			if err := os.Rename(legacyFile, hookFile); err == nil {
-				output.Info("Restored previous hook to %s", hookFile)
+			if err := os.Rename(legacyFile, hookFile); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: failed to restore %s: %v\n", legacyFile, err)
+				exit = 1
+				continue
 			}
+			fmt.Printf("Restored previous hooks to %s\n", hookFile)
 		}
-
-		fmt.Printf("pre-commit uninstalled from %s\n", hookFile)
 	}
 	return exit
 }
@@ -347,11 +318,42 @@ func installAllHookEnvironments(cfgPath string) error {
 	return hook.InstallEnvironments(context.Background(), hooks, s.ExclusiveLock)
 }
 
-func resolveHooksDir(hookDir string) (string, error) {
-	if hookDir != "" {
-		return hookDir, nil
+// installHookTypes is upstream's _hook_types: the -t types given, else the
+// config's default_install_hook_types, else pre-commit when the config does
+// not load.
+func installHookTypes(configFile string, given []string) []string {
+	if len(given) > 0 {
+		return given
 	}
-	return git.GetHooksDir()
+	cfg, err := config.LoadConfig(configFile)
+	if err != nil || len(cfg.DefaultInstallHookTypes) == 0 {
+		return []string{"pre-commit"}
+	}
+	types := make([]string, 0, len(cfg.DefaultInstallHookTypes))
+	for _, ht := range cfg.DefaultInstallHookTypes {
+		types = append(types, string(ht))
+	}
+	return types
+}
+
+// hookPaths is upstream's _hook_paths: the hook and its .legacy under the
+// common git dir, as `git rev-parse --git-common-dir` names it from the
+// repository root. That is ".git" in a plain checkout, so the paths install
+// prints are root-relative there, and absolute in a linked worktree.
+func hookPaths(hookType string) (hookFile, legacyFile string, err error) {
+	commonDir, err := git.GetGitCommonDir(".")
+	if err != nil {
+		return "", "", err
+	}
+	hookFile = filepath.Join(commonDir, "hooks", hookType)
+	return hookFile, hookFile + ".legacy", nil
+}
+
+// isOurScript is upstream's is_our_script: the file exists and pre-commit
+// wrote it.
+func isOurScript(path string) bool {
+	content, err := os.ReadFile(path)
+	return err == nil && isPreCommitHook(string(content))
 }
 
 func isPreCommitHook(content string) bool {
@@ -368,19 +370,6 @@ func sortedHookTypes() []string {
 	}
 	sort.Strings(types)
 	return types
-}
-
-func warnIfCoreHooksPath() {
-	out, err := git.CmdOutput("config", "--get", "core.hooksPath")
-	if err == nil && strings.TrimSpace(out) != "" {
-		output.Warn(
-			"core.hooksPath is set to %q.\n"+
-				"pre-commit installs hooks to .git/hooks, but git is configured to use a "+
-				"different directory.\nConsider unsetting core.hooksPath or using "+
-				"--hook-dir to install to the configured path.",
-			strings.TrimSpace(out),
-		)
-	}
 }
 
 // validHookTypes reports whether every type is one pre-commit knows, naming
