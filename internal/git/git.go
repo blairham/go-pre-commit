@@ -242,9 +242,9 @@ func GetGitDir(root string) (string, error) {
 }
 
 // HeadRev returns the commit a remote's HEAD points at, as upstream's
-// git.head_rev does with `git ls-remote <remote> HEAD`.
+// git.head_rev does with `git ls-remote --exit-code <remote> HEAD`.
 func HeadRev(remote string) (string, error) {
-	out, err := CmdOutput("ls-remote", "--", remote, "HEAD")
+	out, err := OutputCaptured("", "ls-remote", "--exit-code", remote, "HEAD")
 	if err != nil {
 		return "", err
 	}
@@ -318,23 +318,6 @@ func GetDefaultBranch(remote string) (string, error) {
 	return strings.TrimPrefix(out, prefix), nil
 }
 
-// Clone clones a repository.
-func Clone(url, dest string, args ...string) error {
-	cmdArgs := []string{"clone"}
-	cmdArgs = append(cmdArgs, args...)
-	cmdArgs = append(cmdArgs, url, dest)
-	cmd := exec.Command("git", cmdArgs...)
-	// Scrub GIT_* env (esp. GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE that git exports
-	// when invoking a hook). Without this, `git clone` run from inside a
-	// commit-triggered hook "clones the wrong thing" — the checkout writes index
-	// entries referencing the cloned repo's objects into the HOST repo's index,
-	// corrupting it ("fatal: unable to read <object>"). See NoGitEnv() above.
-	cmd.Env = NoGitEnv()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 // NoFSMonitor is upstream's git.NO_FS_MONITOR: config that keeps git's
 // builtin fsmonitor daemon from being started for a throwaway repository.
 var NoFSMonitor = []string{"-c", "core.useBuiltinFSMonitor=false"}
@@ -378,27 +361,102 @@ func pyRepr(s string) string { return output.PyRepr(s) }
 // upstream's cmd_output_b does. A non-zero exit is a *CalledProcessError
 // holding what git printed; on success the output is discarded.
 func RunCaptured(dir string, args ...string) error {
+	_, err := runCaptured(dir, NoGitEnv(), args)
+	return err
+}
+
+// RunCapturedEnv is RunCaptured with env in place of NoGitEnv, for the
+// commands upstream runs with a GIT_INDEX_FILE of their own.
+func RunCapturedEnv(dir string, env []string, args ...string) error {
+	_, err := runCaptured(dir, env, args)
+	return err
+}
+
+// OutputCaptured is upstream's cmd_output: RunCaptured that returns git's
+// stdout, untrimmed, on success.
+func OutputCaptured(dir string, args ...string) (string, error) {
+	out, err := runCaptured(dir, NoGitEnv(), args)
+	return string(out), err
+}
+
+func runCaptured(dir string, env, args []string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = NoGitEnv()
+	cmd.Env = env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err == nil {
-		return nil
+		return stdout.Bytes(), nil
 	}
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
-		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	// Upstream reports the resolved executable, not the bare name.
-	return &CalledProcessError{
+	return nil, &CalledProcessError{
 		Cmd:        append([]string{cmd.Path}, args...),
 		ReturnCode: exitErr.ExitCode(),
 		Stdout:     stdout.Bytes(),
 		Stderr:     stderr.Bytes(),
 	}
+}
+
+// HasDiff is upstream's git.has_diff: whether `git diff --quiet` with args
+// reports a difference (exit 1) in repo. Any other failure is no difference.
+func HasDiff(repo string, args ...string) bool {
+	cmdArgs := append([]string{"diff", "--quiet", "--no-ext-diff"}, args...)
+	err := RunCaptured(repo, cmdArgs...)
+	var cpe *CalledProcessError
+	return errors.As(err, &cpe) && cpe.ReturnCode == 1
+}
+
+// Path is upstream's git.git_path: `git rev-parse --git-path name` in
+// repo, joined onto repo.
+func Path(repo, name string) (string, error) {
+	out, err := OutputCaptured(repo, "rev-parse", "--git-path", name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(repo, strings.TrimSpace(out)), nil
+}
+
+// StagedFilesIn is upstream's git.get_staged_files(cwd=dir): every staged
+// path except deletions.
+func StagedFilesIn(dir string) ([]string, error) {
+	out, err := OutputCaptured(dir, "diff", "--staged", "--name-only", "--no-ext-diff", "-z", "--diff-filter=ACMRTUXB")
+	if err != nil {
+		return nil, err
+	}
+	return splitNul(out), nil
+}
+
+// Commit is upstream's git.commit: a commit of the index in repo as
+// pre-commit's own identity, unsigned and without running hooks.
+func Commit(repo string) error {
+	const name, email = "pre-commit", "asottile+pre-commit@umich.edu"
+	env := append(NoGitEnv(),
+		"GIT_AUTHOR_NAME="+name, "GIT_COMMITTER_NAME="+name,
+		"GIT_AUTHOR_EMAIL="+email, "GIT_COMMITTER_EMAIL="+email,
+	)
+	return RunCapturedEnv(repo, env, "commit", "--no-edit", "--no-gpg-sign", "-n", "-minit")
+}
+
+// BestCandidateTag is upstream's git.get_best_candidate_tag: of the tags
+// pointing at rev, the first that looks like a version (has a '.'), else rev.
+func BestCandidateTag(rev, gitRepo string) (string, error) {
+	args := append(append([]string{}, NoFSMonitor...), "tag", "--points-at", rev)
+	out, err := OutputCaptured(gitRepo, args...)
+	if err != nil {
+		return "", err
+	}
+	for _, tag := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if strings.Contains(tag, ".") {
+			return tag, nil
+		}
+	}
+	return rev, nil
 }
 
 // InitRepo ports upstream's git.init_repo: an empty repository at path, with
@@ -596,19 +654,6 @@ func IsInMergeConflict() bool {
 func HasCoreHookPathsSet() bool {
 	out, err := CmdOutput("config", "--get", "core.hooksPath")
 	return err == nil && strings.TrimSpace(out) != ""
-}
-
-// GetBestCandidateTag returns the tag that best describes the current HEAD.
-func GetBestCandidateTag(dir string) (string, error) {
-	out, err := CmdOutputInDir(dir, "describe", "--tags", "--exact-match", "HEAD")
-	if err != nil {
-		// No exact tag, try closest.
-		out, err = CmdOutputInDir(dir, "describe", "--tags", "--abbrev=0", "HEAD")
-		if err != nil {
-			return "", err
-		}
-	}
-	return out, nil
 }
 
 // WriteTree writes the host index as a tree object.

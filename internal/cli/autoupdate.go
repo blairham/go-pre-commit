@@ -4,14 +4,19 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
 
 	flags "github.com/jessevdk/go-flags"
+	"gopkg.in/yaml.v3"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
@@ -53,13 +58,6 @@ func (c *AutoupdateCommand) Run(args []string) int {
 		return 1
 	}
 
-	// Read the raw config file for rewriting.
-	rawBytes, err := os.ReadFile(opts.Config)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to read config: %v\n", err)
-		return 1
-	}
-
 	// Upstream (4.6.1) refuses a --repo the config does not name before
 	// touching anything, so a typo is an error rather than a silent no-op.
 	if missing := missingRepos(cfg, opts.Repo); len(missing) > 0 {
@@ -67,93 +65,98 @@ func (c *AutoupdateCommand) Run(args []string) int {
 		return 1
 	}
 
-	raw := string(rawBytes)
-	changed := false
-
-	// Determine concurrency.
-	concurrency := opts.Jobs
-	if concurrency < 1 {
-		concurrency = 1
-	}
-
-	// Build list of update-able repos.
-	type updateTask struct {
-		repoCfg config.RepoConfig
-	}
-	var tasks []updateTask
-	for _, repoCfg := range cfg.Repos {
-		if repoCfg.IsLocal() || repoCfg.IsMeta() {
-			continue
+	// Upstream's config_repos: every repo autoupdate can move, in order;
+	// revInfos is indexed alongside it.
+	var configRepos []config.RepoConfig
+	for _, r := range cfg.Repos {
+		if !r.IsLocal() && !r.IsMeta() {
+			configRepos = append(configRepos, r)
 		}
-		if len(opts.Repo) > 0 {
-			found := false
-			for _, r := range opts.Repo {
-				if r == repoCfg.Repo {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
+	}
+	var todo []int
+	for i, r := range configRepos {
+		if len(opts.Repo) == 0 || slices.Contains(opts.Repo, r.Repo) {
+			todo = append(todo, i)
 		}
-		tasks = append(tasks, updateTask{repoCfg: repoCfg})
 	}
 
-	// Process updates (parallel if jobs > 1).
-	results := make([]updateResult, len(tasks))
+	// jobs: 0 is the number of cpus, at most one per repo, at least one.
+	jobs := opts.Jobs
+	if jobs == 0 {
+		jobs = runtime.NumCPU()
+	}
+	if n := len(opts.Repo); n > 0 {
+		jobs = min(jobs, n)
+	} else {
+		jobs = min(jobs, len(configRepos))
+	}
+	jobs = max(jobs, 1)
 
-	if concurrency > 1 && len(tasks) > 1 {
+	tagsOnly := !opts.BleedingEdge
+	results := make(chan updateResult)
+	go func() {
 		var wg sync.WaitGroup
-		sem := make(chan struct{}, concurrency)
-
-		for i, task := range tasks {
+		sem := make(chan struct{}, jobs)
+		for _, i := range todo {
 			wg.Add(1)
-			go func(idx int, t updateTask) {
+			sem <- struct{}{}
+			go func() {
 				defer wg.Done()
-				sem <- struct{}{}
 				defer func() { <-sem }()
-
-				res := processUpdate(t.repoCfg, opts.BleedingEdge, opts.Freeze)
-
-				results[idx] = res
-			}(i, task)
+				results <- updateOne(i, configRepos[i], tagsOnly, opts.Freeze)
+			}()
 		}
 		wg.Wait()
-	} else {
-		for i, task := range tasks {
-			results[i] = processUpdate(task.repoCfg, opts.BleedingEdge, opts.Freeze)
+		close(results)
+	}()
+
+	// As upstream's as_completed loop: each repo is reported as it finishes.
+	// An error other than "cannot be updated" ends the run unwritten, after
+	// the updates already started have finished.
+	revInfos := make([]*revInfo, len(configRepos))
+	changed := false
+	retv := 0
+	var unexpected error
+	for res := range results {
+		if unexpected != nil {
+			continue
 		}
+		var cannot cannotUpdateError
+		switch {
+		case errors.As(res.err, &cannot):
+			fmt.Println(cannot)
+			retv = 1
+			continue
+		case res.err != nil:
+			unexpected = res.err
+			continue
+		}
+		old, upd := configRepos[res.idx], res.info
+		var msg string
+		if upd.rev != old.Rev {
+			changed = true
+			newS := upd.rev
+			if upd.frozen != "" {
+				newS = upd.frozen + " (frozen)"
+			}
+			msg = fmt.Sprintf("updating %s -> %s", old.Rev, newS)
+			revInfos[res.idx] = &upd
+		} else {
+			msg = "already up to date!"
+		}
+		fmt.Printf("[%s] %s\n", old.Repo, msg)
 	}
-
-	// Apply results.
-	for _, res := range results {
-		if res.err != nil {
-			fmt.Printf("Updating %s ... failed\n", res.repo)
-			output.Warn("Failed to update %s: %v", res.repo, res.err)
-			continue
-		}
-
-		if res.newRev == res.oldRev {
-			fmt.Printf("Updating %s ... already up to date.\n", res.repo)
-			continue
-		}
-
-		fmt.Printf("Updating %s ... updating %s -> %s.\n", res.repo, res.oldRev, res.newRev)
-
-		// Use regex to replace rev, handling various quoting styles.
-		raw = replaceRev(raw, res.oldRev, res.newRev, res.commitHash, opts.Freeze)
-		changed = true
+	if unexpected != nil {
+		return unexpectedError(unexpected)
 	}
 
 	if changed && !opts.DryRun {
-		if err := os.WriteFile(opts.Config, []byte(raw), 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to write config: %v\n", err)
-			return 1
+		if err := writeNewConfig(opts.Config, revInfos); err != nil {
+			return unexpectedError(err)
 		}
 	}
 
-	return 0
+	return retv
 }
 
 func (c *AutoupdateCommand) Help() string {
@@ -199,107 +202,244 @@ func missingRepos(cfg *config.Config, requested []string) []string {
 	return slices.Compact(missing)
 }
 
+// revInfo is upstream's RevInfo after update: the rev to write, and the tag
+// it was frozen from when --freeze replaced it with a sha.
+type revInfo struct {
+	hookIDs map[string]bool
+	rev     string
+	frozen  string
+}
+
+// cannotUpdateError is upstream's RepositoryCannotBeUpdatedError: printed as
+// is, and the run carries on with exit status 1.
+type cannotUpdateError string
+
+func (e cannotUpdateError) Error() string { return string(e) }
+
 type updateResult struct {
-	repo       string
-	oldRev     string
-	newRev     string
-	commitHash string
-	err        error
+	idx  int
+	info revInfo
+	err  error
 }
 
-func processUpdate(repoCfg config.RepoConfig, bleeding, freeze bool) updateResult {
-	res := updateResult{
-		repo:   repoCfg.Repo,
-		oldRev: repoCfg.Rev,
-	}
-
-	tmpDir, err := os.MkdirTemp("", "pre-commit-autoupdate-*")
+// updateOne is upstream's _update_one: the new rev, refused if it drops any
+// hook the config uses.
+func updateOne(idx int, repoCfg config.RepoConfig, tagsOnly, freeze bool) updateResult {
+	info, err := updateRevInfo(repoCfg.Repo, tagsOnly, freeze)
 	if err != nil {
-		res.err = fmt.Errorf("failed to create temp dir: %w", err)
-		return res
+		return updateResult{idx: idx, err: err}
 	}
-	defer func() { _ = fsutil.RemoveAll(tmpDir) }()
+	var missing []string
+	for _, h := range repoCfg.Hooks {
+		if !info.hookIDs[h.ID] {
+			missing = append(missing, h.ID)
+		}
+	}
+	slices.Sort(missing)
+	missing = slices.Compact(missing)
+	if len(missing) > 0 {
+		return updateResult{idx: idx, err: cannotUpdateError(fmt.Sprintf(
+			"[%s] Cannot update because the update target is missing these hooks: %s",
+			repoCfg.Repo, strings.Join(missing, ", "),
+		))}
+	}
+	return updateResult{idx: idx, info: info}
+}
 
-	// Use blobless clone for faster autoupdate (we only need tags/refs, not file content).
-	if err := git.Clone(repoCfg.Repo, tmpDir, "--filter=blob:none"); err != nil {
-		// Fall back to regular clone if filter is not supported.
-		_ = fsutil.RemoveAll(tmpDir)
-		tmpDir2, _ := os.MkdirTemp("", "pre-commit-autoupdate-*")
-		tmpDir = tmpDir2
-		if err := git.Clone(repoCfg.Repo, tmpDir); err != nil {
-			res.err = fmt.Errorf("failed to clone: %w", err)
-			return res
+// updateRevInfo is upstream's RevInfo.update: a blobless fetch of the
+// remote's HEAD and tags into an empty repository, the newest tag reachable
+// from it (or, bleeding edge, a tag exactly on it), else its sha. git's output
+// is captured throughout, as upstream's cmd_output does.
+func updateRevInfo(repo string, tagsOnly, freeze bool) (info revInfo, err error) {
+	tmp, err := os.MkdirTemp("", "tmp")
+	if err != nil {
+		return revInfo{}, err
+	}
+	// Upstream's TemporaryDirectory: a cleanup that fails is an error too.
+	defer func() {
+		if rmErr := fsutil.RemoveAll(tmp); rmErr != nil && err == nil {
+			err = rmErr
+		}
+	}()
+	return fetchRevInfo(tmp, repo, tagsOnly, freeze)
+}
+
+func fetchRevInfo(tmp, repo string, tagsOnly, freeze bool) (revInfo, error) {
+	g := func(args ...string) []string {
+		return append(append(append([]string{}, git.NoFSMonitor...), "-C", tmp), args...)
+	}
+	tagOpt := "--exact"
+	if tagsOnly {
+		tagOpt = "--abbrev=0"
+	}
+
+	err := git.InitRepo(tmp, repo)
+	if err == nil {
+		err = git.RunCaptured("", g("config", "extensions.partialClone", "true")...)
+	}
+	if err == nil {
+		err = git.RunCaptured("", g("fetch", "origin", "HEAD", "--quiet", "--filter=blob:none", "--tags")...)
+	}
+	if err != nil {
+		return revInfo{}, err
+	}
+
+	var rev string
+	out, err := git.OutputCaptured("", g("describe", "FETCH_HEAD", "--tags", tagOpt)...)
+	var cpe *git.CalledProcessError
+	switch {
+	case errors.As(err, &cpe):
+		if out, err = git.OutputCaptured("", g("rev-parse", "FETCH_HEAD")...); err != nil {
+			return revInfo{}, err
+		}
+		rev = strings.TrimSpace(out)
+	case err != nil:
+		return revInfo{}, err
+	default:
+		rev = strings.TrimSpace(out)
+		if tagsOnly {
+			if rev, err = git.BestCandidateTag(rev, tmp); err != nil {
+				return revInfo{}, err
+			}
 		}
 	}
 
-	if bleeding {
-		res.newRev, err = getHEAD(tmpDir)
-	} else {
-		res.newRev, err = getLatestTag(tmpDir)
-	}
-	if err != nil {
-		res.err = fmt.Errorf("failed to get latest version: %w", err)
-		return res
-	}
-
-	// For freeze mode, also resolve the commit hash.
-	if freeze && res.newRev != "" {
-		commitHash, err := resolveToCommit(tmpDir, res.newRev)
-		if err == nil && commitHash != res.newRev {
-			res.commitHash = commitHash
+	info := revInfo{rev: rev}
+	if freeze {
+		if out, err = git.OutputCaptured("", g("rev-parse", rev)...); err != nil {
+			return revInfo{}, err
+		}
+		if exact := strings.TrimSpace(out); exact != rev {
+			info.rev, info.frozen = exact, rev
 		}
 	}
 
-	return res
-}
-
-// replaceRev replaces the rev value in the raw YAML, handling quoting.
-// For freeze mode: uses the commit SHA as rev and adds the tag as a "# frozen: TAG" comment.
-// When not in freeze mode, strips any existing "# frozen:" comments.
-func replaceRev(raw, oldRev, newRev, commitHash string, freeze bool) string {
-	// Match rev: with optional quoting of the value.
-	// Handles: rev: v1.0, rev: 'v1.0', rev: "v1.0"
-	// Also matches optional trailing comments (including # frozen: ... comments).
-	pattern := fmt.Sprintf(
-		`(rev:\s*['"]?)%s(['"]?)(\s*(?:#.*)?)$`,
-		regexp.QuoteMeta(oldRev),
-	)
-	re := regexp.MustCompile("(?m)" + pattern)
-
-	if freeze && commitHash != "" {
-		// Python behavior: rev becomes the commit SHA, tag goes in "# frozen: TAG" comment.
-		return re.ReplaceAllString(raw,
-			fmt.Sprintf("${1}%s${2}  # frozen: %s", commitHash, newRev),
-		)
+	// Upstream checks the manifest out only if it exists at the rev (its
+	// windows workaround), swallowing a failed git command; a missing
+	// manifest is then reported by the load below.
+	err = git.RunCaptured("", g("show", info.rev+":"+config.ManifestFile)...)
+	if err == nil {
+		err = git.RunCaptured("", g("checkout", info.rev, "--", config.ManifestFile)...)
 	}
-
-	// When not freezing, strip any existing "# frozen:" comments.
-	return re.ReplaceAllString(raw,
-		fmt.Sprintf("${1}%s${2}", newRev),
-	)
-}
-
-func getLatestTag(repoDir string) (string, error) {
-	// First try git describe, which finds the most recent tag reachable from HEAD.
-	tag, err := git.GetLatestTag(repoDir)
-	if err == nil && tag != "" {
-		return tag, nil
+	if err != nil && !errors.As(err, &cpe) {
+		return revInfo{}, err
 	}
-	// Fall back to listing all tags sorted by version and picking the last.
-	tags, err := git.ListTags(repoDir)
+	manifest, err := config.LoadManifest(filepath.Join(tmp, config.ManifestFile))
 	if err != nil {
-		return "", err
+		return revInfo{}, cannotUpdateError(fmt.Sprintf("[%s] %v", repo, err))
 	}
-	if len(tags) == 0 {
-		return "", fmt.Errorf("no tags found")
+	info.hookIDs = make(map[string]bool, len(manifest))
+	for _, h := range manifest {
+		info.hookIDs[h.ID] = true
 	}
-	return tags[len(tags)-1], nil
+	return info, nil
 }
 
-func getHEAD(repoDir string) (string, error) {
-	return git.GetHeadSHA(repoDir)
+// revLineRe is upstream's REV_LINE_RE.
+var revLineRe = regexp.MustCompile(`^(\s+)rev:(\s*)(['"]?)([^\s#]+)(.*)(\r?\n)$`)
+
+// writeNewConfig is upstream's _write_new_config: each rev line, matched to
+// its repo by position, rewritten in its own quoting style. A "# frozen:"
+// comment is replaced or dropped; any other comment is kept.
+func writeNewConfig(path string, infos []*revInfo) error {
+	original, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	updated, ok := rewriteRevLines(string(original), infos)
+	if !ok {
+		// Upstream reformats a config whose rev lines it cannot find (flow
+		// style, say) and tries once more.
+		reformatted, err := reformatYAML(original)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, reformatted, 0o644); err != nil {
+			return err
+		}
+		if updated, ok = rewriteRevLines(string(reformatted), infos); !ok {
+			return errors.New("could not find rev lines")
+		}
+	}
+	return os.WriteFile(path, []byte(updated), 0o644)
 }
 
-func resolveToCommit(repoDir, ref string) (string, error) {
-	return git.CmdOutputInDir(repoDir, "rev-parse", ref+"^{}")
+// rewriteRevLines applies infos to the rev lines of original, or reports
+// false when the number of rev lines is not the number of repos.
+func rewriteRevLines(original string, infos []*revInfo) (string, bool) {
+	lines := strings.SplitAfter(original, "\n")
+	var idxs []int
+	for i, line := range lines {
+		if revLineRe.MatchString(line) {
+			idxs = append(idxs, i)
+		}
+	}
+	if len(idxs) != len(infos) {
+		return "", false
+	}
+	for n, idx := range idxs {
+		info := infos[n]
+		if info == nil {
+			continue
+		}
+		m := revLineRe.FindStringSubmatch(lines[idx])
+		var comment string
+		switch {
+		case info.frozen != "":
+			comment = "  # frozen: " + info.frozen
+		case strings.HasPrefix(strings.TrimSpace(m[5]), "# frozen:"):
+			comment = ""
+		default:
+			comment = m[5]
+		}
+		lines[idx] = m[1] + "rev:" + m[2] + yamlScalar(info.rev, m[3]) + comment + m[6]
+	}
+	return strings.Join(lines, ""), true
+}
+
+// yamlScalar renders s as upstream's yaml_dump with default_style does: in
+// the quote style the old rev used, and plain only where plain would still
+// read back as the same string (PyYAML single-quotes it otherwise).
+func yamlScalar(s, style string) string {
+	switch style {
+	case "'":
+		return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+	case `"`:
+		return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+	}
+	out, err := yaml.Marshal(s)
+	if err != nil {
+		return s
+	}
+	if plain := strings.TrimSuffix(string(out), "\n"); plain == s {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// reformatYAML re-dumps a config in block style with four-space indent, the
+// shape upstream's yaml_dump gives it.
+func reformatYAML(original []byte) ([]byte, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(original, &doc); err != nil {
+		return nil, err
+	}
+	clearStyle(&doc)
+	var b bytes.Buffer
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(4)
+	if err := enc.Encode(&doc); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+func clearStyle(n *yaml.Node) {
+	n.Style &^= yaml.FlowStyle
+	for _, c := range n.Content {
+		clearStyle(c)
+	}
 }
