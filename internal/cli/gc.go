@@ -20,43 +20,34 @@ type GCCommand struct {
 	Meta *Meta
 }
 
+// gcFlags is upstream's gc parser: _add_cmd adds only --color, so gc has no
+// -c/--config and takes no positional arguments.
+type gcFlags struct {
+	Color string `long:"color" default:"auto" description:"Whether to use color in output. Options: auto, always, never."`
+}
+
 func (c *GCCommand) Run(args []string) int {
-	var opts GlobalFlags
-	_, err := flags.ParseArgs(&opts, args)
+	var opts gcFlags
+	remaining, err := flags.ParseArgs(&opts, args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	if len(remaining) > 0 {
+		fmt.Fprintf(os.Stderr, "Error: unrecognized arguments: %s\n", strings.Join(remaining, " "))
 		return 1
 	}
 
 	s := store.New("")
 
-	// Gather used repos from all known config files.
+	// Upstream's _gc reads only the configs recorded in the store: a repo
+	// counts as used because a config that ran it is still on that list, not
+	// because of whichever config sits in the current directory.
 	usedRepos := make(map[string]bool)
-
-	// Always check the current config.
-	configPaths := []string{opts.Config}
-
-	// Also check any configs tracked by MarkConfigUsed.
-	trackedConfigs, err := s.GetTrackedConfigs()
-	if err == nil {
-		for _, c := range trackedConfigs {
-			// Deduplicate.
-			found := false
-			for _, existing := range configPaths {
-				if existing == c {
-					found = true
-					break
-				}
-			}
-			if !found {
-				configPaths = append(configPaths, c)
-			}
-		}
-	}
-
-	tracked := make(map[string]bool, len(trackedConfigs))
-	for _, c := range trackedConfigs {
-		tracked[c] = true
+	configPaths, err := s.GetTrackedConfigs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to run GC: %v\n", err)
+		return 1
 	}
 
 	// A tracked config that no longer loads is dropped from the list, as
@@ -65,9 +56,7 @@ func (c *GCCommand) Run(args []string) int {
 	for _, cfgPath := range configPaths {
 		cfg, err := config.LoadConfig(cfgPath)
 		if err != nil {
-			if tracked[cfgPath] {
-				dead = append(dead, cfgPath)
-			}
+			dead = append(dead, cfgPath)
 			continue
 		}
 		for _, repo := range cfg.Repos {
@@ -105,11 +94,10 @@ func (c *GCCommand) Help() string {
 Usage: pre-commit gc [options]
 
   Clean unused cached repos. Repos that are no longer referenced by any
-  config file will be removed from the cache.
+  config file that has used this cache will be removed from it.
 
 Options:
 
-  -c, --config=FILE   Path to alternate config file.
       --color=MODE    Whether to use color (auto, always, never).
 `)
 }

@@ -1013,6 +1013,47 @@ func TestGCOutput(t *testing.T) {
 	}
 }
 
+// TestGCOnlyTrackedConfigs: upstream's gc reads only the configs recorded in
+// the store, never the current directory's, and its parser has no -c (#174).
+func TestGCOnlyTrackedConfigs(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+	cfg := "repos:\n- repo: local\n  hooks:\n  - id: py\n    name: py\n" +
+		"    entry: python -c \"import sys\"\n    language: python\n"
+
+	gcFromUntracked := func(bin string) string {
+		t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+		tracked := initTestRepo(t, cfg, "test\n")
+		if out, code := runCmd(t, tracked, bin, "run", "--all-files"); code != 0 {
+			t.Fatalf("%s run --all-files exited %d:\n%s", bin, code, out)
+		}
+		if err := os.WriteFile(filepath.Join(tracked, ".pre-commit-config.yaml"), []byte("repos: []\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// The current directory's config uses the same environment but was
+		// never run, so it is not tracked and keeps nothing.
+		untracked := initTestRepo(t, cfg, "test\n")
+		out, errOut, code := runSplit(t, untracked, bin, "gc")
+		if code != 0 {
+			t.Fatalf("%s gc exited %d: %s", bin, code, errOut)
+		}
+		return out
+	}
+	py, goOut := gcFromUntracked(pyBin), gcFromUntracked(goBinary)
+	match := py == goOut && py == "1 repo(s) removed.\n"
+	detail := ""
+	if !match {
+		detail = fmt.Sprintf("py=%q go=%q", py, goOut)
+		t.Errorf("gc from an untracked config differs: %s", detail)
+	}
+	addOutputResult("gc", "untracked current config keeps nothing", match, detail)
+
+	// The usage error's wording and exit status are #175's; here both must refuse.
+	dir := t.TempDir()
+	_, pyExit := runCmd(t, dir, pyBin, "gc", "-c", "x.yaml")
+	_, goExit := runCmd(t, dir, goBinary, "gc", "-c", "x.yaml")
+	addExitResult("gc", "-c is not an option", pyExit, goExit, pyExit != 0 && goExit != 0, "")
+}
+
 // ---------------------------------------------------------------------------
 // Tests: install (exit codes + filesystem)
 // ---------------------------------------------------------------------------

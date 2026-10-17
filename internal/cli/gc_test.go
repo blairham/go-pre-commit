@@ -16,8 +16,9 @@ import (
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
-// gc keeps every repo a tracked config still uses, not only the current
-// config's, and forgets the tracked configs that are gone -- upstream's _gc.
+// gc keeps every repo a tracked config still uses and forgets the tracked
+// configs that are gone -- upstream's _gc. A config that was never tracked
+// keeps nothing, even from the current directory (#174).
 func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("PRE_COMMIT_HOME", home)
@@ -66,17 +67,18 @@ func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run from b, whose config gc reads as the current one.
+	// Run from b, which is not tracked: upstream's gc never reads it.
 	t.Chdir(filepath.Dir(cfgB))
 	var code int
 	stdout, _ := captureOutput(t, func() { code = (&GCCommand{Meta: &Meta{}}).Run(nil) })
 	if code != 0 {
 		t.Fatalf("gc exited %d", code)
 	}
-	// Upstream's gc reports the count it removed: used-by-gone and unused.
+	// Upstream's gc reports the count it removed: used-by-b, used-by-gone
+	// and unused.
 	// (Config warnings for the dotless revs come first.)
 	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
-	if got, want := lines[len(lines)-1], "2 repo(s) removed."; got != want || !strings.HasSuffix(stdout, "\n") {
+	if got, want := lines[len(lines)-1], "3 repo(s) removed."; got != want || !strings.HasSuffix(stdout, "\n") {
 		t.Errorf("gc stdout = %q, want it to end with the line %q", stdout, want)
 	}
 
@@ -88,7 +90,7 @@ func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 	for _, r := range left {
 		names = append(names, r.Repo)
 	}
-	want := []string{"https://example.com/used-by-a", "https://example.com/used-by-b"}
+	want := []string{"https://example.com/used-by-a"}
 	if !slices.Equal(names, want) {
 		t.Errorf("repos kept = %q, want %q", names, want)
 	}
@@ -155,5 +157,23 @@ func TestMarkDepsClonesUsed(t *testing.T) {
 	}
 	if used[origin+":z@"+sha] {
 		t.Error("a hook missing from the manifest marks nothing, as upstream")
+	}
+}
+
+// Upstream's gc parser has only --color: no -c/--config, no positionals.
+func TestGCRejectsConfigFlag(t *testing.T) {
+	t.Setenv("PRE_COMMIT_HOME", t.TempDir())
+	for _, args := range [][]string{{"-c", "x.yaml"}, {"--config=x.yaml"}, {"extra"}} {
+		var code int
+		_, stderr := captureOutput(t, func() { code = (&GCCommand{Meta: &Meta{}}).Run(args) })
+		if code == 0 {
+			t.Errorf("gc %q exited 0, want a usage error", args)
+		}
+		if stderr == "" {
+			t.Errorf("gc %q printed no error", args)
+		}
+	}
+	if code := (&GCCommand{Meta: &Meta{}}).Run([]string{"--color=never"}); code != 0 {
+		t.Errorf("gc --color=never exited %d", code)
 	}
 }
