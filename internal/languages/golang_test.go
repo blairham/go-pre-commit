@@ -4,7 +4,13 @@
 package languages
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,7 +44,7 @@ func TestGoInstallEnvMatchesUpstream(t *testing.T) {
 	t.Setenv("GOMODCACHE", "/home/modcache")
 	t.Setenv("GOTOOLCHAIN", "go1.26.4")
 
-	env := goInstallEnv("/prefix/go_env-default")
+	env := goInstallEnv("/prefix/go_env-default", "system")
 
 	if v, _ := envValue(env, "GOPATH"); v != "/prefix/go_env-default" {
 		t.Errorf("GOPATH = %q, want the env dir", v)
@@ -77,7 +83,7 @@ func TestGoInstallEnvLeavesUnsetToolchainUnset(t *testing.T) {
 	t.Setenv("GOTOOLCHAIN", "")
 	os.Unsetenv("GOTOOLCHAIN")
 
-	if v, ok := envValue(goInstallEnv("/prefix/go_env-default"), "GOTOOLCHAIN"); ok {
+	if v, ok := envValue(goInstallEnv("/prefix/go_env-default", "system"), "GOTOOLCHAIN"); ok {
 		t.Errorf("GOTOOLCHAIN = %q, want it left unset", v)
 	}
 }
@@ -95,7 +101,7 @@ func TestGolangRunLeavesGOPATHAlone(t *testing.T) {
 	prefix := t.TempDir()
 
 	code, out, err := (&Golang{}).Run(context.Background(), prefix, prefix,
-		`sh -c 'echo "$GOPATH|$PATH"'`, nil, nil, "default")
+		`sh -c 'echo "$GOPATH|$PATH"'`, nil, nil, "system")
 	if err != nil || code != 0 {
 		t.Fatalf("Run: code %d, err %v, out %s", code, err, out)
 	}
@@ -103,7 +109,7 @@ func TestGolangRunLeavesGOPATHAlone(t *testing.T) {
 	if gopath != "/caller/gopath" {
 		t.Errorf("hook saw GOPATH=%q, want the caller's", gopath)
 	}
-	bin := filepath.Join(prefix, "go_env-default", "bin")
+	bin := filepath.Join(prefix, "go_env-system", "bin")
 	if !strings.HasPrefix(path, bin+string(os.PathListSeparator)) {
 		t.Errorf("hook PATH %q should start with %s", path, bin)
 	}
@@ -126,11 +132,11 @@ func TestGolangInstallRemovesModuleCache(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	envDir := filepath.Join(prefix, "go_env-default")
+	envDir := filepath.Join(prefix, "go_env-system")
 	if err := os.MkdirAll(filepath.Join(envDir, "pkg", "mod"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := (&Golang{}).InstallEnvironment(prefix, "default", nil); err != nil {
+	if err := (&Golang{}).InstallEnvironment(prefix, "system", nil); err != nil {
 		t.Fatalf("InstallEnvironment: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(envDir, "pkg")); !os.IsNotExist(err) {
@@ -143,4 +149,153 @@ func TestGolangInstallRemovesModuleCache(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(envDir, "bin", bin)); err != nil {
 		t.Errorf("hook binary not installed into GOPATH/bin: %v", err)
 	}
+}
+
+// goDistServer serves a go.dev release list naming version and a Go
+// distribution whose go/bin/go is a script that records its environment and
+// "installs" by writing $GOBIN/hook.
+func goDistServer(t *testing.T, version string) (record string) {
+	t.Helper()
+	record = filepath.Join(t.TempDir(), "go.env")
+	goScript := "#!/bin/sh\n" +
+		"echo \"$0|$GOROOT|$GOTOOLCHAIN|$GOPATH|$*\" >> " + record + "\n" +
+		"mkdir -p \"$GOBIN\" && : > \"$GOBIN/hook\" && chmod +x \"$GOBIN/hook\"\n"
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, d := range []string{"go/", "go/bin/"} {
+		if err := tw.WriteHeader(&tar.Header{Name: d, Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "go/bin/go", Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(goScript)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(goScript)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	archive := fmt.Sprintf("/go%s.%s-%s.tar.gz", version, runtime.GOOS, goArch(runtime.GOARCH))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dl/":
+			fmt.Fprintf(w, `[{"version": "go%s"}, {"version": "go1.0.0"}]`, version)
+		case archive:
+			_, _ = w.Write(buf.Bytes())
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	oldList, oldDL := goVersionsURL, goDownloadURL
+	goVersionsURL, goDownloadURL = srv.URL+"/dl/?mode=json", srv.URL+"/"
+	t.Cleanup(func() { goVersionsURL, goDownloadURL = oldList, oldDL })
+	return record
+}
+
+// Without a system Go, `default` downloads the newest Go into <env>/.go and
+// installs with it, under GOTOOLCHAIN=local and GOROOT set, as upstream's
+// install_environment does; an explicit version downloads that version.
+func TestGolangInstallDownloadsGo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake go is a sh script")
+	}
+	for _, c := range []struct{ version, serve string }{
+		{"default", "1.99.1"},
+		{"1.98.0", "1.98.0"},
+	} {
+		t.Run(c.version, func(t *testing.T) {
+			withDefaultVersion(t, &golangDefaultVersionOnce, "default")
+			record := goDistServer(t, c.serve)
+			prefix := t.TempDir()
+			if err := (&Golang{}).InstallEnvironment(prefix, c.version, []string{"example.com/dep@v1"}); err != nil {
+				t.Fatalf("InstallEnvironment: %v", err)
+			}
+			envDir := filepath.Join(prefix, "go_env-"+c.version)
+			goroot := filepath.Join(envDir, ".go")
+			raw, err := os.ReadFile(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+			want := []string{
+				filepath.Join(goroot, "bin", "go") + "|" + goroot + "|local|" + envDir + "|install ./...",
+				filepath.Join(goroot, "bin", "go") + "|" + goroot + "|local|" + envDir + "|install example.com/dep@v1",
+			}
+			assertSliceEqual(t, lines, want)
+			if _, err := os.Stat(filepath.Join(envDir, "go")); !os.IsNotExist(err) {
+				t.Errorf("the download should be moved to .go, not left at go (%v)", err)
+			}
+		})
+	}
+}
+
+func TestGolangInstallUnknownPlatform(t *testing.T) {
+	goDistServer(t, "1.99.1")
+	err := (&Golang{}).InstallEnvironment(t.TempDir(), "1.2.3", nil)
+	want := fmt.Sprintf(
+		"Could not find a version matching your system requirements (os=%s; arch=%s)",
+		runtime.GOOS, goArch(runtime.GOARCH),
+	)
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// upstream's get_env_patch: a system Go changes only PATH; any other puts
+// the env's bin and then the downloaded Go's on PATH, with GOROOT and
+// GOTOOLCHAIN=local.
+func TestGoEnvPatch(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin")
+	sep := string(os.PathListSeparator)
+	env := "/p/go_env-x"
+	assertSliceEqual(t, goEnvPatch(env, "system"), []string{
+		"PATH=" + filepath.Join(env, "bin") + sep + "/usr/bin",
+	})
+	for _, v := range []string{"default", "1.22.0"} {
+		assertSliceEqual(t, goEnvPatch(env, v), []string{
+			"GOROOT=" + filepath.Join(env, ".go"),
+			"GOTOOLCHAIN=local",
+			"PATH=" + filepath.Join(env, "bin") + sep + filepath.Join(env, ".go", "bin") + sep + "/usr/bin",
+		})
+	}
+}
+
+func TestGoInstallEnvDownloadedGo(t *testing.T) {
+	t.Setenv("GOTOOLCHAIN", "auto")
+	env := goInstallEnv("/p/go_env-default", "default")
+	if v, _ := envValue(env, "GOTOOLCHAIN"); v != "local" {
+		t.Errorf("GOTOOLCHAIN = %q, want local for a downloaded Go", v)
+	}
+	if v, _ := envValue(env, "GOROOT"); v != filepath.Join("/p/go_env-default", ".go") {
+		t.Errorf("GOROOT = %q, want the download", v)
+	}
+	if v, _ := envValue(env, "PATH"); !strings.HasPrefix(v, filepath.Join("/p/go_env-default", ".go", "bin")) {
+		t.Errorf("PATH = %q, want the download's bin first", v)
+	}
+}
+
+func TestGoArch(t *testing.T) {
+	for in, want := range map[string]string{"amd64": "amd64", "arm64": "arm64", "386": "386", "arm": "armv6l"} {
+		if got := goArch(in); got != want {
+			t.Errorf("goArch(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// withDefaultVersion pins a backend's cached default version for one test,
+// so the layout of the machine running it does not decide the branch taken.
+func withDefaultVersion(t *testing.T, fn *func() string, v string) {
+	t.Helper()
+	old := *fn
+	*fn = func() string { return v }
+	t.Cleanup(func() { *fn = old })
 }

@@ -27,10 +27,17 @@ func exeExists(exe string) bool {
 	if !ok {
 		return false
 	}
-	home := pyHomeDir()
-	common, ok := pyCommonPath(found, home)
+	return exeIsSystem(runtime.GOOS, found, pyHomeDir())
+}
+
+// exeIsSystem is the decision half of exe_exists, for an executable found at
+// found and a home directory home, with goos's path rules: not under a shims
+// directory, and either home is the filesystem root or found is not inside
+// it (which includes commonpath raising, as it does across Windows drives).
+func exeIsSystem(goos, found, home string) bool {
+	common, ok := pyCommonPathFor(goos, found, home)
 	return !shimsRE.MatchString(found) &&
-		(pyDirname(home) == home || !ok || common != home)
+		(pyDirnameFor(goos, home) == home || !ok || common != home)
 }
 
 // pathextSet reports whether PATHEXT is set at all, which is what upstream's
@@ -102,37 +109,76 @@ func pyHomeDir() string {
 	return h
 }
 
-// pyDirname is os.path.dirname: everything before the last separator, with
-// trailing separators removed unless that leaves nothing but the root.
-func pyDirname(p string) string {
-	i := strings.LastIndexAny(p, pathSeps())
+// pyDirname is os.path.dirname for this platform.
+func pyDirname(p string) string { return pyDirnameFor(runtime.GOOS, p) }
+
+// pyDirnameFor is posixpath.dirname, or ntpath.dirname when goos is windows:
+// everything before the last separator, with trailing separators removed
+// unless that leaves nothing but the root. A Windows drive (C: or a UNC
+// \\server\share) and its root are kept whole, so dirname(`C:\`) is `C:\`.
+func pyDirnameFor(goos, p string) string {
+	drive, rest := splitDriveFor(goos, p)
+	seps := pathSepsFor(goos)
+	i := strings.LastIndexAny(rest, seps)
 	if i < 0 {
-		return ""
+		return drive
 	}
-	head := p[:i+1]
-	if trimmed := strings.TrimRight(head, pathSeps()); trimmed != "" {
-		return trimmed
+	head := rest[:i+1]
+	if trimmed := strings.TrimRight(head, seps); trimmed != "" {
+		return drive + trimmed
 	}
-	return head
+	return drive + head
 }
 
-func pathSeps() string {
-	if runtime.GOOS == "windows" {
+func pathSepsFor(goos string) string {
+	if goos == "windows" {
 		return `\/`
 	}
 	return "/"
 }
 
-// pyCommonPath is os.path.commonpath of two paths; ok is false where Python
-// raises ValueError (one path absolute and the other relative, or, on
-// Windows, different drives).
-func pyCommonPath(a, b string) (string, bool) {
-	volA, volB := filepath.VolumeName(a), filepath.VolumeName(b)
+// splitDriveFor is ntpath.splitdrive on windows (a drive letter and colon,
+// or the \\server\share of a UNC path) and posixpath's, which has no drive.
+func splitDriveFor(goos, p string) (drive, rest string) {
+	if goos != "windows" {
+		return "", p
+	}
+	isSep := func(c byte) bool { return c == '\\' || c == '/' }
+	if len(p) >= 2 && p[1] == ':' {
+		return p[:2], p[2:]
+	}
+	if len(p) >= 2 && isSep(p[0]) && isSep(p[1]) && (len(p) == 2 || !isSep(p[2])) {
+		// \\server\share: the drive runs to the separator after share.
+		i := strings.IndexAny(p[2:], `\/`)
+		if i < 0 {
+			return p, ""
+		}
+		i += 2
+		j := strings.IndexAny(p[i+1:], `\/`)
+		if j < 0 {
+			return p, ""
+		}
+		return p[:i+1+j], p[i+1+j:]
+	}
+	return "", p
+}
+
+// pyCommonPath is os.path.commonpath of two paths for this platform.
+func pyCommonPath(a, b string) (string, bool) { return pyCommonPathFor(runtime.GOOS, a, b) }
+
+// pyCommonPathFor is posixpath.commonpath, or ntpath.commonpath when goos is
+// windows, of two paths; ok is false where Python raises ValueError (one path
+// absolute and the other relative, or, on Windows, different drives). On
+// Windows the comparison ignores case but the result is spelled as in a, as
+// ntpath's is.
+func pyCommonPathFor(goos, a, b string) (string, bool) {
+	volA, a := splitDriveFor(goos, a)
+	volB, b := splitDriveFor(goos, b)
 	if !strings.EqualFold(volA, volB) {
 		return "", false
 	}
-	a, b = a[len(volA):], b[len(volB):]
-	isSep := func(r rune) bool { return strings.ContainsRune(pathSeps(), r) }
+	seps := pathSepsFor(goos)
+	isSep := func(r rune) bool { return strings.ContainsRune(seps, r) }
 	absA := a != "" && isSep(rune(a[0]))
 	absB := b != "" && isSep(rune(b[0]))
 	if absA != absB {
@@ -150,7 +196,7 @@ func pyCommonPath(a, b string) (string, bool) {
 	pa, pb := parts(a), parts(b)
 	n := 0
 	for n < len(pa) && n < len(pb) {
-		if runtime.GOOS == "windows" {
+		if goos == "windows" {
 			if !strings.EqualFold(pa[n], pb[n]) {
 				break
 			}
@@ -159,7 +205,10 @@ func pyCommonPath(a, b string) (string, bool) {
 		}
 		n++
 	}
-	sep := string(filepath.Separator)
+	sep := "/"
+	if goos == "windows" {
+		sep = `\`
+	}
 	prefix := volA
 	if absA {
 		prefix += sep
