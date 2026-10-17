@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	flags "github.com/jessevdk/go-flags"
-
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
@@ -28,14 +26,8 @@ type gcFlags struct {
 
 func (c *GCCommand) Run(args []string) int {
 	var opts gcFlags
-	remaining, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
-	}
-	if len(remaining) > 0 {
-		fmt.Fprintf(os.Stderr, "Error: unrecognized arguments: %s\n", strings.Join(remaining, " "))
-		return 1
+	if _, code, ok := parseArgs("gc", &opts, args, args); !ok {
+		return code
 	}
 
 	s := store.New("")

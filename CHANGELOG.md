@@ -23,6 +23,16 @@ file was introduced; the full notes are on the
   longer matches `x٣` while `^x..$` does; `\xHH` and octal escapes name
   bytes (`[\x80-\xff]` finds non-ASCII text); and `--ignore-case` folds only
   ASCII. This holds in `--multiline` mode too. (#179)
+- Argument errors are reported as upstream's argparse reports them: the
+  parser's usage block (wrapped to the terminal, or `COLUMNS`, as argparse
+  wraps it) and `pre-commit <cmd>: error: <message>` on stderr, and exit 2,
+  instead of `Error: ...` and exit 1. That covers an invalid choice (`-t`,
+  `--hook-stage`, `--color`), a missing value, a non-integer `--jobs`, a
+  missing positional or required option, `--all-files` with `--files`, an
+  unknown command, and arguments nothing consumed, which the top-level parser
+  reports as `unrecognized arguments`. Commands that take no `-c` (`clean`,
+  `gc`, `sample-config`, `validate-config`, `validate-manifest`) now reject
+  it, and `-V` prints the version. (#175)
 - `gc` decides what is in use from the configs recorded in the store only,
   as upstream's `_gc` does, instead of also reading the current directory's
   config, so a repo only an untracked config refers to is now removed. Like

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 
-	flags "github.com/jessevdk/go-flags"
 	"gopkg.in/yaml.v3"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
@@ -40,11 +39,10 @@ type autoupdateFlags struct {
 
 func (c *AutoupdateCommand) Run(args []string) int {
 	var opts autoupdateFlags
-	_, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	if _, code, ok := parseArgs("autoupdate", &opts, args, args); !ok {
+		return code
 	}
+	var err error
 
 	output.SetColorModeFromString(opts.Color)
 

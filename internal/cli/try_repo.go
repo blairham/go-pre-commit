@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 
-	flags "github.com/jessevdk/go-flags"
-
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
@@ -60,16 +58,11 @@ type tryRepoFlags struct {
 // config it generated, and runs that config's hooks.
 func (c *TryRepoCommand) Run(args []string) (code int) {
 	var opts tryRepoFlags
-	remaining, err := flags.ParseArgs(&opts, expandFilesFlag(args))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	remaining, code, ok := parseArgs("try-repo", &opts, args, expandFilesFlag(args))
+	if !ok {
+		return code
 	}
-
-	if len(remaining) < 1 || len(remaining) > 2 {
-		fmt.Fprintf(os.Stderr, "Error: expected 1 or 2 arguments (REPO [hook-id]), got %d\n", len(remaining))
-		return 1
-	}
+	var err error
 
 	// Handle deprecated flags.
 	if opts.Rev != "" && opts.Ref == "" {

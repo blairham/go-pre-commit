@@ -12,8 +12,6 @@ import (
 	"sort"
 	"strings"
 
-	flags "github.com/jessevdk/go-flags"
-
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/hook"
@@ -122,16 +120,10 @@ type installFlags struct {
 
 func (c *InstallCommand) Run(args []string) int {
 	var opts installFlags
-	_, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	if _, code, ok := parseArgs("install", &opts, args, args); !ok {
+		return code
 	}
-
-	// argparse rejects an unknown -t before main gets as far as the root.
-	if !validHookTypes(opts.HookTypes) {
-		return 1
-	}
+	var err error
 
 	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
 		return fatalError(err)
@@ -194,15 +186,10 @@ type uninstallFlags struct {
 
 func (c *UninstallCommand) Run(args []string) int {
 	var opts uninstallFlags
-	_, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	if _, code, ok := parseArgs("uninstall", &opts, args, args); !ok {
+		return code
 	}
-
-	if !validHookTypes(opts.HookTypes) {
-		return 1
-	}
+	var err error
 
 	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
 		return fatalError(err)
@@ -264,11 +251,10 @@ type InstallHooksCommand struct {
 
 func (c *InstallHooksCommand) Run(args []string) int {
 	var opts GlobalFlags
-	_, err := flags.ParseArgs(&opts, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
+	if _, code, ok := parseArgs("install-hooks", &opts, args, args); !ok {
+		return code
 	}
+	var err error
 
 	if err = adjustArgsAndChdir(rootArgs{Config: &opts.Config}); err != nil {
 		return fatalError(err)

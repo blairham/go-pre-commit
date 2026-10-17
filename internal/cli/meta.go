@@ -29,6 +29,12 @@ func (m *Meta) ctx() context.Context {
 }
 
 // GlobalFlags are flags available to all commands.
+// ColorFlags is the one option every subcommand has: upstream's commands
+// without -c (clean, gc, sample-config, validate-*) take only --color.
+type ColorFlags struct {
+	Color string `long:"color" default:"auto" description:"Whether to use color in output. Options: auto, always, never."`
+}
+
 type GlobalFlags struct {
 	Color  string `long:"color"  default:"auto"                    description:"Whether to use color in output. Options: auto, always, never."`
 	Config string `long:"config" default:".pre-commit-config.yaml" description:"Path to alternate config file."                                short:"c"`
