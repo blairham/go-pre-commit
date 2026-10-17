@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -26,39 +27,17 @@ func (c *ValidateConfigCommand) Run(args []string) int {
 		return 1
 	}
 
-	filenames := remaining
-	if len(filenames) == 0 {
-		filenames = []string{opts.Config}
-	}
-
-	allValid := true
-	for _, filename := range filenames {
-		cfg, err := config.LoadConfig(filename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", filename, err)
-			allValid = false
-			continue
-		}
-		if err := cfg.Validate(); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", filename, err)
-			allValid = false
-		}
-	}
-
-	if !allValid {
-		return 1
-	}
-
-	fmt.Println("Config file(s) are valid.")
-	return 0
+	return validateFiles(remaining, func(filename string) error {
+		_, err := config.LoadConfig(filename)
+		return err
+	})
 }
 
 func (c *ValidateConfigCommand) Help() string {
 	return strings.TrimSpace(`
 Usage: pre-commit validate-config [options] [filenames...]
 
-  Validate .pre-commit-config.yaml files. If no filenames are given,
-  validates the default config.
+  Validate .pre-commit-config.yaml files.
 
 Options:
 
@@ -84,26 +63,50 @@ func (c *ValidateManifestCommand) Run(args []string) int {
 		return 1
 	}
 
-	filenames := remaining
-	if len(filenames) == 0 {
-		filenames = []string{config.ManifestFile}
-	}
-
-	allValid := true
-	for _, filename := range filenames {
+	return validateFiles(remaining, func(filename string) error {
 		_, err := config.LoadManifest(filename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", filename, err)
-			allValid = false
+		return err
+	})
+}
+
+// validateFiles ports upstream's validate_config / validate_manifest: load
+// each named file, print the error of any that fails to stdout, and print
+// nothing on success. With no filenames upstream validates nothing (argparse
+// nargs='*'), so neither do we.
+func validateFiles(filenames []string, load func(string) error) int {
+	out, ret := validateOutput(filenames, load)
+	fmt.Print(out)
+	return ret
+}
+
+// validateOutput returns what validateFiles prints, and its exit code.
+func validateOutput(filenames []string, load func(string) error) (string, int) {
+	var out strings.Builder
+	ret := 0
+	for _, filename := range filenames {
+		if err := load(filename); err != nil {
+			out.WriteString(cfgvError(filename, err) + "\n")
+			ret = 1
 		}
 	}
+	return out.String(), ret
+}
 
-	if !allValid {
-		return 1
+// cfgvError renders a load failure the way cfgv's ValidationError.__str__
+// does for load_from_filename: a leading blank line, a "==> File" context for
+// a file that exists, and the message after "=====> ". A path that is not a
+// regular file fails before the File context is entered.
+//
+// The message itself is ours, not cfgv's: upstream's nested "==> At ..."
+// contexts and its schema wording are not ported here.
+func cfgvError(filename string, err error) string {
+	if fi, statErr := os.Stat(filename); statErr != nil || !fi.Mode().IsRegular() {
+		return fmt.Sprintf("\n=====> %s is not a file", filename)
 	}
-
-	fmt.Println("Manifest file(s) are valid.")
-	return 0
+	if inner := errors.Unwrap(err); inner != nil {
+		err = inner
+	}
+	return fmt.Sprintf("\n==> File %s\n=====> %v", filename, err)
 }
 
 func (c *ValidateManifestCommand) Help() string {

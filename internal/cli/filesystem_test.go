@@ -75,8 +75,8 @@ func TestValidateConfigCommand_ValidConfig(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
-	if !strings.Contains(out, "valid") {
-		t.Errorf("expected 'valid' in output, got %q", out)
+	if out != "" {
+		t.Errorf("expected no output, as upstream prints nothing on success; got %q", out)
 	}
 }
 
@@ -134,8 +134,8 @@ func TestValidateManifestCommand_ValidManifest(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
-	if !strings.Contains(out, "valid") {
-		t.Errorf("expected 'valid' in output, got %q", out)
+	if out != "" {
+		t.Errorf("expected no output, as upstream prints nothing on success; got %q", out)
 	}
 }
 

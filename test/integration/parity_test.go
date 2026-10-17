@@ -886,6 +886,67 @@ func TestValidateManifest(t *testing.T) {
 	})
 }
 
+// TestValidateOutput compares validate-config / validate-manifest stdout,
+// stderr and exit code with upstream (#145): nothing on success, nothing for
+// no filenames, cfgv's "is not a file" for a missing path, and a "==> File"
+// context on stdout for an invalid file. The nested "==> At ..." contexts
+// cfgv adds under it are not ported, so only that frame is compared there.
+func TestValidateOutput(t *testing.T) {
+	pyBin := pythonPreCommit(t)
+	tmp := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(tmp, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	goodCfg := write(
+		"good.yaml",
+		"repos:\n- repo: local\n  hooks:\n  - id: x\n    name: x\n    entry: x\n    language: system\n",
+	)
+	badCfg := write("bad.yaml", "repos:\n- repo: local\n  hooks:\n  - id: x\n")
+	goodMan := write("goodm.yaml", "- id: x\n  name: x\n  entry: x\n  language: system\n")
+	badMan := write("badm.yaml", "- id: x\n")
+	missing := filepath.Join(tmp, "missing.yaml")
+
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		exact bool
+	}{
+		{"valid config", []string{"validate-config", goodCfg}, true},
+		{"no filenames", []string{"validate-config"}, true},
+		{"missing config", []string{"validate-config", missing}, true},
+		{"invalid config", []string{"validate-config", badCfg}, false},
+		{"valid manifest", []string{"validate-manifest", goodMan}, true},
+		{"no manifest filenames", []string{"validate-manifest"}, true},
+		{"missing manifest", []string{"validate-manifest", missing}, true},
+		{"invalid manifest", []string{"validate-manifest", badMan}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			pyOut, pyErr, pyExit := runSplit(t, dir, pyBin, tc.args...)
+			goOut, goErr, goExit := runSplit(t, dir, goBinary, tc.args...)
+			match := pyExit == goExit && pyErr == goErr
+			if tc.exact {
+				match = match && pyOut == goOut
+			} else {
+				frame := "\n==> File " + tc.args[1] + "\n"
+				match = match && strings.HasPrefix(pyOut, frame) && strings.HasPrefix(goOut, frame) &&
+					strings.Contains(goOut, "\n=====> ")
+			}
+			detail := ""
+			if !match {
+				detail = fmt.Sprintf("py rc=%d stdout=%q stderr=%q; go rc=%d stdout=%q stderr=%q",
+					pyExit, pyOut, pyErr, goExit, goOut, goErr)
+				t.Errorf("%s differs: %s", tc.name, detail)
+			}
+			addOutputResult(tc.args[0], tc.name, match, detail)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests: clean
 // ---------------------------------------------------------------------------
