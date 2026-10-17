@@ -352,13 +352,8 @@ func migrateLegacyStages(stages []Stage) []Stage {
 // TransformStage maps a legacy stage name given to --hook-stage onto its
 // current one, as upstream's clientlib.transform_stage does.
 func TransformStage(s Stage) Stage {
-	switch s {
-	case "commit":
-		return HookTypePreCommit
-	case "merge-commit":
-		return HookTypePreMergeCommit
-	case "push":
-		return HookTypePrePush
+	if mapped, ok := legacyStages[s]; ok {
+		return mapped
 	}
 	return s
 }
