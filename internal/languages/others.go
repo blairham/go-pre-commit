@@ -143,23 +143,6 @@ var perlLang = &SimpleLanguage{
 	},
 }
 
-// rLang is the R language backend.
-var rLang = &SimpleLanguage{
-	LangName:   "r",
-	EnvDirName: "renv",
-	HealthCmd:  []string{"Rscript", "--version"},
-	InstallCmd: func(envDir, prefix string) (string, []string) {
-		script := fmt.Sprintf(
-			"renv::activate(project = '%s')\nrenv::restore(project = '%s')\n",
-			envDir, prefix,
-		)
-		return "Rscript", []string{"--vanilla", "-e", script}
-	},
-	RunEnvFn: func(envDir string) []string {
-		return []string{fmt.Sprintf("RENV_PROJECT=%s", envDir)}
-	},
-}
-
 // Swift implements the Language interface for Swift hooks.
 // Swift is kept as a standalone struct because its install involves a multi-step
 // build + copy workflow that doesn't fit the SimpleLanguage pattern.

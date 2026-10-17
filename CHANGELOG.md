@@ -38,6 +38,19 @@ file was introduced; the full notes are on the
   `` `.pre-commit-config.yaml` config file not found. Skipping `pre-commit`. ``
   when it skips and upstream's `No .pre-commit-config.yaml file was found`
   guidance (exit 1) when it does not. (#164)
+- `language: r` is a port of upstream's `r.py`. An entry must be
+  `Rscript -e <expr>` or `Rscript path/to/script` (upstream's errors
+  otherwise); a hook runs as `Rscript --no-save --no-restore --no-site-file
+  --no-environ …`, a remote hook's script resolved against the hook repo and
+  a local hook's left as written, with `R_PROFILE_USER` pointing at the env's
+  `activate.R` and `RENV_PROJECT` unset. The install copies the hook repo's
+  `renv.lock` and `renv/` into the env, runs upstream's renv restore script
+  (handed the repo path as an argument, never spliced into the source),
+  records the R version and installs the additional dependencies; R runs from
+  `R_HOME` when it is set. The health check rebuilds an env whose recorded R
+  version is not the current R's, and a `repo: local` r hook now gets
+  upstream's placeholder renv project. CI installs a pinned R and runs a
+  remote and a local r hook against Python pre-commit. (#139)
 - `install` and `uninstall` are ported from upstream's
   `install_uninstall.py`. The hook path comes from git's common dir after
   changing to the root, so `install` prints

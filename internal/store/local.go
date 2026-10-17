@@ -4,6 +4,7 @@
 package store
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -105,9 +106,18 @@ func LocalRepoKey(deps []string) string {
 }
 
 // isLocalRepo reports whether path holds an intact local repo directory.
+// A directory written before a resource was added (renv's, for r) is not
+// intact either: it is rebuilt, so every language finds its placeholder.
 func isLocalRepo(path string) bool {
-	_, err := os.Stat(filepath.Join(path, localMarkerFile))
-	return err == nil
+	if _, err := os.Stat(filepath.Join(path, localMarkerFile)); err != nil {
+		return false
+	}
+	for name := range renvResources {
+		if _, err := os.Stat(filepath.Join(path, filepath.FromSlash(name))); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // MakeLocal returns the directory that backs `repo: local` hooks declaring the
@@ -173,5 +183,32 @@ func writeLocalResources(dest string) error {
 			return fmt.Errorf("failed to write %s: %w", path, err)
 		}
 	}
+	for name, src := range renvResources {
+		data, err := renvFiles.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dest, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", path, err)
+		}
+	}
 	return nil
+}
+
+// renvFiles are upstream's empty_template_renv.lock, empty_template_activate.R
+// and empty_template_LICENSE.renv, byte for byte from pre-commit 4.7.0.
+//
+//go:embed resources/renv.lock resources/activate.R resources/LICENSE.renv
+var renvFiles embed.FS
+
+// renvResources maps where upstream's _make_local_repo puts each renv file
+// (renv.lock, renv/activate.R, renv/LICENSE.renv) to its embedded source.
+var renvResources = map[string]string{
+	"renv.lock":         "resources/renv.lock",
+	"renv/activate.R":   "resources/activate.R",
+	"renv/LICENSE.renv": "resources/LICENSE.renv",
 }
