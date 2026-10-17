@@ -177,7 +177,7 @@ func (c *TryRepoCommand) Run(args []string) (code int) {
 		}
 	}
 
-	stage := config.Stage(opts.HookStage)
+	stage := config.TransformStage(config.Stage(opts.HookStage))
 	if stage == "" {
 		stage = config.HookTypePreCommit
 	}

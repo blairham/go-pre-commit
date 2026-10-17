@@ -15,6 +15,13 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- `run <hook-id>` selects and reports as upstream does. A miss prints
+  ``No hook with id `<id>` in stage `<stage>` `` on stdout, where this port
+  printed `[ERROR] No hook with id "<id>" found` on stderr. A `repo: local`
+  hook is now found by its `alias`; a hook with no `stages` is in every
+  stage, `manual` included (upstream's `default_stages` defaults to all of
+  them); and `--hook-stage` takes the legacy names `commit`, `merge-commit`
+  and `push`, as upstream's `transform_stage` does. (#129)
 - `language: fail` lists the files it failed on, as upstream's `fail.py`
   does: the entry, a blank line, then one file per line. It printed only the
   entry. (#128)

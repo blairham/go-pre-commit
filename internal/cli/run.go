@@ -161,7 +161,7 @@ func (c *RunCommand) Run(args []string) int {
 	}
 
 	// Determine stage.
-	stage := config.Stage(opts.HookStage)
+	stage := config.TransformStage(config.Stage(opts.HookStage))
 	if stage == "" {
 		stage = config.HookTypePreCommit
 	}

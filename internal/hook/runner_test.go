@@ -6,6 +6,7 @@ package hook
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -675,15 +676,55 @@ func TestRunnerRun_PreexistingChangesNotBlamed(t *testing.T) {
 func TestRunnerRun_HookNotFound(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{}
+	// A hook that exists but not in the requested stage is not found either.
+	hooks := []*Hook{{ID: "pushy", Name: "pushy", Stages: []config.Stage{config.HookTypePrePush}}}
 
-	runner := NewRunner(cfg, nil, dir)
-	result := runner.Run(context.Background(), RunOptions{
-		HookID:    "nonexistent",
-		HookStage: config.HookTypePreCommit,
-	})
+	for _, stage := range []config.Stage{config.HookTypePreCommit, config.StageManual} {
+		var result RunResult
+		out := captureStdout(t, func() {
+			result = NewRunner(cfg, hooks, dir).Run(context.Background(), RunOptions{
+				HookID:    "pushy",
+				HookStage: stage,
+			})
+		})
+		if result.Errors != 1 {
+			t.Errorf("stage %s: Errors = %d, want 1", stage, result.Errors)
+		}
+		// Upstream's wording, written to stdout with no [ERROR] prefix.
+		if want := "No hook with id `pushy` in stage `" + string(stage) + "`\n"; out != want {
+			t.Errorf("stage %s: stdout = %q, want %q", stage, out, want)
+		}
+	}
+}
 
-	if result.Errors != 1 {
-		t.Errorf("Errors = %d, want 1", result.Errors)
+// captureStdout runs fn with os.Stdout redirected and returns what it wrote.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+	fn()
+	w.Close()
+	data, err := io.ReadAll(r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// A local hook is found by its alias, as upstream's `hook.alias == args.hook`.
+func TestRunnerRun_LocalHookAlias(t *testing.T) {
+	h := FromLocalConfig(
+		&config.HookConfig{ID: "real", Name: "real", Alias: "nick", Entry: "x", Language: "fail"},
+		&config.Config{},
+	)
+	if h.Alias != "nick" {
+		t.Fatalf("FromLocalConfig dropped the alias: %q", h.Alias)
 	}
 }
 

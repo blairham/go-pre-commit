@@ -639,6 +639,20 @@ func TestSampleConfig_NonEmpty(t *testing.T) {
 	}
 }
 
+func TestTransformStage(t *testing.T) {
+	for in, want := range map[Stage]Stage{
+		"commit":       HookTypePreCommit,
+		"merge-commit": HookTypePreMergeCommit,
+		"push":         HookTypePrePush,
+		"pre-push":     HookTypePrePush,
+		"manual":       StageManual,
+	} {
+		if got := TransformStage(in); got != want {
+			t.Errorf("TransformStage(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // --- DefaultConfig tests ---
 
 func TestDefaultConfig(t *testing.T) {
