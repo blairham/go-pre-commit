@@ -123,7 +123,10 @@ func loadFromFilename(
 
 	// Validation sees the values PyYAML builds: YAML 1.1 types (`yes` is a
 	// bool), repeated keys collapsed as a dict does, and keys of any type.
-	doc, err := pyyaml.LoadAny(string(data))
+	// Python's text-mode open() reads any line ending as "\n", which is
+	// what the marks in a YAML error count.
+	text := strings.ReplaceAll(strings.ReplaceAll(string(data), "\r\n", "\n"), "\r", "\n")
+	doc, err := pyyaml.LoadAny(text)
 	if err != nil {
 		return nil, reraise(withContext(ctx, newValidationError("%s", err.Error())))
 	}

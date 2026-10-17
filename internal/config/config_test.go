@@ -68,8 +68,13 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
 	}
-	if !strings.HasPrefix(err.Error(), "\n==> File "+path+"\n=====> yaml: ") {
-		t.Errorf("unexpected error message: %v", err)
+	// What pre-commit 4.7.0 (PyYAML's libyaml loader) prints for it.
+	want := "\n==> File " + path + "\n=====> while parsing a flow mapping\n" +
+		"  in \"<unicode string>\", line 1, column 4\n" +
+		"did not find expected ',' or '}'\n" +
+		"  in \"<unicode string>\", line 2, column 1"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
 	}
 }
 
