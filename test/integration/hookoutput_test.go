@@ -57,6 +57,15 @@ func TestHookOutput(t *testing.T) {
 		{"pygrep by line, \\Z is the very end", "entry: 'r\\Z'\n    language: pygrep", "d.txt:4:bar"},
 		{"pygrep by line, \\d is ASCII", "entry: '\\d'\n    language: pygrep", "d.txt:2:num 7"},
 		{"pygrep by line, [^a-z] takes the newline", "entry: '[^a-z]'\n    language: pygrep", "c.txt:3:baz"},
+		// Upstream's pattern is a bytes pattern searching bytes (#179).
+		{"pygrep by line, . is one byte", "entry: '^x..$'\n    language: pygrep", "d.txt:1:x\u0663"},
+		{"pygrep by line, \\xHH is a byte", "entry: '\\xd9\\xa3'\n    language: pygrep", "d.txt:1:x\u0663"},
+		{"pygrep by line, [\\x80-\\xff]", "entry: '[\\x80-\\xff]'\n    language: pygrep", "d.txt:1:x\u0663"},
+		{
+			"pygrep --multiline, . is one byte",
+			"entry: 'x..\\n'\n    language: pygrep\n    args: [--multiline]",
+			"d.txt:1:x\u0663",
+		},
 		{"pygrep --multiline", "entry: 'ar\\nba'\n    language: pygrep\n    args: [--multiline]", "c.txt:2:bar"},
 		{"pygrep --negate", "entry: BAD\n    language: pygrep\n    args: [--negate]", "b.txt"},
 		{"pygrep --multiline --negate", "entry: BAD\n    language: pygrep\n    args: [--multiline, --negate]", "c.txt"},
