@@ -13,9 +13,10 @@ import (
 	"testing"
 )
 
-// hookOutputRepo is a repo holding the given local hook plus three files: a.txt
+// hookOutputRepo is a repo holding the given local hook plus four files: a.txt
 // matches BAD on two lines (one CRLF, one with no final newline), b.txt and
-// c.txt do not.
+// c.txt do not, and d.txt holds a non-ASCII digit, an ASCII one, trailing
+// whitespace and a last line with no newline.
 func hookOutputRepo(t *testing.T, hook string) string {
 	t.Helper()
 	cfg := "repos:\n- repo: local\n  hooks:\n  - id: h\n    name: h\n    " + hook + "\n    files: \\.txt$\n"
@@ -24,6 +25,7 @@ func hookOutputRepo(t *testing.T, hook string) string {
 		"a.txt": "xx\nBAD one\r\nok\nBAD two",
 		"b.txt": "clean\n",
 		"c.txt": "foo\nbar\nbaz\n",
+		"d.txt": "x\u0663\nnum 7\ntail \t\nbar",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
@@ -48,6 +50,13 @@ func TestHookOutput(t *testing.T) {
 	}{
 		{"pygrep by line", "entry: BAD\n    language: pygrep", "a.txt:2:BAD one"},
 		{"pygrep by line, $ anchor", "entry: 'o$'\n    language: pygrep", "c.txt:1:foo"},
+		// Upstream searches each line with its "\n" attached (#147).
+		{"pygrep by line, \\s$ takes the newline", "entry: '\\s$'\n    language: pygrep", "c.txt:1:foo"},
+		{"pygrep by line, [ \\t]+$", "entry: '[ \\t]+$'\n    language: pygrep", "d.txt:3:tail"},
+		{"pygrep by line, $ is not before a CR", "entry: 'e$|two$'\n    language: pygrep", "a.txt:4:BAD two"},
+		{"pygrep by line, \\Z is the very end", "entry: 'r\\Z'\n    language: pygrep", "d.txt:4:bar"},
+		{"pygrep by line, \\d is ASCII", "entry: '\\d'\n    language: pygrep", "d.txt:2:num 7"},
+		{"pygrep by line, [^a-z] takes the newline", "entry: '[^a-z]'\n    language: pygrep", "c.txt:3:baz"},
 		{"pygrep --multiline", "entry: 'ar\\nba'\n    language: pygrep\n    args: [--multiline]", "c.txt:2:bar"},
 		{"pygrep --negate", "entry: BAD\n    language: pygrep\n    args: [--negate]", "b.txt"},
 		{"pygrep --multiline --negate", "entry: BAD\n    language: pygrep\n    args: [--multiline, --negate]", "c.txt"},
