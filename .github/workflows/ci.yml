@@ -50,7 +50,7 @@ jobs:
   # classified rather than waiting for all of go-ci.
   changes:
     name: Changes
-    uses: blairham/.github/.github/workflows/go-changes.yml@9711060ad4860f35860bcbf90d90f103617082d2 # v0.0.1
+    uses: blairham/.github/.github/workflows/go-changes.yml@2a975269ebbb74aa0b4ec96f45773d7d68cc7bcc # v0.0.3
 
   # Parity is this project's entire claim, so a change that breaks it fails
   # before review rather than after a merge to main.
