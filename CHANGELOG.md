@@ -13,6 +13,8 @@ file was introduced; the full notes are on the
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-11-02
+
 ### Documentation
 
 - The parity headline in the README, docs/parity.md and docs/announcement.md
@@ -598,7 +600,8 @@ file was introduced; the full notes are on the
 - First release of the rewrite: Python parity for `run` and `uninstall`, the
   `/v4` module path, and a GoReleaser release workflow.
 
-[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.7.0...HEAD
+[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.7.1...HEAD
+[4.7.1]: https://github.com/blairham/go-pre-commit/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/blairham/go-pre-commit/compare/v4.6.17...v4.7.0
 [4.6.17]: https://github.com/blairham/go-pre-commit/compare/v4.6.16...v4.6.17
 [4.6.16]: https://github.com/blairham/go-pre-commit/compare/v4.6.15...v4.6.16
