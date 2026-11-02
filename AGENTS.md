@@ -84,7 +84,7 @@ test/integration/        # Parity tests against real Python pre-commit (build ta
 | `CI / Fuzz` | Every Fuzz target, on pushes to main and weekly |
 | `Parity with Python pre-commit` | Differential suite against real Python pre-commit 4.7.0 |
 | `Build` | `make build` |
-| `Action (ubuntu/macos/windows)` | Runs `action.yml` from the checkout (`uses: ./`): installs the *released* binary and runs a pygrep and a python hook |
+| `Action (ubuntu/macos/windows)` | Runs `action.yml` from the checkout (`uses: ./`): installs the *released* binary, checks the cache key names the runner, and runs a pygrep and a python hook |
 | `Hooks from source (windows-latest)` | Builds this checkout on Windows and runs a python, node, golang, ruby and rust hook, each against input it must reject |
 
 The synced config files (`.golangci.yml`, `.pre-commit-config.yaml`, `.editorconfig`, `.yamllint.yml`, `.gitleaks.toml`, `dependabot.yml`, `CODEOWNERS`, `codeql.yml`, `scorecard.yml`) are rendered by blairham/.github's `make sync`; change them there (or as an approved override in its `overrides/go-pre-commit.yml`), not here.

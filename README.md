@@ -118,7 +118,7 @@ Inputs:
           install-only: 'false'   # set 'true' to install the binary but skip `pre-commit run`
 ```
 
-Hooks run as `pre-commit run --show-diff-on-failure --color=always <extra_args>`, and hook environments (`~/.cache/pre-commit`) are cached keyed on `.pre-commit-config.yaml`, so warm runs skip environment setup entirely. Hooks that need extra tools on `PATH` (e.g. `language: system` hooks) still require you to install those tools in earlier steps. With `install-only: 'true'` the action puts the binary on `PATH` (and still caches) but skips the run step, for workflows that drive pre-commit themselves.
+Hooks run as `pre-commit run --show-diff-on-failure --color=always <extra_args>`, and hook environments (`~/.cache/pre-commit`) are cached keyed on `.pre-commit-config.yaml` and the runner (OS, architecture, image and Python version, since an environment built on one does not run on another), so warm runs skip environment setup entirely. The key is the action's `cache-key` output. Hooks that need extra tools on `PATH` (e.g. `language: system` hooks) still require you to install those tools in earlier steps. With `install-only: 'true'` the action puts the binary on `PATH` (and still caches) but skips the run step, for workflows that drive pre-commit themselves.
 
 ## Usage
 
