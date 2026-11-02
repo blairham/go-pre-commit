@@ -23,6 +23,14 @@ file was introduced; the full notes are on the
 
 ### Fixed
 
+- The composite action keys its hook-environment cache to the runner as well
+  as `.pre-commit-config.yaml`: its OS, architecture, image (`ImageOS` and
+  `ImageVersion`) and Python version. The key named only the OS, so when
+  GitHub's `ubuntu-latest` moved to 26.04 an environment built on 24.04 was
+  restored there and every Python hook failed to import; a hit never saves,
+  so it stayed broken until the entry was deleted. The key is also the
+  action's new `cache-key` output. A hosted image's weekly update now starts
+  from a cold cache. (#194)
 - A config or manifest that is not valid YAML is reported in PyYAML's words,
   as upstream's libyaml-backed loader prints them: the scanner or parser
   context, the problem, and their `in "<unicode string>", line L, column C`

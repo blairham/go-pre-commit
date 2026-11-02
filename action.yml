@@ -31,6 +31,13 @@ inputs:
     required: false
     default: 'false'
 
+outputs:
+  cache-key:
+    description: >-
+      The key hook environments are cached under: the runner's OS,
+      architecture, image and Python, and the hash of .pre-commit-config.yaml.
+    value: ${{ steps.cache-key.outputs.key }}
+
 runs:
   using: composite
   steps:
@@ -101,12 +108,52 @@ runs:
         echo "$dir" >> "$GITHUB_PATH"
         "$dir/pre-commit" --version
 
+    # A hook environment is built against the runner's own interpreters and
+    # libraries, so one restored onto a different image, architecture or
+    # Python is broken: a virtualenv made on ubuntu-24.04 fails every import
+    # on 26.04 (#194). Nothing in the old key changed when the image did, and
+    # a restore that hits never saves, so the broken entry stayed. The key
+    # names all of them; a hosted image's weekly update is a cold cache.
+    #
+    # Read in the shell, not as `${{ env.ImageOS }}`: the env context holds
+    # what a workflow sets, not the runner's own environment, so the
+    # expression would be empty. It runs with or without `cache` so the key is
+    # an output CI can check.
+    - name: Key hook environments to this runner
+      id: cache-key
+      shell: bash
+      env:
+        CONFIG_HASH: ${{ hashFiles('.pre-commit-config.yaml') }}
+      run: |
+        set -euo pipefail
+
+        # Hosted runners name their image; a self-hosted one usually does not,
+        # and then the Python below is what tells two machines apart.
+        image="${ImageOS:-self-hosted}-${ImageVersion:-unknown}"
+
+        # The interpreter the Python backend builds against: the first of
+        # these on PATH (python first on Windows, where python3 is usually
+        # the Store stub).
+        names="python3 python"
+        if [ "$RUNNER_OS" = Windows ]; then names="python python3"; fi
+        py=nopython
+        for name in $names; do
+          if v="$("$name" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null)"; then
+            py="py${v}"
+            break
+          fi
+        done
+
+        key="go-pre-commit-${RUNNER_OS}-${RUNNER_ARCH}-${image}-${py}-${CONFIG_HASH}"
+        echo "Hook environment cache key: ${key}"
+        echo "key=${key}" >> "$GITHUB_OUTPUT"
+
     - name: Cache hook environments
       if: inputs.cache == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/pre-commit
-        key: go-pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+        key: ${{ steps.cache-key.outputs.key }}
 
     - name: Run pre-commit
       if: inputs.install-only != 'true'
