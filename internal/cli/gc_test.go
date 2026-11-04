@@ -57,7 +57,7 @@ func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 		if err = os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = db.Exec("INSERT INTO repos (repo, ref, path) VALUES (?, 'v1', ?)",
+		if _, err = db.ExecContext(t.Context(), "INSERT INTO repos (repo, ref, path) VALUES (?, 'v1', ?)",
 			"https://example.com/"+name, dir); err != nil {
 			t.Fatal(err)
 		}
