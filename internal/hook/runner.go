@@ -761,7 +761,7 @@ func installTasks(tasks []installTask) error {
 				return
 			}
 
-			if err := os.MkdirAll(envPath, 0o755); err != nil {
+			if err := os.MkdirAll(envPath, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 				output.Warn("Failed to write install state: %v", err)
 			} else if err := writeInstallState(envPath, t.hook.AdditionalDependencies); err != nil {
 				output.Warn("Failed to write install state: %v", err)

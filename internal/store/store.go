@@ -72,10 +72,10 @@ func (s *Store) Init() error {
 	if _, err := os.Stat(s.dir); err == nil {
 		return nil
 	}
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+	if err := os.MkdirAll(s.dir, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.dir, "README"), []byte(storeReadme), 0o644)
+	return os.WriteFile(filepath.Join(s.dir, "README"), []byte(storeReadme), 0o644) // #nosec G306 -- as upstream's open()
 }
 
 // readonly is upstream's Store.readonly: the store directory exists and this
@@ -551,7 +551,7 @@ func (s *Store) acquireLock() (func(), error) {
 		return nil, err
 	}
 
-	lf, err := os.OpenFile(s.lockPath(), os.O_CREATE|os.O_RDWR, 0o644)
+	lf, err := os.OpenFile(s.lockPath(), os.O_CREATE|os.O_RDWR, 0o644) // #nosec G302 -- as upstream's open()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open lock file: %w", err)
 	}

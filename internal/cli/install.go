@@ -304,7 +304,7 @@ func installHookScripts(configFile string, given []string, overwrite, skipOnMiss
 		if err != nil {
 			return reportError(err)
 		}
-		if err := os.MkdirAll(filepath.Dir(hookFile), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(hookFile), 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 			return reportError(err)
 		}
 
@@ -314,11 +314,11 @@ func installHookScripts(configFile string, given []string, overwrite, skipOnMiss
 
 		content := hookScript(configFile, hookType, skipOnMissingConfig)
 
-		if err := os.WriteFile(hookFile, []byte(content), 0o755); err != nil {
+		if err := os.WriteFile(hookFile, []byte(content), 0o755); err != nil { // #nosec G306 -- git runs it
 			return reportError(err)
 		}
 		// WriteFile keeps an existing file's mode; make_executable does not.
-		if err := os.Chmod(hookFile, 0o755); err != nil {
+		if err := os.Chmod(hookFile, 0o755); err != nil { // #nosec G302 -- git runs it: upstream's make_executable
 			return reportError(err)
 		}
 
@@ -381,7 +381,7 @@ func hookPaths(hookType, gitDir string) (hookFile, legacyFile string, err error)
 // the hashes upstream marks its scripts with, so a script either tool wrote
 // counts as ours and anything else is foreign.
 func isOurScript(path string) bool {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) // #nosec G304 -- a hook in the repository's hooks dir
 	return err == nil && isPreCommitHook(string(content))
 }
 

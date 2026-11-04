@@ -257,7 +257,8 @@ func PrintHookDetails(d HookDetails) {
 	fmt.Println()
 	if d.LogFile != "" {
 		// Upstream appends exactly the lines it printed, and only these.
-		if f, err := os.OpenFile(d.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		flags := os.O_APPEND | os.O_CREATE | os.O_WRONLY
+		if f, err := os.OpenFile(d.LogFile, flags, 0o644); err == nil { // #nosec G302 -- as upstream's open()
 			_, _ = f.Write(append(out, '\n'))
 			_ = f.Close()
 		}

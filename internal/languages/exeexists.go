@@ -70,7 +70,7 @@ func pyFindExecutable(exe, path, pathext string, hasPathext bool) (string, bool)
 			if dir != "" {
 				joined = filepath.Join(dir, name)
 			}
-			info, err := os.Stat(joined)
+			info, err := os.Stat(joined) // #nosec G703 -- a PATH search
 			if err != nil || !info.Mode().IsRegular() {
 				continue
 			}

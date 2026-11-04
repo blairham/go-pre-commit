@@ -79,7 +79,8 @@ func executeR(code, envDir, cwd string, cliOpts, args []string) (_ string, err e
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	script := filepath.Join(dir, "script.R")
-	if writeErr := os.WriteFile(script, []byte(rInlineSetup(code)), 0o644); writeErr != nil {
+	src := []byte(rInlineSetup(code))
+	if writeErr := os.WriteFile(script, src, 0o644); writeErr != nil { // #nosec G306 -- as upstream's open()
 		return "", writeErr
 	}
 
@@ -175,7 +176,7 @@ func (r *R) InstallEnvironment(prefix, version string, additionalDeps []string) 
 		)
 	}
 	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
-	if err := os.MkdirAll(envDir, 0o755); err != nil {
+	if err := os.MkdirAll(envDir, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 		return err
 	}
 	if err := copyFile(filepath.Join(prefix, "renv.lock"), filepath.Join(envDir, "renv.lock")); err != nil {
@@ -209,11 +210,11 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	data, err := os.ReadFile(src)
+	data, err := os.ReadFile(src) // #nosec G304 -- a path in pre-commit's store
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, info.Mode().Perm())
+	return os.WriteFile(dst, data, info.Mode().Perm()) // #nosec G703 -- a path in pre-commit's store
 }
 
 // copyTree is shutil.copytree: dst must not exist yet.
@@ -232,13 +233,13 @@ func copyTree(src, dst string) error {
 		target := filepath.Join(dst, rel)
 		switch {
 		case d.IsDir():
-			return os.MkdirAll(target, 0o755)
+			return os.MkdirAll(target, 0o755) // #nosec G301 -- a cloned tree's dirs, as copytree makes them
 		case d.Type()&fs.ModeSymlink != 0:
 			link, err := os.Readlink(path)
 			if err != nil {
 				return err
 			}
-			return os.Symlink(link, target)
+			return os.Symlink(link, target) // #nosec G122 -- copying a tree in pre-commit's store
 		default:
 			return copyFile(path, target)
 		}

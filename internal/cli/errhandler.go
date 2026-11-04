@@ -199,7 +199,7 @@ func pyQuote(s string) string {
 // and created if missing -- which is where it writes pre-commit.log.
 func storeDirForLog() string {
 	dir := store.DefaultDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 		return dir
 	}
 	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
@@ -240,7 +240,7 @@ func logAndExit(storeDir, prefix string, code int, typ, msg, traceback string) i
 	// Upstream checks the store is writable, then writes; a write that
 	// fails after that is not reported either.
 	logPath := filepath.Join(storeDir, "pre-commit.log")
-	if err := os.WriteFile(logPath, []byte(log), 0o644); err != nil {
+	if err := os.WriteFile(logPath, []byte(log), 0o644); err != nil { // #nosec G306 -- as upstream's open()
 		fmt.Printf("Failed to write to log at %s\n", logPath)
 		fmt.Print(log)
 		return code

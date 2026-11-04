@@ -81,7 +81,7 @@ const juliaInstallScript = `
 // then instantiate it and add any additional dependencies.
 func (j *Julia) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	envDir := filepath.Join(prefix, j.EnvironmentDir()+"-"+version)
-	if err := os.MkdirAll(envDir, 0o755); err != nil {
+	if err := os.MkdirAll(envDir, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 		return err
 	}
 
@@ -91,7 +91,8 @@ func (j *Julia) InstallEnvironment(prefix, version string, additionalDeps []stri
 	}
 	// Without a project file the package manager errors, so start empty.
 	if !projectFound {
-		f, err := os.OpenFile(filepath.Join(envDir, "Project.toml"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		project := filepath.Join(envDir, "Project.toml")
+		f, err := os.OpenFile(project, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644) // #nosec G302 G304 -- upstream's open()
 		if err != nil {
 			return err
 		}
@@ -122,11 +123,11 @@ func copyFirstFile(src, dst string, names ...string) (bool, error) {
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		data, err := os.ReadFile(from)
+		data, err := os.ReadFile(from) // #nosec G304 -- a path in pre-commit's store
 		if err != nil {
 			return false, err
 		}
-		if err := os.WriteFile(filepath.Join(dst, name), data, info.Mode().Perm()); err != nil {
+		if err := os.WriteFile(filepath.Join(dst, name), data, info.Mode().Perm()); err != nil { // #nosec G703 -- store path
 			return false, err
 		}
 		return true, nil

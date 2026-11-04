@@ -97,7 +97,7 @@ func (p *Pygrep) Run(
 	var out bytes.Buffer
 	retv := 0
 	for _, filename := range fileArgs {
-		data, err := os.ReadFile(filename)
+		data, err := os.ReadFile(filename) // #nosec G304 -- a file the hook was given
 		if err != nil {
 			continue
 		}

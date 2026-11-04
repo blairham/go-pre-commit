@@ -184,7 +184,7 @@ func installGo(version, envDir string) (err error) {
 		return fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
 
-	if mkErr := os.MkdirAll(envDir, 0o755); mkErr != nil {
+	if mkErr := os.MkdirAll(envDir, 0o755); mkErr != nil { // #nosec G301 -- as upstream's os.makedirs
 		return mkErr
 	}
 	if ext == "zip" {
