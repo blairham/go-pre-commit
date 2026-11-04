@@ -32,32 +32,20 @@ linters:
   enable:
     # Not yet enabled here — overrides/go-pre-commit.yml says why. Adopt one
     # per pull request and shrink that list:
-    #   whitespace
     #   unparam
     #   goconst
-    #   bodyclose
-    #   contextcheck
-    #   rowserrcheck
-    #   sqlclosecheck
     #   errname
     #   errorlint
-    #   forcetypeassert
     #   nilerr
     #   nilnil
     #   noctx
-    #   predeclared
     #   prealloc
-    #   sloglint
     #   gosec
     #   nestif
     #   funlen
     #   gocognit
     #   gocyclo
     #   thelper
-    #   tparallel
-    #   testableexamples
-    #   importas
-    #   interfacebloat
     #   wastedassign
     # Core linters (enabled by default)
     - errcheck # Check for unchecked errors
@@ -67,24 +55,36 @@ linters:
     - unused # Check for unused constants, variables, functions and types
 
     # Code quality and style
+    - whitespace # Detection of leading and trailing whitespace
     - unconvert # Remove unnecessary type conversions
     - gocritic # Diagnostic, performance and style checks
     - misspell # Commonly misspelled English words (US locale)
     - revive # Configurable style linter (see settings for the rule set)
 
     # Bug detection
+    - bodyclose # Check whether HTTP response body is closed
+    - contextcheck # Check if function use a non-inherited context
+    - rowserrcheck # Check whether Err of rows is checked
+    - sqlclosecheck # Check that sql.Rows and sql.Stmt are closed
+    - forcetypeassert # Finds forced type assertions
+    - predeclared # Find code that shadows predeclared identifiers
 
     # Performance
+    - sloglint # Ensure consistent code style when using log/slog
 
     # Security
 
     # Code complexity
 
     # Testing
+    - tparallel # Detects inappropriate usage of t.Parallel()
+    - testableexamples # Checks if examples are testable
 
     # Import management
+    - importas # Enforces consistent import aliases
 
     # Interfaces
+    - interfacebloat # Checks the number of methods in an interface
 
     # Memory
 
