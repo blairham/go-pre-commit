@@ -56,7 +56,7 @@ func findPythonHost() pythonHost {
 		if err != nil {
 			continue
 		}
-		out, err := exec.Command(exe, "-c", "import sys; print('%d %d' % sys.version_info[:2])").Output()
+		out, err := command(exe, "-c", "import sys; print('%d %d' % sys.version_info[:2])").Output()
 		if err != nil {
 			continue
 		}
@@ -110,7 +110,7 @@ func pyLauncher(version string) string {
 	if !ok {
 		return ""
 	}
-	cmd := exec.Command("py", "-"+num, "-c", "import sys; print(sys.executable)")
+	cmd := command("py", "-"+num, "-c", "import sys; print(sys.executable)")
 	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=UTF-8")
 	out, err := cmd.Output()
 	if err != nil {
@@ -236,7 +236,7 @@ func firstVersionParts(v string) string {
 // sys.version_info joined with dots, or a marker naming exe when it cannot
 // be run.
 func pythonVersionInfo(exe string) string {
-	out, err := exec.Command(exe, "-S", "-c", `import sys;print(".".join(str(p) for p in sys.version_info))`).Output()
+	out, err := command(exe, "-S", "-c", `import sys;print(".".join(str(p) for p in sys.version_info))`).Output()
 	if err != nil {
 		return fmt.Sprintf("<<error retrieving version from %s>>", exe)
 	}
@@ -282,14 +282,14 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 	if target != "" {
 		args = append(args, "-p", target)
 	}
-	cmd := exec.Command(base, args...)
+	cmd := command(base, args...)
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		venvPython := target
 		if venvPython == "" {
 			venvPython = base
 		}
-		cmd = exec.Command(venvPython, "-m", "venv", envDir)
+		cmd = command(venvPython, "-m", "venv", envDir)
 		cmd.Dir = prefix
 		if out2, err2 := cmd.CombinedOutput(); err2 != nil {
 			return fmt.Errorf("failed to create virtualenv: %s\nfailed to create venv: %s", string(out), string(out2))
@@ -299,7 +299,7 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 	// Install the hook package.
 	pip := filepath.Join(venvBinDir(envDir), "pip")
 	pipArgs := append([]string{"install", "."}, additionalDeps...)
-	cmd = exec.Command(pip, pipArgs...)
+	cmd = command(pip, pipArgs...)
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("pip install failed: %s: %w", string(out), err)

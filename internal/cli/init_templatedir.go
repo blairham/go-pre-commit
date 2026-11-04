@@ -5,10 +5,10 @@ package cli
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
 
@@ -51,7 +51,7 @@ func (c *InitTemplateDirCommand) Run(args []string) int {
 // directory as upstream runs it; ok is false when git fails, as it does when
 // the key is unset.
 func gitInitTemplateDir() (string, bool) {
-	out, err := exec.Command("git", "config", "init.templateDir").Output()
+	out, err := git.Command("config", "init.templateDir").Output()
 	if err != nil {
 		return "", false
 	}

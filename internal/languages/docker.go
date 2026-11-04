@@ -67,13 +67,14 @@ func translateMountPath(path string, inspectOut []byte) string {
 
 // dockerPath translates path for docker-in-docker: -v mount sources are
 // resolved by the host daemon, so a container-local path must be rewritten
-// to the corresponding host path.
-func dockerPath(path string) string {
+// to the corresponding host path. ctx is the hook's; `docker inspect` gets
+// it without its cancellation, as command's processes are never killed.
+func dockerPath(ctx context.Context, path string) string {
 	id := currentContainerID()
 	if id == "" {
 		return path
 	}
-	out, err := exec.Command("docker", "inspect", id).Output()
+	out, err := exec.CommandContext(context.WithoutCancel(ctx), "docker", "inspect", id).Output()
 	if err != nil {
 		return path
 	}
@@ -102,7 +103,7 @@ func rootlessFromInfo(infoJSON []byte) bool {
 // isRootless reports whether the daemon runs rootless (docker or podman),
 // in which case -u would map to an unprivileged user inside the container.
 var isRootless = sync.OnceValue(func() bool {
-	out, err := exec.Command("docker", "system", "info", "--format", "{{ json . }}").Output()
+	out, err := command("docker", "system", "info", "--format", "{{ json . }}").Output()
 	if err != nil {
 		return false
 	}
@@ -110,13 +111,13 @@ var isRootless = sync.OnceValue(func() bool {
 })
 
 // dockerRunArgs returns the common `docker run` arguments for hooks.
-func dockerRunArgs() []string {
+func dockerRunArgs(ctx context.Context) []string {
 	cwd, _ := os.Getwd()
 	args := []string{"run", "--rm"}
 	if runtime.GOOS != "windows" && !isRootless() {
 		args = append(args, "-u", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()))
 	}
-	return append(args, "-v", dockerPath(cwd)+":/src:rw,Z", "--workdir", "/src")
+	return append(args, "-v", dockerPath(ctx, cwd)+":/src:rw,Z", "--workdir", "/src")
 }
 
 // Docker implements the Language interface for Docker hooks.
@@ -132,7 +133,7 @@ func (d *Docker) HealthCheck(_, _ string) error { return nil }
 
 func (d *Docker) InstallEnvironment(prefix, version string, additionalDeps []string) error {
 	// Build the Docker image.
-	cmd := exec.Command("docker", "build", "-t", d.imageTag(prefix), ".")
+	cmd := command("docker", "build", "-t", d.imageTag(prefix), ".")
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("docker build failed: %s: %w", string(out), err)
@@ -147,7 +148,7 @@ func (d *Docker) Run(
 	args, fileArgs []string,
 	_ string,
 ) (int, []byte, error) {
-	dockerArgs := dockerRunArgs()
+	dockerArgs := dockerRunArgs(ctx)
 
 	// Parse entry for entrypoint.
 	parts := ParseEntry(entry)
@@ -198,7 +199,7 @@ func (d *DockerImage) Run(
 		return -1, nil, fmt.Errorf("docker_image entry is required")
 	}
 
-	dockerArgs := dockerRunArgs()
+	dockerArgs := dockerRunArgs(ctx)
 
 	// Check if entry has --entrypoint flag.
 	image := parts[0]

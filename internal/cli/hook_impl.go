@@ -5,6 +5,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -73,7 +74,7 @@ func (c *HookImplCommand) Run(args []string) int {
 			return reportError(err)
 		}
 	}
-	retv, err := runLegacyHook(opts.HookType, opts.HookDir, remaining, stdin, hookEnv)
+	retv, err := runLegacyHook(c.Meta.hookCtx(), opts.HookType, opts.HookDir, remaining, stdin, hookEnv)
 	if err != nil {
 		return unexpectedError(err)
 	}
@@ -295,7 +296,7 @@ func prePushArgs(dir, remoteName, remoteURL string, stdin []byte) ([]string, err
 // (pre-commit 4.6.1, pre-commit/pre-commit#3726). Like upstream, git's
 // stderr is not captured.
 func revExists(dir, rev string) bool {
-	cmd := exec.Command("git", "cat-file", "-e", rev+"^{commit}")
+	cmd := git.Command("cat-file", "-e", rev+"^{commit}")
 	cmd.Dir = dir
 	cmd.Env = git.NoGitEnv()
 	cmd.Stderr = os.Stderr
@@ -314,8 +315,15 @@ func gitOutput(dir string, args ...string) (string, error) {
 // (git 2.54+ config-based hooks) or no executable <type>.legacy in it there
 // is nothing to run; otherwise the legacy hook runs with stdin as its input,
 // env plus PRE_COMMIT_RUNNING_LEGACY=1 as its environment, and its exit
-// status becomes retv. err is a hook that could not be started at all.
-func runLegacyHook(hookType, hookDir string, args []string, stdin []byte, env []string) (retv int, err error) {
+// status becomes retv. err is a hook that could not be started at all. ctx
+// is Meta.hookCtx: the legacy hook is never killed from here.
+func runLegacyHook(
+	ctx context.Context,
+	hookType, hookDir string,
+	args []string,
+	stdin []byte,
+	env []string,
+) (retv int, err error) {
 	if hookDir == "" {
 		return 0, nil
 	}
@@ -324,7 +332,7 @@ func runLegacyHook(hookType, hookDir string, args []string, stdin []byte, env []
 		return 0, nil
 	}
 
-	cmd := exec.Command(legacyPath, args...)
+	cmd := exec.CommandContext(ctx, legacyPath, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -137,7 +136,7 @@ func inferGoVersion(version string) (_ string, err error) {
 	if version != "default" {
 		return version, nil
 	}
-	resp, err := http.Get(goVersionsURL)
+	resp, err := httpGet(goVersionsURL)
 	if err != nil {
 		return "", err
 	}
@@ -170,7 +169,7 @@ func installGo(version, envDir string) (err error) {
 	}
 	arch := goArch(runtime.GOARCH)
 	url := fmt.Sprintf("%sgo%s.%s-%s.%s", goDownloadURL, version, runtime.GOOS, arch, ext)
-	resp, err := http.Get(url)
+	resp, err := httpGet(url)
 	if err != nil {
 		return err
 	}
@@ -234,7 +233,7 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 	}
 
 	// Install the hook package.
-	cmd := exec.Command(goBin, "install", "./...")
+	cmd := command(goBin, "install", "./...")
 	cmd.Dir = prefix
 	cmd.Env = env
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -243,7 +242,7 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 
 	// Install additional dependencies.
 	for _, dep := range additionalDeps {
-		cmd := exec.Command(goBin, "install", dep)
+		cmd := command(goBin, "install", dep)
 		cmd.Dir = prefix
 		cmd.Env = env
 		if out, err := cmd.CombinedOutput(); err != nil {

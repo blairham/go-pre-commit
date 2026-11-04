@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -105,7 +104,7 @@ func (j *Julia) InstallEnvironment(prefix, version string, additionalDeps []stri
 	}
 
 	args := append([]string{"--startup-file=no", "-e", juliaInstallScript, "--", envDir}, additionalDeps...)
-	cmd := exec.Command("julia", args...)
+	cmd := command("julia", args...)
 	cmd.Dir = prefix
 	cmd.Env = append(environWithout(cmd.Environ(), juliaUnset), juliaEnv(envDir)...)
 	if out, err := cmd.CombinedOutput(); err != nil {

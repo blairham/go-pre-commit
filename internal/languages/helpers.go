@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,31 @@ import (
 
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
+
+// command is exec.Command for a process a backend runs to install, check or
+// probe an environment rather than to run a hook, bound to a context that is
+// never canceled. InstallEnvironment and HealthCheck take no context, and the
+// only one above them is the command's SIGINT-canceled one: bound to that, an
+// install step would be SIGKILLed the moment this process saw ^C, where
+// upstream's cmd_output leaves it to the SIGINT it gets from the terminal.
+//
+//nolint:contextcheck // deliberately not the caller's context, for the reason above
+func command(name string, args ...string) *exec.Cmd {
+	return exec.CommandContext(context.Background(), name, args...)
+}
+
+// httpGet is http.Get spelled out, with the context it uses made explicit:
+// the downloads it serves run inside an install, which nothing cancels (see
+// command).
+//
+//nolint:contextcheck // deliberately not the caller's context, as for command
+func httpGet(url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	return http.DefaultClient.Do(req)
+}
 
 // RunCommand is a helper to run a command and capture output.
 func RunCommand(ctx context.Context, dir, name string, args ...string) (int, []byte, error) {
@@ -267,7 +293,7 @@ func envCommandExitCode(env []string, argv ...string) int {
 	if err != nil {
 		return 1
 	}
-	cmd := exec.Command(bin, argv[1:]...)
+	cmd := command(bin, argv[1:]...)
 	cmd.Env = append(os.Environ(), env...)
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError

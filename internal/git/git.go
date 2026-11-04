@@ -6,6 +6,7 @@ package git
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,17 @@ import (
 
 	"github.com/blairham/go-pre-commit/v4/internal/output"
 )
+
+// Command is exec.Command for git, bound to a context that is never canceled,
+// so git is never killed from here. On ^C git gets the terminal's SIGINT
+// itself, and the git that runs after that -- restoring the stash, the
+// `git --version` line of pre-commit.log -- has to run to the end, which a
+// command bound to the already-canceled SIGINT context would not even start.
+//
+//nolint:contextcheck // deliberately not the caller's context, for the reason above
+func Command(args ...string) *exec.Cmd {
+	return exec.CommandContext(context.Background(), "git", args...)
+}
 
 // NoGitEnv returns the current environment with GIT_* variables removed
 // (except for a safe allowlist). This matches the Python pre-commit's
@@ -109,7 +121,7 @@ func HostIndexEnv() []string {
 // hostOutput runs a git command against the host repo's index (HostIndexEnv)
 // in dir ("" for the current directory) and returns its untrimmed stdout.
 func hostOutput(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := Command(args...)
 	cmd.Dir = dir
 	cmd.Env = HostIndexEnv()
 	var stdout, stderr bytes.Buffer
@@ -134,7 +146,7 @@ func splitNul(out string) []string {
 
 // CmdOutput runs a git command and returns its stdout.
 func CmdOutput(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := Command(args...)
 	cmd.Env = NoGitEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -147,7 +159,7 @@ func CmdOutput(args ...string) (string, error) {
 
 // CmdOutputInDir runs a git command in a specific directory.
 func CmdOutputInDir(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := Command(args...)
 	cmd.Dir = dir
 	cmd.Env = NoGitEnv()
 	var stdout, stderr bytes.Buffer
@@ -161,7 +173,7 @@ func CmdOutputInDir(dir string, args ...string) (string, error) {
 
 // RunInDir runs a git command in a directory, returning combined output.
 func RunInDir(dir string, args ...string) error {
-	cmd := exec.Command("git", args...)
+	cmd := Command(args...)
 	cmd.Dir = dir
 	cmd.Env = NoGitEnv()
 	cmd.Stdout = os.Stdout
@@ -202,7 +214,7 @@ const (
 func Toplevel(cwd string) (string, error) {
 	run := func(args ...string) (string, error) {
 		var stdout bytes.Buffer
-		cmd := exec.Command("git", args...)
+		cmd := Command(args...)
 		cmd.Dir = cwd
 		cmd.Stdout = &stdout
 		if err := cmd.Run(); err != nil {
@@ -383,7 +395,7 @@ func OutputCaptured(dir string, args ...string) (string, error) {
 }
 
 func runCaptured(dir string, env, args []string) ([]byte, error) {
-	cmd := exec.Command("git", args...)
+	cmd := Command(args...)
 	cmd.Dir = dir
 	cmd.Env = env
 	var stdout, stderr bytes.Buffer
@@ -569,7 +581,7 @@ func StashPop(dir string) error {
 
 // CheckoutIndex checks out the index to a temp directory.
 func CheckoutIndex(dir, dest string) error {
-	cmd := exec.Command("git", "checkout-index", "-a", "--prefix="+dest+"/")
+	cmd := Command("checkout-index", "-a", "--prefix="+dest+"/")
 	cmd.Dir = dir
 	cmd.Env = NoGitEnv()
 	return cmd.Run()
@@ -672,7 +684,7 @@ func DiffIndex(dir, treeish string) (string, error) {
 
 // CheckoutIndexToDir checks out index contents to a directory.
 func CheckoutIndexToDir(dir, dest string) error {
-	cmd := exec.Command("git", "checkout-index", "--all", "--force", "--prefix="+dest+"/")
+	cmd := Command("checkout-index", "--all", "--force", "--prefix="+dest+"/")
 	cmd.Dir = dir
 	cmd.Env = NoGitEnv()
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GIT_WORK_TREE=%s", dest))
