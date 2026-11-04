@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
+	"github.com/blairham/go-pre-commit/v4/internal/identify"
 	"github.com/blairham/go-pre-commit/v4/internal/languages"
 	"github.com/blairham/go-pre-commit/v4/internal/pcre"
 )
@@ -124,7 +125,7 @@ func MergeManifest(
 
 	// Apply defaults.
 	if len(h.Types) == 0 && len(h.TypesOr) == 0 {
-		h.Types = []string{"file"}
+		h.Types = []string{identify.TagFile}
 	}
 
 	// Apply config overrides.
@@ -160,7 +161,7 @@ func FromLocalConfig(hookCfg *config.HookConfig, globalCfg *config.Config) *Hook
 
 	// Apply defaults.
 	if len(h.Types) == 0 && len(h.TypesOr) == 0 {
-		h.Types = []string{"file"}
+		h.Types = []string{identify.TagFile}
 	}
 
 	// Apply global defaults.
@@ -241,7 +242,7 @@ func FromManifestHook(manifest *config.ManifestHook) *Hook {
 	}
 
 	if len(h.Types) == 0 && len(h.TypesOr) == 0 {
-		h.Types = []string{"file"}
+		h.Types = []string{identify.TagFile}
 	}
 	resolveLanguageVersion(h, nil)
 
@@ -256,14 +257,14 @@ func FromManifestHook(manifest *config.ManifestHook) *Hook {
 // upstream uses (`node_env-system`, `py_env-python3.12`, …).
 func resolveLanguageVersion(h *Hook, globalCfg *config.Config) {
 	if h.LanguageVersion == "" {
-		h.LanguageVersion = "default"
+		h.LanguageVersion = languages.VersionDefault
 	}
-	if h.LanguageVersion == "default" && globalCfg != nil {
+	if h.LanguageVersion == languages.VersionDefault && globalCfg != nil {
 		if v := globalCfg.DefaultLanguageVersion[h.Language]; v != "" {
 			h.LanguageVersion = v
 		}
 	}
-	if h.LanguageVersion == "default" {
+	if h.LanguageVersion == languages.VersionDefault {
 		if lang, err := languages.Get(h.Language); err == nil {
 			h.LanguageVersion = lang.GetDefaultVersion()
 		}

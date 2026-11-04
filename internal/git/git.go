@@ -281,7 +281,7 @@ func GetGitCommonDir(root string) (string, error) {
 
 // GetStagedFiles returns a list of staged file paths.
 func GetStagedFiles() ([]string, error) {
-	out, err := hostOutput("", "diff", "--staged", "--name-only", "--diff-filter=ACMRT", "--no-ext-diff", "-z")
+	out, err := hostOutput("", diffCmd, "--staged", "--name-only", "--diff-filter=ACMRT", "--no-ext-diff", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func GetAllFiles() ([]string, error) {
 
 // GetChangedFiles returns files changed between two refs.
 func GetChangedFiles(fromRef, toRef string) ([]string, error) {
-	out, err := CmdOutput("diff", "--name-only", "--diff-filter=ACMRT", "--no-ext-diff", "-z", fromRef+"..."+toRef)
+	out, err := CmdOutput(diffCmd, "--name-only", "--diff-filter=ACMRT", "--no-ext-diff", "-z", fromRef+"..."+toRef)
 	if err != nil {
 		return nil, err
 	}
@@ -418,10 +418,13 @@ func runCaptured(dir string, env, args []string) ([]byte, error) {
 	}
 }
 
+// diffCmd is git's diff subcommand.
+const diffCmd = "diff"
+
 // HasDiff is upstream's git.has_diff: whether `git diff --quiet` with args
 // reports a difference (exit 1) in repo. Any other failure is no difference.
 func HasDiff(repo string, args ...string) bool {
-	cmdArgs := append([]string{"diff", "--quiet", "--no-ext-diff"}, args...)
+	cmdArgs := append([]string{diffCmd, "--quiet", "--no-ext-diff"}, args...)
 	err := RunCaptured(repo, cmdArgs...)
 	var cpe *CalledProcessError
 	return errors.As(err, &cpe) && cpe.ReturnCode == 1
@@ -440,7 +443,7 @@ func Path(repo, name string) (string, error) {
 // StagedFilesIn is upstream's git.get_staged_files(cwd=dir): every staged
 // path except deletions.
 func StagedFilesIn(dir string) ([]string, error) {
-	out, err := OutputCaptured(dir, "diff", "--staged", "--name-only", "--no-ext-diff", "-z", "--diff-filter=ACMRTUXB")
+	out, err := OutputCaptured(dir, diffCmd, "--staged", "--name-only", "--no-ext-diff", "-z", "--diff-filter=ACMRTUXB")
 	if err != nil {
 		return nil, err
 	}
@@ -541,13 +544,13 @@ func GetTagSHA(dir, tag string) (string, error) {
 
 // Diff runs git diff and returns the output.
 func Diff(args ...string) (string, error) {
-	cmdArgs := append([]string{"diff"}, args...)
+	cmdArgs := append([]string{diffCmd}, args...)
 	return CmdOutput(cmdArgs...)
 }
 
 // DiffInDir runs git diff in a directory.
 func DiffInDir(dir string, args ...string) (string, error) {
-	cmdArgs := append([]string{"diff"}, args...)
+	cmdArgs := append([]string{diffCmd}, args...)
 	return CmdOutputInDir(dir, cmdArgs...)
 }
 
@@ -589,7 +592,7 @@ func CheckoutIndex(dir, dest string) error {
 
 // HasUnstagedChanges checks if there are unstaged changes.
 func HasUnstagedChanges(dir string) (bool, error) {
-	out, err := CmdOutputInDir(dir, "diff", "--name-only")
+	out, err := CmdOutputInDir(dir, diffCmd, "--name-only")
 	if err != nil {
 		return false, err
 	}
@@ -598,7 +601,7 @@ func HasUnstagedChanges(dir string) (bool, error) {
 
 // HasStagedChanges checks if there are staged changes.
 func HasStagedChanges(dir string) (bool, error) {
-	out, err := CmdOutputInDir(dir, "diff", "--staged", "--name-only")
+	out, err := CmdOutputInDir(dir, diffCmd, "--staged", "--name-only")
 	if err != nil {
 		return false, err
 	}
@@ -640,7 +643,7 @@ func GetHooksDir(root ...string) (string, error) {
 // IntentToAddFiles returns files in the host index that were added with
 // --intent-to-add.
 func IntentToAddFiles(dir string) ([]string, error) {
-	out, err := hostOutput(dir, "diff", "--no-ext-diff", "--ignore-submodules", "--diff-filter=A", "--name-only", "-z")
+	out, err := hostOutput(dir, diffCmd, "--no-ext-diff", "--ignore-submodules", "--diff-filter=A", "--name-only", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -649,7 +652,7 @@ func IntentToAddFiles(dir string) ([]string, error) {
 
 // GetConflictedFiles returns files with merge conflicts.
 func GetConflictedFiles() ([]string, error) {
-	out, err := hostOutput("", "diff", "--name-only", "--diff-filter=U", "-z")
+	out, err := hostOutput("", diffCmd, "--name-only", "--diff-filter=U", "-z")
 	if err != nil {
 		return nil, err
 	}

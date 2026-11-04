@@ -398,9 +398,9 @@ func languageMigration(key string, isRequired bool) item {
 		if s, ok := v.(string); ok {
 			switch s {
 			case "system":
-				v = "unsupported"
+				v = languageUnsupported
 			case "script":
-				v = "unsupported_script"
+				v = languageUnsupportedScript
 			}
 		}
 		return check(v)
@@ -460,12 +460,19 @@ func arrayOf(of mapSchema) checkFn {
 
 // --- clientlib's schemas ---
 
+// The languages system and script are migrated to. A meta hook's language
+// may only be the first.
+const (
+	languageUnsupported       = "unsupported"
+	languageUnsupportedScript = "unsupported_script"
+)
+
 // LanguageNames is upstream's all_languages.language_names: every value
 // `language` may take (after system and script are translated).
 var LanguageNames = []string{
 	"conda", "coursier", "dart", "docker", "docker_image", "dotnet", "fail",
 	"golang", "haskell", "julia", "lua", "node", "perl", "pygrep", "python",
-	"r", "ruby", "rust", "swift", "unsupported", "unsupported_script",
+	"r", "ruby", "rust", "swift", languageUnsupported, languageUnsupportedScript,
 }
 
 func hookTypeNames() []string {
@@ -501,7 +508,7 @@ func manifestHookItems() []keyedItem {
 		req("id", checkString),
 		req("name", checkString),
 		req("entry", checkString),
-		{key: "language", fn: checkOneOf(LanguageNames), it: languageMigration("language", true)},
+		{key: languageKey, fn: checkOneOf(LanguageNames), it: languageMigration(languageKey, true)},
 		opt("alias", checkString),
 		opt("files", checkStringRegex),
 		opt("exclude", checkStringRegex),
@@ -522,8 +529,17 @@ func manifestHookItems() []keyedItem {
 	}
 }
 
+// hookMapName is the name cfgv's Map gives a hook in an error's context,
+// which reads "At Hook(id=...)".
+const hookMapName = "Hook"
+
+// languageKey is the hook key each hook schema treats specially: required
+// and migrated in a manifest, migrated in a config, and pinned to
+// unsupported for a meta hook.
+const languageKey = "language"
+
 func manifestHookSchema() mapSchema {
-	s := mapSchema{name: "Hook", idKey: "id"}
+	s := mapSchema{name: hookMapName, idKey: "id"}
 	for _, k := range manifestHookItems() {
 		s.items = append(s.items, k.it)
 	}
@@ -549,30 +565,40 @@ func localHookSchema() mapSchema {
 }
 
 func configHookSchema() mapSchema {
-	s := mapSchema{name: "Hook", idKey: "id", items: []item{required("id", checkString)}}
+	s := mapSchema{name: hookMapName, idKey: "id", items: []item{required("id", checkString)}}
 	for _, k := range manifestHookItems() {
-		if k.key == "id" || k.key == "stages" || k.key == "language" {
+		if k.key == "id" || k.key == "stages" || k.key == languageKey {
 			continue
 		}
 		s.items = append(s.items, optional(k.key, k.fn))
 	}
-	s.items = append(s.items, stagesMigration("stages"), languageMigration("language", false))
+	s.items = append(s.items, stagesMigration("stages"), languageMigration(languageKey, false))
 	s.items = append(s.items, commonHookWarnings()...)
 	return s
 }
 
-var metaHookIDs = []string{"check-hooks-apply", "check-useless-excludes", "identity"}
+// The meta hooks' ids, in upstream clientlib's _meta order.
+const (
+	MetaHookCheckHooksApply      = "check-hooks-apply"
+	MetaHookCheckUselessExcludes = "check-useless-excludes"
+	MetaHookIdentity             = "identity"
+)
+
+var metaHookIDs = []string{MetaHookCheckHooksApply, MetaHookCheckUselessExcludes, MetaHookIdentity}
+
+// IsMetaHookID reports whether id is one of the meta hooks'.
+func IsMetaHookID(id string) bool { return slices.Contains(metaHookIDs, id) }
 
 func metaHookSchema() mapSchema {
-	s := mapSchema{name: "Hook", idKey: "id", items: []item{
+	s := mapSchema{name: hookMapName, idKey: "id", items: []item{
 		required("id", checkString),
 		required("id", checkOneOf(metaHookIDs)),
-		optional("language", checkOneOf([]string{"unsupported"})),
+		optional(languageKey, checkOneOf([]string{languageUnsupported})),
 		notAllowed("entry"),
 	}}
 	for _, k := range manifestHookItems() {
 		switch k.key {
-		case "name", "language", "entry":
+		case "name", languageKey, "entry":
 			s.items = append(s.items, optional(k.key, k.fn))
 		default:
 			s.items = append(s.items, k.it)
@@ -583,9 +609,9 @@ func metaHookSchema() mapSchema {
 }
 
 func configSchema() mapSchema {
-	local := condition{equals: "local"}
-	meta := condition{equals: "meta"}
-	remote := condition{notIn: []string{"local", "meta"}}
+	local := condition{equals: repoLocal}
+	meta := condition{equals: repoMeta}
+	remote := condition{notIn: []string{repoLocal, repoMeta}}
 	repo := mapSchema{name: "Repository", idKey: "repo", items: []item{
 		required("repo", checkString),
 		conditionalRequired("hooks", arrayOf(configHookSchema()), "repo", remote, false),

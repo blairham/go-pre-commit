@@ -114,7 +114,7 @@ var isRootless = sync.OnceValue(func() bool {
 func dockerRunArgs(ctx context.Context) []string {
 	cwd, _ := os.Getwd()
 	args := []string{"run", "--rm"}
-	if runtime.GOOS != "windows" && !isRootless() {
+	if runtime.GOOS != goosWindows && !isRootless() {
 		args = append(args, "-u", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()))
 	}
 	return append(args, "-v", dockerPath(ctx, cwd)+":/src:rw,Z", "--workdir", "/src")
@@ -123,9 +123,14 @@ func dockerRunArgs(ctx context.Context) []string {
 // Docker implements the Language interface for Docker hooks.
 type Docker struct{}
 
-func (d *Docker) Name() string              { return "docker" }
-func (d *Docker) EnvironmentDir() string    { return "docker" }
-func (d *Docker) GetDefaultVersion() string { return "default" }
+// Name is the language's name in a hook manifest.
+func (d *Docker) Name() string { return "docker" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR.
+func (d *Docker) EnvironmentDir() string { return "docker" }
+
+// GetDefaultVersion is upstream's basic_get_default_version.
+func (d *Docker) GetDefaultVersion() string { return VersionDefault }
 
 // HealthCheck is upstream's lang_base.basic_health_check: an installed
 // environment is always healthy. A missing toolchain shows when the hook runs.
@@ -174,9 +179,14 @@ func (d *Docker) imageTag(prefix string) string {
 // DockerImage implements the Language interface for pre-built Docker image hooks.
 type DockerImage struct{}
 
-func (d *DockerImage) Name() string              { return "docker_image" }
-func (d *DockerImage) EnvironmentDir() string    { return "" }
-func (d *DockerImage) GetDefaultVersion() string { return "default" }
+// Name is the language's name in a hook manifest.
+func (d *DockerImage) Name() string { return "docker_image" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR: None, as it installs nothing.
+func (d *DockerImage) EnvironmentDir() string { return "" }
+
+// GetDefaultVersion is upstream's basic_get_default_version.
+func (d *DockerImage) GetDefaultVersion() string { return VersionDefault }
 
 // HealthCheck is upstream's lang_base.basic_health_check: an installed
 // environment is always healthy. A missing toolchain shows when the hook runs.

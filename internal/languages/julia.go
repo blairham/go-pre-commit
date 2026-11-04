@@ -23,7 +23,7 @@ func (j *Julia) Name() string { return "julia" }
 func (j *Julia) EnvironmentDir() string { return "juliaenv" }
 
 // GetDefaultVersion is upstream's basic_get_default_version.
-func (j *Julia) GetDefaultVersion() string { return "default" }
+func (j *Julia) GetDefaultVersion() string { return VersionDefault }
 
 // HealthCheck is upstream's lang_base.basic_health_check: an installed
 // environment is always healthy. A missing toolchain shows when the hook runs.

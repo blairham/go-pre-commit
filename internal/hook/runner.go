@@ -238,7 +238,7 @@ func (r *Runner) runHook(ctx context.Context, st *runState, h *Hook) (stop bool)
 	hr := &hookRun{start: time.Now(), lang: lang, h: h, files: matchedFiles}
 
 	// Handle meta hooks specially.
-	if h.ID == "check-hooks-apply" || h.ID == "check-useless-excludes" {
+	if h.ID == config.MetaHookCheckHooksApply || h.ID == config.MetaHookCheckUselessExcludes {
 		r.runMeta(st, hr)
 		return false
 	}
@@ -810,9 +810,9 @@ func ShowDiffOnFailure(allFiles bool) {
 // runMetaHook performs meta hook checks (check-hooks-apply, check-useless-excludes).
 func (r *Runner) runMetaHook(metaHook *Hook, allFiles []string) (int, []byte) {
 	switch metaHook.ID {
-	case "check-hooks-apply":
+	case config.MetaHookCheckHooksApply:
 		return r.checkHooksApply(allFiles)
-	case "check-useless-excludes":
+	case config.MetaHookCheckUselessExcludes:
 		return r.checkUselessExcludes(allFiles)
 	default:
 		return 0, nil
@@ -826,7 +826,7 @@ func (r *Runner) checkHooksApply(allFiles []string) (int, []byte) {
 
 	for _, h := range r.hooks {
 		// Skip meta hooks themselves.
-		if h.ID == "check-hooks-apply" || h.ID == "check-useless-excludes" || h.ID == "identity" {
+		if config.IsMetaHookID(h.ID) {
 			continue
 		}
 		// Skip always_run hooks (they run regardless of files).
@@ -858,7 +858,7 @@ func (r *Runner) checkUselessExcludes(allFiles []string) (int, []byte) {
 	}
 
 	for _, h := range r.hooks {
-		if h.ID == "check-hooks-apply" || h.ID == "check-useless-excludes" || h.ID == "identity" {
+		if config.IsMetaHookID(h.ID) {
 			continue
 		}
 		if h.Exclude == "" || h.Exclude == "^$" {

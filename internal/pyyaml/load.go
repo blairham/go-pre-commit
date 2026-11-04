@@ -218,6 +218,10 @@ func (c *constructor) construct(n *yaml.Node) (*Value, error) {
 	return v, err
 }
 
+// constructingMapping is the context of every ConstructorError PyYAML raises
+// while it builds a mapping or merges into one.
+const constructingMapping = "while constructing a mapping"
+
 func (c *constructor) build(n *yaml.Node) (*Value, error) {
 	switch n.Kind {
 	case yaml.ScalarNode:
@@ -245,7 +249,7 @@ func (c *constructor) build(n *yaml.Node) (*Value, error) {
 			}
 			if k.Kind == List || k.Kind == Map {
 				return nil, &MarkedError{
-					Context: "while constructing a mapping", ContextMark: nodeMark(n),
+					Context: constructingMapping, ContextMark: nodeMark(n),
 					Problem: "found unhashable key", ProblemMark: nodeMark(p[0]),
 				}
 			}
@@ -356,7 +360,7 @@ func flattenMerge(n, v *yaml.Node) ([][2]*yaml.Node, error) {
 			}
 			if s.Kind != yaml.MappingNode {
 				return nil, &MarkedError{
-					Context: "while constructing a mapping", ContextMark: nodeMark(n),
+					Context: constructingMapping, ContextMark: nodeMark(n),
 					Problem:     "expected a mapping for merging, but found " + nodeID(s),
 					ProblemMark: nodeMark(s),
 				}
@@ -374,7 +378,7 @@ func flattenMerge(n, v *yaml.Node) ([][2]*yaml.Node, error) {
 		return merge, nil
 	default:
 		return nil, &MarkedError{
-			Context: "while constructing a mapping", ContextMark: nodeMark(n),
+			Context: constructingMapping, ContextMark: nodeMark(n),
 			Problem:     "expected a mapping or list of mappings for merging, but found " + nodeID(v),
 			ProblemMark: nodeMark(v),
 		}
@@ -409,11 +413,11 @@ func constructScalar(n *yaml.Node) (*Value, error) {
 	case n.Style&yaml.TaggedStyle != 0:
 		tag = strings.TrimPrefix(n.Tag, "!!")
 	case n.Style&(yaml.SingleQuotedStyle|yaml.DoubleQuotedStyle|yaml.LiteralStyle|yaml.FoldedStyle) != 0:
-		tag = "str"
+		tag = tagStr
 	default:
 		tag = Resolve(n.Value)
 	}
-	if tag == "timestamp" {
+	if tag == tagTimestamp {
 		iso, ok, err := isoTimestamp(n.Value)
 		if err != nil {
 			return nil, err
@@ -427,24 +431,24 @@ func constructScalar(n *yaml.Node) (*Value, error) {
 
 func scalarOf(tag, s string) *Value {
 	switch tag {
-	case "null":
+	case tagNull:
 		return &Value{Kind: Null}
-	case "bool":
+	case tagBool:
 		switch strings.ToLower(s) {
 		case "yes", "true", "on":
 			return &Value{Kind: Bool, Bool: true}
 		case "no", "false", "off":
 			return &Value{Kind: Bool, Bool: false}
 		}
-	case "int":
+	case tagInt:
 		if i, ok := parseInt(s); ok {
 			return &Value{Kind: Int, Int: i}
 		}
-	case "float":
+	case tagFloat:
 		if f, ok := parseFloat(s); ok {
 			return &Value{Kind: Float, Float: f}
 		}
-	case "timestamp":
+	case tagTimestamp:
 		if iso, ok, err := isoTimestamp(s); ok && err == nil {
 			return &Value{Kind: Timestamp, Str: iso}
 		}
@@ -474,6 +478,19 @@ var (
 	valueRe = regexp.MustCompile(`^=$`)
 )
 
+// The tags a scalar can resolve to, short for tag:yaml.org,2002:<name>:
+// those of PyYAML's implicit resolvers, then str for anything they miss.
+const (
+	tagBool      = "bool"
+	tagFloat     = "float"
+	tagInt       = "int"
+	tagMerge     = "merge"
+	tagNull      = "null"
+	tagTimestamp = "timestamp"
+	tagValue     = "value"
+	tagStr       = "str"
+)
+
 type resolver struct {
 	tag    string
 	re     *regexp.Regexp
@@ -483,19 +500,19 @@ type resolver struct {
 // resolvers are PyYAML's implicit resolvers in registration order; each
 // applies only to a scalar starting with one of its characters.
 var resolvers = []resolver{
-	{"bool", boolRe, "yYnNtTfFoO"},
-	{"float", floatRe, "-+0123456789."},
-	{"int", intRe, "-+0123456789"},
-	{"merge", mergeRe, "<"},
-	{"null", nullRe, "~nN"},
-	{"timestamp", timestampRe, "0123456789"},
-	{"value", valueRe, "="},
+	{tagBool, boolRe, "yYnNtTfFoO"},
+	{tagFloat, floatRe, "-+0123456789."},
+	{tagInt, intRe, "-+0123456789"},
+	{tagMerge, mergeRe, "<"},
+	{tagNull, nullRe, "~nN"},
+	{tagTimestamp, timestampRe, "0123456789"},
+	{tagValue, valueRe, "="},
 }
 
 // Resolve is the tag PyYAML's Resolver gives s as a plain scalar.
 func Resolve(s string) string {
 	if s == "" {
-		return "null"
+		return tagNull
 	}
 	first, _ := utf8.DecodeRuneInString(s)
 	for _, r := range resolvers {
@@ -503,7 +520,7 @@ func Resolve(s string) string {
 			return r.tag
 		}
 	}
-	return "str"
+	return tagStr
 }
 
 // parseInt is SafeConstructor.construct_yaml_int.

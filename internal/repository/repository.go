@@ -12,6 +12,7 @@ import (
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/hook"
+	"github.com/blairham/go-pre-commit/v4/internal/identify"
 	"github.com/blairham/go-pre-commit/v4/internal/languages"
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
@@ -140,7 +141,7 @@ func checkAdditionalDependencies(h *hook.Hook) error {
 	}
 	var field string
 	switch {
-	case h.LanguageVersion != "default" && h.LanguageVersion != "":
+	case h.LanguageVersion != languages.VersionDefault && h.LanguageVersion != "":
 		field = "language_version"
 	case len(h.AdditionalDependencies) > 0:
 		field = "additional_dependencies"
@@ -167,45 +168,49 @@ func (r *Resolver) resolveMetaRepo(repo *config.RepoConfig) ([]*hook.Hook, error
 	return hooks, nil
 }
 
+// metaHookLanguage is the language the meta hooks are made with, one that
+// installs no environment.
+const metaHookLanguage = "system"
+
 func makeMetaHook(hc *config.HookConfig) (*hook.Hook, error) {
 	switch hc.ID {
-	case "identity":
+	case config.MetaHookIdentity:
 		return &hook.Hook{
-			ID:            "identity",
+			ID:            config.MetaHookIdentity,
 			Name:          "identity",
-			Language:      "system",
+			Language:      metaHookLanguage,
 			Entry:         "echo",
 			AlwaysRun:     true,
 			Verbose:       true,
 			Stages:        []config.Stage{config.HookTypePreCommit},
-			Types:         []string{"file"},
+			Types:         []string{identify.TagFile},
 			PassFilenames: true,
 		}, nil
-	case "check-hooks-apply":
+	case config.MetaHookCheckHooksApply:
 		// This meta hook checks that all hooks in the config match at least one file.
 		// It uses a special language="fail" with an entry that will be replaced at runtime
 		// by the runner, which checks hook file matching. In practice, we implement
 		// the check in the runner itself via AlwaysRun + the meta ID.
 		return &hook.Hook{
-			ID:            "check-hooks-apply",
+			ID:            config.MetaHookCheckHooksApply,
 			Name:          "check hooks apply to the repository",
-			Language:      "system",
+			Language:      metaHookLanguage,
 			Entry:         "pre-commit-meta-check-hooks-apply",
 			AlwaysRun:     true,
 			PassFilenames: false,
 			Stages:        []config.Stage{config.HookTypePreCommit},
-			Types:         []string{"file"},
+			Types:         []string{identify.TagFile},
 		}, nil
-	case "check-useless-excludes":
+	case config.MetaHookCheckUselessExcludes:
 		return &hook.Hook{
-			ID:            "check-useless-excludes",
+			ID:            config.MetaHookCheckUselessExcludes,
 			Name:          "check for useless excludes",
-			Language:      "system",
+			Language:      metaHookLanguage,
 			Entry:         "pre-commit-meta-check-useless-excludes",
 			AlwaysRun:     true,
 			PassFilenames: false,
 			Stages:        []config.Stage{config.HookTypePreCommit},
-			Types:         []string{"file"},
+			Types:         []string{identify.TagFile},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown meta hook: %s", hc.ID)

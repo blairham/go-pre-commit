@@ -40,9 +40,9 @@ var golangDefaultVersionOnce = sync.OnceValue(golangDefaultVersion)
 
 func golangDefaultVersion() string {
 	if exeExists("go") {
-		return "system"
+		return VersionSystem
 	}
-	return "default"
+	return VersionDefault
 }
 
 // effectiveVersion is the version the install and run act on. A
@@ -50,7 +50,7 @@ func golangDefaultVersion() string {
 // before the hook reaches the backend; the env directory keeps the name it
 // was given.
 func (g *Golang) effectiveVersion(version string) string {
-	if version == "default" {
+	if version == VersionDefault {
 		return g.GetDefaultVersion()
 	}
 	return version
@@ -79,7 +79,7 @@ func (g *Golang) HealthCheck(_, _ string) error { return nil }
 // GOROOT to the download, and puts the download's bin first on PATH.
 func goInstallEnv(envDir, version string) []string {
 	set := []string{"GOPATH=" + envDir, "GOBIN=" + filepath.Join(envDir, "bin")}
-	if version != "system" {
+	if version != VersionSystem {
 		goroot := filepath.Join(envDir, ".go")
 		set = append(set,
 			"GOTOOLCHAIN=local",
@@ -101,7 +101,7 @@ func goInstallEnv(envDir, version string) []string {
 // PATH; a downloaded one also pins GOROOT and GOTOOLCHAIN=local and puts its
 // own bin on PATH after the hook's.
 func goEnvPatch(envDir, version string) []string {
-	if version == "system" {
+	if version == VersionSystem {
 		return []string{PrependPath(filepath.Join(envDir, "bin"))}
 	}
 	goroot := filepath.Join(envDir, ".go")
@@ -133,7 +133,7 @@ func goArch(goarch string) string {
 // inferGoVersion is upstream's _infer_go_version: an explicit version is
 // used as is; "default" is the newest release go.dev lists.
 func inferGoVersion(version string) (_ string, err error) {
-	if version != "default" {
+	if version != VersionDefault {
 		return version, nil
 	}
 	resp, err := httpGet(goVersionsURL)
@@ -164,7 +164,7 @@ func installGo(version, envDir string) (err error) {
 		return err
 	}
 	ext := "tar.gz"
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		ext = "zip"
 	}
 	arch := goArch(runtime.GOARCH)
@@ -217,7 +217,7 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 	envDir := filepath.Join(prefix, g.EnvironmentDir()+"-"+version)
 	version = g.effectiveVersion(version)
 
-	if version != "system" {
+	if version != VersionSystem {
 		if err := installGo(version, envDir); err != nil {
 			return err
 		}

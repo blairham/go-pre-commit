@@ -26,7 +26,7 @@ func (r *R) Name() string { return "r" }
 func (r *R) EnvironmentDir() string { return "renv" }
 
 // GetDefaultVersion is upstream's basic_get_default_version.
-func (r *R) GetDefaultVersion() string { return "default" }
+func (r *R) GetDefaultVersion() string { return VersionDefault }
 
 // rRenvActivatedOpts is upstream's _RENV_ACTIVATED_OPTS.
 var rRenvActivatedOpts = []string{"--no-save", "--no-restore", "--no-site-file", "--no-environ"}
@@ -40,16 +40,20 @@ func rEnvPatch(envDir string) []string {
 	return []string{"R_PROFILE_USER=" + filepath.Join(envDir, "activate.R")}
 }
 
+// rscript is the executable a hook's entry must start with, and the one
+// rscriptExec runs.
+const rscript = "Rscript"
+
 // rscriptExec is upstream's _rscript_exec: R_HOME's Rscript when R_HOME is
 // set, else Rscript on PATH.
 func rscriptExec() string {
 	rHome, ok := os.LookupEnv("R_HOME")
 	if !ok {
-		return "Rscript"
+		return rscript
 	}
-	name := "Rscript"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
+	name := rscript
+	if runtime.GOOS == goosWindows {
+		name += exeSuffix
 	}
 	return filepath.Join(rHome, "bin", name)
 }
@@ -164,7 +168,7 @@ if (is_package) {
 // writes the env's activate.R, installs the hook repo itself when it is an R
 // package, records the R version, and installs the additional dependencies.
 func (r *R) InstallEnvironment(prefix, version string, additionalDeps []string) error {
-	if version != "default" {
+	if version != VersionDefault {
 		return fmt.Errorf(
 			"for now, pre-commit requires system-installed r -- you selected `language_version: %s`",
 			version,
@@ -244,7 +248,7 @@ func copyTree(src, dst string) error {
 // rEntryValidate is upstream's _entry_validate: `Rscript -e <expr>` or
 // `Rscript path/to/file`, nothing else.
 func rEntryValidate(entry []string) error {
-	if len(entry) == 0 || entry[0] != "Rscript" {
+	if len(entry) == 0 || entry[0] != rscript {
 		return errors.New("entry must start with `Rscript`.") //nolint:staticcheck,revive // upstream's wording
 	}
 	if len(entry) < 2 {

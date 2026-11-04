@@ -58,7 +58,7 @@ type tryRepoFlags struct {
 // config it generated, and runs that config's hooks.
 func (c *TryRepoCommand) Run(args []string) (code int) {
 	var opts tryRepoFlags
-	remaining, code, ok := parseArgs("try-repo", &opts, args, expandFilesFlag(args))
+	remaining, code, ok := parseArgs(cmdTryRepo, &opts, args, expandFilesFlag(args))
 	if !ok {
 		return code
 	}

@@ -13,7 +13,7 @@ import (
 
 // condaLang is the Conda language backend.
 var condaLang = &SimpleLanguage{
-	LangName:   "conda",
+	LangName:   "conda", //nolint:goconst // the language name; its env dir and executable are separate upstream values
 	EnvDirName: "conda",
 	InstallFn: func(prefix, version, envDirName string, additionalDeps []string) error {
 		envDir := filepath.Join(prefix, envDirName+"-"+version)
@@ -26,6 +26,7 @@ var condaLang = &SimpleLanguage{
 		}
 
 		if len(additionalDeps) > 0 {
+			//nolint:goconst // conda's verb; each backend's "install" is its own tool's
 			args := append([]string{"install", "--prefix", envDir, "-y"}, additionalDeps...)
 			cmd := command(condaExe, args...)
 			cmd.Dir = prefix
@@ -58,7 +59,7 @@ func condaExecutable() string {
 
 // coursierLang is the Coursier (JVM) language backend.
 var coursierLang = &SimpleLanguage{
-	LangName:   "coursier",
+	LangName:   "coursier", //nolint:goconst // the language name; its env dir and executable are separate upstream values
 	EnvDirName: "coursier",
 	InstallCmd: func(envDir, prefix string) (string, []string) {
 		csCmd := "cs"
@@ -74,10 +75,10 @@ var coursierLang = &SimpleLanguage{
 var dartLang = &SimpleLanguage{
 	LangName:     "dart",
 	EnvDirName:   "dartenv",
-	RunBinSubdir: "bin",
+	RunBinSubdir: envBinSubdir,
 	InstallFn: func(prefix, version, envDirName string, _ []string) error {
 		envDir := filepath.Join(prefix, envDirName+"-"+version)
-		binDir := filepath.Join(envDir, "bin")
+		binDir := filepath.Join(envDir, envBinSubdir)
 
 		matches, _ := filepath.Glob(filepath.Join(prefix, "bin", "*.dart"))
 		for _, m := range matches {
@@ -117,7 +118,7 @@ var haskellLang = &SimpleLanguage{
 var luaLang = &SimpleLanguage{
 	LangName:     "lua",
 	EnvDirName:   "lua_env",
-	RunBinSubdir: "bin",
+	RunBinSubdir: envBinSubdir,
 	InstallCmd: func(envDir, prefix string) (string, []string) {
 		return "luarocks", []string{"install", "--tree", envDir, prefix}
 	},
@@ -127,7 +128,7 @@ var luaLang = &SimpleLanguage{
 var perlLang = &SimpleLanguage{
 	LangName:     "perl",
 	EnvDirName:   "perl_env",
-	RunBinSubdir: "bin",
+	RunBinSubdir: envBinSubdir,
 	InstallCmd: func(envDir, prefix string) (string, []string) {
 		return "cpan", []string{"-T", "-l", envDir, "."}
 	},
@@ -148,9 +149,14 @@ var perlLang = &SimpleLanguage{
 // build + copy workflow that doesn't fit the SimpleLanguage pattern.
 type Swift struct{}
 
-func (s *Swift) Name() string              { return "swift" }
-func (s *Swift) EnvironmentDir() string    { return "swift_env" }
-func (s *Swift) GetDefaultVersion() string { return "default" }
+// Name is the language's name in a hook manifest.
+func (s *Swift) Name() string { return "swift" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR.
+func (s *Swift) EnvironmentDir() string { return "swift_env" }
+
+// GetDefaultVersion is upstream's basic_get_default_version.
+func (s *Swift) GetDefaultVersion() string { return VersionDefault }
 
 // HealthCheck is upstream's lang_base.basic_health_check: an installed
 // environment is always healthy. A missing toolchain shows when the hook runs.

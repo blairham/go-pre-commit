@@ -141,7 +141,7 @@ func environWithout(environ, keys []string) []string {
 		name, _, _ := strings.Cut(kv, "=")
 		drop := false
 		for _, k := range keys {
-			if name == k || (runtime.GOOS == "windows" && strings.EqualFold(name, k)) {
+			if name == k || (runtime.GOOS == goosWindows && strings.EqualFold(name, k)) {
 				drop = true
 				break
 			}
@@ -243,7 +243,7 @@ func venvBinDir(envDir string) string {
 }
 
 func venvBinDirFor(goos, envDir string) string {
-	if goos == "windows" {
+	if goos == goosWindows {
 		return filepath.Join(envDir, "Scripts")
 	}
 	return filepath.Join(envDir, "bin")
@@ -265,7 +265,7 @@ func findInDir(dir, name string) (string, bool) {
 // executableNames lists the file names a command name can resolve to. A name
 // that already has an extension is tried as is first, as Windows does.
 func executableNames(goos, name, pathext string) []string {
-	if goos != "windows" {
+	if goos != goosWindows {
 		return []string{name}
 	}
 	if pathext == "" {

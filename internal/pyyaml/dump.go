@@ -82,7 +82,7 @@ func represent(v *Value) scalar {
 	case Timestamp:
 		return scalar{v.Str, true}
 	}
-	return scalar{v.Str, Resolve(v.Str) == "str"}
+	return scalar{v.Str, Resolve(v.Str) == tagStr}
 }
 
 // reprFloat is SafeRepresenter.represent_float over Python's repr.

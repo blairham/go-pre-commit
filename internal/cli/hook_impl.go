@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/output"
@@ -45,7 +46,7 @@ func (c *HookImplCommand) Run(args []string) int {
 	git.ScrubProcessEnv()
 
 	var opts hookImplFlags
-	remaining, code, ok := parseArgs("hook-impl", &opts, args, args)
+	remaining, code, ok := parseArgs(cmdHookImpl, &opts, args, args)
 	if !ok {
 		return code
 	}
@@ -68,7 +69,7 @@ func (c *HookImplCommand) Run(args []string) int {
 		return 1
 	}
 	stdin := []byte{}
-	if opts.HookType == "pre-push" {
+	if config.HookType(opts.HookType) == config.HookTypePrePush {
 		var err error
 		if stdin, err = readPrePushStdin(); err != nil {
 			return reportError(err)
@@ -110,10 +111,10 @@ func (c *HookImplCommand) Run(args []string) int {
 // hookType, remaining, become. ok is false, with the exit status to return,
 // when there is nothing to run.
 func hookTypeRunArgs(hookType string, remaining []string, stdin []byte, retv int) (args []string, exit int, ok bool) {
-	if hookType == "pre-push" {
+	if config.HookType(hookType) == config.HookTypePrePush {
 		return prePushRunArgs(remaining, stdin, retv)
 	}
-	if typeArgs := hookTypeArgs[hookType]; typeArgs != nil {
+	if typeArgs := hookTypeArgs[config.HookType(hookType)]; typeArgs != nil {
 		return typeArgs(remaining), 0, true
 	}
 	// pre-commit and pre-merge-commit take no additional args.
@@ -143,33 +144,33 @@ func prePushRunArgs(remaining []string, stdin []byte, retv int) (args []string, 
 
 // hookTypeArgs maps the other hook types that take arguments from git to
 // the run arguments those become.
-var hookTypeArgs = map[string]func(remaining []string) []string{
-	"commit-msg": func(remaining []string) []string {
+var hookTypeArgs = map[config.HookType]func(remaining []string) []string{
+	config.HookTypeCommitMsg: func(remaining []string) []string {
 		return positionalFlags(remaining, "--commit-msg-filename")
 	},
-	"prepare-commit-msg": func(remaining []string) []string {
+	config.HookTypePrepareCommitMsg: func(remaining []string) []string {
 		return positionalFlags(remaining,
 			"--commit-msg-filename", "--prepare-commit-message-source", "--commit-object-name")
 	},
-	"post-checkout": func(remaining []string) []string {
+	config.HookTypePostCheckout: func(remaining []string) []string {
 		var args []string
 		if len(remaining) >= 3 {
 			args = append(args,
 				"--from-ref", remaining[0], "--to-ref", remaining[1], "--checkout-type", remaining[2])
 		}
-		return append(args, "--all-files")
+		return append(args, optAllFiles)
 	},
-	"post-commit": func([]string) []string {
-		return []string{"--all-files"}
+	config.HookTypePostCommit: func([]string) []string {
+		return []string{optAllFiles}
 	},
-	"post-merge": func(remaining []string) []string {
-		return append(positionalFlags(remaining, "--is-squash-merge"), "--all-files")
+	config.HookTypePostMerge: func(remaining []string) []string {
+		return append(positionalFlags(remaining, "--is-squash-merge"), optAllFiles)
 	},
-	"post-rewrite": func(remaining []string) []string {
-		return append(positionalFlags(remaining, "--rewrite-command"), "--all-files")
+	config.HookTypePostRewrite: func(remaining []string) []string {
+		return append(positionalFlags(remaining, "--rewrite-command"), optAllFiles)
 	},
 	// Args: <upstream> [<branch>]
-	"pre-rebase": func(remaining []string) []string {
+	config.HookTypePreRebase: func(remaining []string) []string {
 		return positionalFlags(remaining, "--pre-rebase-upstream", "--pre-rebase-branch")
 	},
 }
@@ -297,7 +298,7 @@ func prePushArgs(dir, remoteName, remoteURL string, stdin []byte) ([]string, err
 		}
 		if slices.Contains(strings.Split(roots, "\n"), firstAncestor) {
 			// Pushing the whole tree, root commit included.
-			return append([]string{"--all-files"}, common...), nil
+			return append([]string{optAllFiles}, common...), nil
 		}
 		source, err := gitOutput(dir, "rev-parse", firstAncestor+"^")
 		if err != nil {

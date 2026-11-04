@@ -26,7 +26,7 @@ type gcFlags struct {
 
 func (c *GCCommand) Run(args []string) int {
 	var opts gcFlags
-	if _, code, ok := parseArgs("gc", &opts, args, args); !ok {
+	if _, code, ok := parseArgs(cmdGC, &opts, args, args); !ok {
 		return code
 	}
 
