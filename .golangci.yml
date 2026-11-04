@@ -32,7 +32,6 @@ linters:
   enable:
     # Not yet enabled here — overrides/go-pre-commit.yml says why. Adopt one
     # per pull request and shrink that list:
-    #   prealloc
     #   thelper
     # Core linters (enabled by default)
     - errcheck # Check for unchecked errors
@@ -64,6 +63,7 @@ linters:
     - predeclared # Find code that shadows predeclared identifiers
 
     # Performance
+    - prealloc # Finds slice declarations that could be preallocated
     - sloglint # Ensure consistent code style when using log/slog
 
     # Security

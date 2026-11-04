@@ -57,8 +57,9 @@ func TestWarningsInSchemaOrder(t *testing.T) {
 	if err == nil {
 		t.Fatal("an invalid files regex loaded")
 	}
-	var lines []string
-	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+	outLines := strings.Split(strings.TrimSpace(out), "\n")
+	lines := make([]string, 0, len(outLines))
+	for _, l := range outLines {
 		lines = append(lines, l[:min(len(l), 40)])
 	}
 	want := []string{

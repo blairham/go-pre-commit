@@ -89,7 +89,7 @@ func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var names []string
+	names := make([]string, 0, len(left))
 	for _, r := range left {
 		names = append(names, r.Repo)
 	}

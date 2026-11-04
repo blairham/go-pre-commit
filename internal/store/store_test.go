@@ -306,8 +306,9 @@ func TestMarkConfigUsedRealpathAndMissing(t *testing.T) {
 func TestForgetConfigs(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)
-	var paths []string
-	for _, name := range []string{"a", "b", "c"} {
+	names := []string{"a", "b", "c"}
+	paths := make([]string, 0, len(names))
+	for _, name := range names {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, nil, 0o644); err != nil {
 			t.Fatal(err)

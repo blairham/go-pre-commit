@@ -157,7 +157,8 @@ func (s argSpec) usage(width int) string {
 
 	optParts, posParts := parts[:posStart], parts[posStart:]
 	getLines := func(parts []string, indent string, withPrefix bool) []string {
-		var lines, line []string
+		var lines []string
+		line := make([]string, 0, len(parts))
 		lineLen := len(indent) - 1
 		if withPrefix {
 			lineLen = len(prefix) - 1
@@ -165,7 +166,7 @@ func (s argSpec) usage(width int) string {
 		for _, part := range parts {
 			if lineLen+1+len(part) > textWidth && len(line) > 0 {
 				lines = append(lines, indent+strings.Join(line, " "))
-				line = nil
+				line = line[:0]
 				lineLen = len(indent) - 1
 			}
 			line = append(line, part)
@@ -258,8 +259,9 @@ var topLevelSpec = argSpec{prog: "pre-commit", actions: []argAction{
 }}
 
 func hookTypeChoices() []string {
-	var out []string
-	for _, h := range config.AllHookTypes() {
+	hookTypes := config.AllHookTypes()
+	out := make([]string, 0, len(hookTypes))
+	for _, h := range hookTypes {
 		out = append(out, string(h))
 	}
 	slices.Sort(out)
