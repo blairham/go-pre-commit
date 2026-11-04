@@ -7,6 +7,7 @@ package xargs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -204,7 +205,8 @@ func (e *Executor) runBatch(ctx context.Context, cmdParts, args, env []string, d
 	}
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			result.ExitCode = exitErr.ExitCode()
 		} else {
 			return nil, fmt.Errorf("running command %s: %w", strings.Join(cmdParts, " "), err)

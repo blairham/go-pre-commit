@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/blairham/go-pre-commit/v4/internal/fatal"
@@ -183,6 +184,16 @@ func TestErrorTypeAndMessageOSError(t *testing.T) {
 	_, err := os.ReadFile(filepath.Join(t.TempDir(), "nope.yaml"))
 	typ, msg := errorTypeAndMessage(err)
 	if typ != "FileNotFoundError" || !strings.HasPrefix(msg, "[Errno 2] No such file or directory: '") {
+		t.Errorf("got %s: %s", typ, msg)
+	}
+}
+
+// Python picks the OSError subclass from the errno, so an errno that reaches
+// the PathError through a wrapper still names it.
+func TestErrorTypeAndMessageWrappedErrno(t *testing.T) {
+	err := &fs.PathError{Op: "open", Path: "x", Err: fmt.Errorf("open: %w", syscall.ENOENT)}
+	typ, msg := errorTypeAndMessage(err)
+	if typ != "FileNotFoundError" || !strings.HasSuffix(msg, ": 'x'") {
 		t.Errorf("got %s: %s", typ, msg)
 	}
 }

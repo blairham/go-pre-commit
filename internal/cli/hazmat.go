@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,7 +31,8 @@ func (c *HazmatCdCommand) Run(args []string) int {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		if e, ok := err.(*exec.ExitError); ok {
+		var e *exec.ExitError
+		if errors.As(err, &e) {
 			return e.ExitCode()
 		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -118,7 +120,8 @@ func (c *HazmatN1Command) Run(args []string) int {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			if e, ok := err.(*exec.ExitError); ok {
+			var e *exec.ExitError
+			if errors.As(err, &e) {
 				if e.ExitCode() != 0 {
 					exitCode = e.ExitCode()
 					fmt.Fprintf(os.Stderr, "Command failed for %s: %v\n",
