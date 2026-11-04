@@ -184,16 +184,7 @@ func pygrepLineAnchors(pattern string) string {
 			}
 		case c == '[':
 			inClass = true
-			b.WriteByte(c)
-			// A ']' first in the set (after an optional '^') is literal.
-			if i+1 < len(pattern) && pattern[i+1] == '^' {
-				b.WriteByte('^')
-				i++
-			}
-			if i+1 < len(pattern) && pattern[i+1] == ']' {
-				b.WriteByte(']')
-				i++
-			}
+			i = writeClassStart(&b, pattern, i)
 		case c == '$':
 			b.WriteString(`(?=\n?\z)`)
 		default:
@@ -201,6 +192,23 @@ func pygrepLineAnchors(pattern string) string {
 		}
 	}
 	return b.String()
+}
+
+// writeClassStart writes the '[' opening a character class at pattern[i],
+// with the '^' and ']' after it that do not close it, and returns the index
+// of the last of them.
+func writeClassStart(b *strings.Builder, pattern string, i int) int {
+	b.WriteByte('[')
+	// A ']' first in the set (after an optional '^') is literal.
+	if i+1 < len(pattern) && pattern[i+1] == '^' {
+		b.WriteByte('^')
+		i++
+	}
+	if i+1 < len(pattern) && pattern[i+1] == ']' {
+		b.WriteByte(']')
+		i++
+	}
+	return i
 }
 
 // pygrepByLine is upstream's _process_filename_by_line: every matching line,
@@ -308,16 +316,7 @@ func pygrepBytesPattern(pattern string) string {
 			continue
 		case c == '[' && !inClass:
 			inClass = true
-			b.WriteByte(c)
-			// A ']' first in the set (after an optional '^') is literal.
-			if i+1 < len(pattern) && pattern[i+1] == '^' {
-				b.WriteByte('^')
-				i++
-			}
-			if i+1 < len(pattern) && pattern[i+1] == ']' {
-				b.WriteByte(']')
-				i++
-			}
+			i = writeClassStart(&b, pattern, i)
 			continue
 		case c == ']' && inClass:
 			inClass = false
