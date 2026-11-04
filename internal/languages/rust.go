@@ -169,21 +169,7 @@ func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []strin
 		return err
 	}
 
-	var libDeps []string
-	packages := [][]string{{"--path", "."}}
-	for _, dep := range additionalDeps {
-		cli, ok := strings.CutPrefix(dep, "cli:")
-		if !ok {
-			libDeps = append(libDeps, dep)
-			continue
-		}
-		pkg, crateVersion, _ := strings.Cut(cli, ":")
-		if crateVersion != "" {
-			packages = append(packages, []string{pkg, "--version", crateVersion})
-		} else {
-			packages = append(packages, []string{pkg})
-		}
-	}
+	libDeps, packages := rustDeps(additionalDeps)
 
 	env := rustEnvPatch(envDir, version)
 	if version != "system" {
@@ -199,15 +185,7 @@ func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []strin
 	}
 
 	if len(libDeps) > 0 {
-		crates := make([]string, 0, len(libDeps))
-		for _, dep := range libDeps {
-			name, spec, _ := strings.Cut(dep, ":")
-			if spec == "" {
-				spec = "*"
-			}
-			crates = append(crates, name+"@"+spec)
-		}
-		if err := rustCmd(prefix, env, append([]string{"cargo", "add"}, crates...)...); err != nil {
+		if err := rustCmd(prefix, env, append([]string{"cargo", "add"}, crateSpecs(libDeps)...)...); err != nil {
 			return err
 		}
 	}
@@ -218,6 +196,41 @@ func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []strin
 		}
 	}
 	return nil
+}
+
+// rustDeps splits additional_dependencies into the library crates and the
+// packages to cargo install: the hook's own, then each cli: dependency,
+// at its version when it gives one.
+func rustDeps(additionalDeps []string) (libDeps []string, packages [][]string) {
+	packages = [][]string{{"--path", "."}}
+	for _, dep := range additionalDeps {
+		cli, ok := strings.CutPrefix(dep, "cli:")
+		if !ok {
+			libDeps = append(libDeps, dep)
+			continue
+		}
+		pkg, crateVersion, _ := strings.Cut(cli, ":")
+		if crateVersion != "" {
+			packages = append(packages, []string{pkg, "--version", crateVersion})
+		} else {
+			packages = append(packages, []string{pkg})
+		}
+	}
+	return libDeps, packages
+}
+
+// crateSpecs is each library dependency as cargo add takes it,
+// name@version, any version when it gives none.
+func crateSpecs(libDeps []string) []string {
+	crates := make([]string, 0, len(libDeps))
+	for _, dep := range libDeps {
+		name, spec, _ := strings.Cut(dep, ":")
+		if spec == "" {
+			spec = "*"
+		}
+		crates = append(crates, name+"@"+spec)
+	}
+	return crates
 }
 
 // Run is upstream's basic_run_hook inside in_env.

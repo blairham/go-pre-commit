@@ -335,104 +335,127 @@ func analyze(str string) analysis {
 		return analysis{scalar: str, empty: true, allowBlockPlain: true, allowSingleQuoted: true}
 	}
 	s := []rune(str)
-	var blockIndicators, flowIndicators, lineBreaks, specialCharacters bool
-	var leadingSpace, leadingBreak, trailingSpace, trailingBreak, breakSpace, spaceBreak bool
-
+	var f scalarFlags
 	if strings.HasPrefix(str, "---") || strings.HasPrefix(str, "...") {
-		blockIndicators, flowIndicators = true, true
+		f.blockIndicators, f.flowIndicators = true, true
 	}
 	precededByWhitespace := true
 	followedByWhitespace := len(s) == 1 || isSpaceOrBreakOrNul(s[1])
-	previousSpace, previousBreak := false, false
 
 	for i, ch := range s {
 		if i == 0 {
-			if strings.ContainsRune("#,[]{}&*!|>'\"%@`", ch) {
-				flowIndicators, blockIndicators = true, true
-			}
-			if ch == '?' || ch == ':' {
-				flowIndicators = true
-				if followedByWhitespace {
-					blockIndicators = true
-				}
-			}
-			if ch == '-' && followedByWhitespace {
-				flowIndicators, blockIndicators = true, true
-			}
+			f.firstIndicators(ch, followedByWhitespace)
 		} else {
-			if strings.ContainsRune(",?[]{}", ch) {
-				flowIndicators = true
-			}
-			if ch == ':' {
-				flowIndicators = true
-				if followedByWhitespace {
-					blockIndicators = true
-				}
-			}
-			if ch == '#' && precededByWhitespace {
-				flowIndicators, blockIndicators = true, true
-			}
+			f.indicators(ch, precededByWhitespace, followedByWhitespace)
 		}
 		if isBreak(ch) {
-			lineBreaks = true
+			f.lineBreaks = true
 		}
 		if ch != '\n' && (ch < 0x20 || ch > 0x7e) {
 			// Unicode characters are special too, since allow_unicode is off.
-			specialCharacters = true
+			f.specialCharacters = true
 		}
-		switch {
-		case ch == ' ':
-			if i == 0 {
-				leadingSpace = true
-			}
-			if i == len(s)-1 {
-				trailingSpace = true
-			}
-			if previousBreak {
-				breakSpace = true
-			}
-			previousSpace, previousBreak = true, false
-		case isBreak(ch):
-			if i == 0 {
-				leadingBreak = true
-			}
-			if i == len(s)-1 {
-				trailingBreak = true
-			}
-			if previousSpace {
-				spaceBreak = true
-			}
-			previousSpace, previousBreak = false, true
-		default:
-			previousSpace, previousBreak = false, false
-		}
+		f.spacing(ch, i == 0, i == len(s)-1)
 		precededByWhitespace = isSpaceOrBreakOrNul(ch)
 		followedByWhitespace = i+2 >= len(s) || isSpaceOrBreakOrNul(s[i+2])
 	}
+	return f.analysis(str)
+}
 
+// scalarFlags is what analyze finds in a scalar's characters.
+type scalarFlags struct {
+	blockIndicators, flowIndicators, lineBreaks, specialCharacters bool
+	leadingSpace, leadingBreak, trailingSpace, trailingBreak       bool
+	breakSpace, spaceBreak, previousSpace, previousBreak           bool
+}
+
+// firstIndicators notes the indicators the scalar's first character is.
+func (f *scalarFlags) firstIndicators(ch rune, followedByWhitespace bool) {
+	if strings.ContainsRune("#,[]{}&*!|>'\"%@`", ch) {
+		f.flowIndicators, f.blockIndicators = true, true
+	}
+	if ch == '?' || ch == ':' {
+		f.flowIndicators = true
+		if followedByWhitespace {
+			f.blockIndicators = true
+		}
+	}
+	if ch == '-' && followedByWhitespace {
+		f.flowIndicators, f.blockIndicators = true, true
+	}
+}
+
+// indicators notes the indicators any later character is.
+func (f *scalarFlags) indicators(ch rune, precededByWhitespace, followedByWhitespace bool) {
+	if strings.ContainsRune(",?[]{}", ch) {
+		f.flowIndicators = true
+	}
+	if ch == ':' {
+		f.flowIndicators = true
+		if followedByWhitespace {
+			f.blockIndicators = true
+		}
+	}
+	if ch == '#' && precededByWhitespace {
+		f.flowIndicators, f.blockIndicators = true, true
+	}
+}
+
+// spacing notes where the scalar's spaces and line breaks are.
+func (f *scalarFlags) spacing(ch rune, first, last bool) {
+	switch {
+	case ch == ' ':
+		if first {
+			f.leadingSpace = true
+		}
+		if last {
+			f.trailingSpace = true
+		}
+		if f.previousBreak {
+			f.breakSpace = true
+		}
+		f.previousSpace, f.previousBreak = true, false
+	case isBreak(ch):
+		if first {
+			f.leadingBreak = true
+		}
+		if last {
+			f.trailingBreak = true
+		}
+		if f.previousSpace {
+			f.spaceBreak = true
+		}
+		f.previousSpace, f.previousBreak = false, true
+	default:
+		f.previousSpace, f.previousBreak = false, false
+	}
+}
+
+// analysis is the styles a scalar str with these flags allows.
+func (f *scalarFlags) analysis(str string) analysis {
 	a := analysis{
-		scalar: str, multiline: lineBreaks,
+		scalar: str, multiline: f.lineBreaks,
 		allowFlowPlain: true, allowBlockPlain: true, allowSingleQuoted: true, allowBlock: true,
 	}
-	if leadingSpace || leadingBreak || trailingSpace || trailingBreak {
+	if f.leadingSpace || f.leadingBreak || f.trailingSpace || f.trailingBreak {
 		a.allowFlowPlain, a.allowBlockPlain = false, false
 	}
-	if trailingSpace {
+	if f.trailingSpace {
 		a.allowBlock = false
 	}
-	if breakSpace {
+	if f.breakSpace {
 		a.allowFlowPlain, a.allowBlockPlain, a.allowSingleQuoted = false, false, false
 	}
-	if spaceBreak || specialCharacters {
+	if f.spaceBreak || f.specialCharacters {
 		a.allowFlowPlain, a.allowBlockPlain, a.allowSingleQuoted, a.allowBlock = false, false, false, false
 	}
-	if lineBreaks {
+	if f.lineBreaks {
 		a.allowFlowPlain, a.allowBlockPlain = false, false
 	}
-	if flowIndicators {
+	if f.flowIndicators {
 		a.allowFlowPlain = false
 	}
-	if blockIndicators {
+	if f.blockIndicators {
 		a.allowBlockPlain = false
 	}
 	return a
@@ -489,6 +512,14 @@ func (e *emitter) writeBreaks(text []rune) {
 	e.writeIndent()
 }
 
+// runeAt is text[i], or -1 at its end.
+func runeAt(text []rune, i int) rune {
+	if i < len(text) {
+		return text[i]
+	}
+	return -1
+}
+
 func (e *emitter) writePlain(text []rune, split bool) {
 	if e.rootContext {
 		e.openEnded = true
@@ -503,19 +534,11 @@ func (e *emitter) writePlain(text []rune, split bool) {
 	spaces, breaks := false, false
 	start := 0
 	for end := 0; end <= len(text); end++ {
-		var ch rune = -1
-		if end < len(text) {
-			ch = text[end]
-		}
+		ch := runeAt(text, end)
 		switch {
 		case spaces:
 			if ch != ' ' {
-				if start+1 == end && e.column > e.bestWidth && split {
-					e.writeIndent()
-					e.whitespace, e.indention = false, false
-				} else {
-					e.write(string(text[start:end]))
-				}
+				e.writePlainSpaces(text[start:end], split)
 				start = end
 			}
 		case breaks:
@@ -536,23 +559,27 @@ func (e *emitter) writePlain(text []rune, split bool) {
 	}
 }
 
+// writePlainSpaces writes a run of spaces in a plain scalar: one alone past
+// the best width, when splitting, becomes a line break.
+func (e *emitter) writePlainSpaces(run []rune, split bool) {
+	if len(run) == 1 && e.column > e.bestWidth && split {
+		e.writeIndent()
+		e.whitespace, e.indention = false, false
+	} else {
+		e.write(string(run))
+	}
+}
+
 func (e *emitter) writeSingleQuoted(text []rune, split bool) {
 	e.writeIndicator("'", true, false, false)
 	spaces, breaks := false, false
 	start := 0
 	for end := 0; end <= len(text); end++ {
-		var ch rune = -1
-		if end < len(text) {
-			ch = text[end]
-		}
+		ch := runeAt(text, end)
 		switch {
 		case spaces:
 			if ch != ' ' {
-				if start+1 == end && e.column > e.bestWidth && split && start != 0 && end != len(text) {
-					e.writeIndent()
-				} else {
-					e.write(string(text[start:end]))
-				}
+				e.writeSingleQuotedSpaces(text, start, end, split)
 				start = end
 			}
 		case breaks:
@@ -561,11 +588,9 @@ func (e *emitter) writeSingleQuoted(text []rune, split bool) {
 				start = end
 			}
 		default:
-			if ch == -1 || ch == ' ' || isBreak(ch) || ch == '\'' {
-				if start < end {
-					e.write(string(text[start:end]))
-					start = end
-				}
+			if (ch == -1 || ch == ' ' || isBreak(ch) || ch == '\'') && start < end {
+				e.write(string(text[start:end]))
+				start = end
 			}
 		}
 		if ch == '\'' {
@@ -579,6 +604,17 @@ func (e *emitter) writeSingleQuoted(text []rune, split bool) {
 	e.writeIndicator("'", false, false, false)
 }
 
+// writeSingleQuotedSpaces writes the run of spaces text[start:end] of a
+// single-quoted scalar: one alone past the best width, when splitting and
+// not at either end of the scalar, becomes a line break.
+func (e *emitter) writeSingleQuotedSpaces(text []rune, start, end int, split bool) {
+	if start+1 == end && e.column > e.bestWidth && split && start != 0 && end != len(text) {
+		e.writeIndent()
+	} else {
+		e.write(string(text[start:end]))
+	}
+}
+
 var escapeReplacements = map[rune]string{
 	0: "0", '\a': "a", '\b': "b", '\t': "t", '\n': "n", '\v': "v", '\f': "f",
 	'\r': "r", 0x1b: "e", '"': "\"", '\\': "\\", 0x85: "N", 0xa0: "_",
@@ -589,48 +625,59 @@ func (e *emitter) writeDoubleQuoted(text []rune, split bool) {
 	e.writeIndicator("\"", true, false, false)
 	start := 0
 	for end := 0; end <= len(text); end++ {
-		var ch rune = -1
-		if end < len(text) {
-			ch = text[end]
-		}
-		if ch == -1 || ch == '"' || ch == '\\' || ch == 0x85 || ch == 0x2028 || ch == 0x2029 || ch == 0xfeff ||
-			ch < 0x20 || ch > 0x7e {
+		ch := runeAt(text, end)
+		if ch == -1 || isEscaped(ch) {
 			if start < end {
 				e.write(string(text[start:end]))
 				start = end
 			}
 			if ch != -1 {
-				var data string
-				switch r, ok := escapeReplacements[ch]; {
-				case ok:
-					data = "\\" + r
-				case ch <= 0xff:
-					data = fmt.Sprintf("\\x%02X", ch)
-				case ch <= 0xffff:
-					data = fmt.Sprintf("\\u%04X", ch)
-				default:
-					data = fmt.Sprintf("\\U%08X", ch)
-				}
-				e.write(data)
+				e.write(escape(ch))
 				start = end + 1
 			}
 		}
 		if end > 0 && end < len(text)-1 && (ch == ' ' || start >= end) &&
 			e.column+(end-start) > e.bestWidth && split {
-			data := "\\"
-			if start < end {
-				data = string(text[start:end]) + data
-			}
-			if start < end {
-				start = end
-			}
-			e.write(data)
-			e.writeIndent()
-			e.whitespace, e.indention = false, false
-			if text[start] == ' ' {
-				e.write("\\")
-			}
+			start = e.writeDoubleQuotedBreak(text, start, end)
 		}
 	}
 	e.writeIndicator("\"", false, false, false)
+}
+
+// isEscaped reports whether a double-quoted scalar escapes ch.
+func isEscaped(ch rune) bool {
+	return ch == '"' || ch == '\\' || ch == 0x85 || ch == 0x2028 || ch == 0x2029 || ch == 0xfeff ||
+		ch < 0x20 || ch > 0x7e
+}
+
+// escape is ch as a double-quoted scalar escapes it.
+func escape(ch rune) string {
+	switch r, ok := escapeReplacements[ch]; {
+	case ok:
+		return "\\" + r
+	case ch <= 0xff:
+		return fmt.Sprintf("\\x%02X", ch)
+	case ch <= 0xffff:
+		return fmt.Sprintf("\\u%04X", ch)
+	default:
+		return fmt.Sprintf("\\U%08X", ch)
+	}
+}
+
+// writeDoubleQuotedBreak folds a double-quoted scalar at end, after the
+// text from start not yet written, with an escaped line break. It returns
+// where the text not yet written now starts.
+func (e *emitter) writeDoubleQuotedBreak(text []rune, start, end int) int {
+	data := "\\"
+	if start < end {
+		data = string(text[start:end]) + data
+		start = end
+	}
+	e.write(data)
+	e.writeIndent()
+	e.whitespace, e.indention = false, false
+	if text[start] == ' ' {
+		e.write("\\")
+	}
+	return start
 }
