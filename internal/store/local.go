@@ -145,7 +145,10 @@ func (s *Store) MakeLocal(deps []string) (string, error) {
 	defer unlock()
 
 	// Double-check after acquiring the lock (another process may have won).
-	if path, err := s.lookupWith(name, localRepoVersion, isLocalRepo); err == nil {
+	if err := s.readyLocked(); err != nil {
+		return "", err
+	}
+	if path, err := s.find(name, localRepoVersion, isLocalRepo); err == nil {
 		return path, nil
 	}
 

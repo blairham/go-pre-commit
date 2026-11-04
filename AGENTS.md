@@ -47,7 +47,7 @@ internal/
   pcre/                  # PCRE regex support via dlclark/regexp2
   repository/            # Hook repository resolution and caching
   staged/                # Stash management for staged files
-  store/                 # On-disk cache for cloned hook repos
+  store/                 # On-disk cache for cloned hook repos: upstream's SQLite db.db, shared with Python pre-commit
   xargs/                 # Parallel execution with batching
 
 test/integration/        # Parity tests against real Python pre-commit (build tag: integration)
@@ -112,3 +112,4 @@ Releases: move `CHANGELOG.md`'s `[Unreleased]` under the version, push a `v*` ta
 | `github.com/charmbracelet/lipgloss` | Terminal styling |
 | `github.com/dlclark/regexp2` | PCRE-compatible regex (Python `re` parity) |
 | `gopkg.in/yaml.v3` | Config parsing |
+| `modernc.org/sqlite` | The store's `db.db` — pure Go, because releases build with `CGO_ENABLED=0` |

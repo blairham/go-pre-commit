@@ -4,7 +4,6 @@
 package store
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -185,19 +184,13 @@ func TestGCRemovesUnusedRepos(t *testing.T) {
 	os.MkdirAll(usedDir, 0o755)
 	os.MkdirAll(unusedDir, 0o755)
 
-	// Write a DB with two repos.
-	db := storeDB{
-		Repos: []RepoEntry{
-			{Repo: "https://example.com/used", Rev: "v1", Path: usedDir},
-			{Repo: "https://example.com/unused", Rev: "v2", Path: unusedDir},
-		},
-	}
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(s.dbPath(), data, 0o644); err != nil {
-		t.Fatal(err)
+	for _, r := range []RepoEntry{
+		{Repo: "https://example.com/used", Rev: "v1", Path: usedDir},
+		{Repo: "https://example.com/unused", Rev: "v2", Path: unusedDir},
+	} {
+		if err := s.save(r.Repo, r.Rev, r.Path); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// GC keeping only the used repo.
@@ -236,28 +229,23 @@ func TestGCRemovesUnusedRepos(t *testing.T) {
 func TestDBPersistence(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)
-	if err := s.Init(); err != nil {
-		t.Fatal(err)
-	}
 
-	// Write a DB manually via save.
 	repoDir := filepath.Join(dir, "repo1")
-	os.MkdirAll(repoDir, 0o755)
-	db := storeDB{
-		Repos: []RepoEntry{
-			{Repo: "https://example.com/repo", Rev: "abc", Path: repoDir},
-		},
-		ConfigsUsed: []string{"/some/config"},
-	}
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(s.dbPath(), data, 0o644); err != nil {
+	if err := s.save("https://example.com/repo", "abc", repoDir); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkConfigUsed(configPath); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create a new store pointing to same dir and verify it loads the data.
+	// A new store pointing to the same dir reads what the first one wrote.
 	s2 := New(dir)
 	repos, err := s2.ListRepos()
 	if err != nil {
@@ -266,7 +254,7 @@ func TestDBPersistence(t *testing.T) {
 	if len(repos) != 1 {
 		t.Fatalf("expected 1 repo from persisted DB, got %d", len(repos))
 	}
-	if repos[0].Repo != "https://example.com/repo" || repos[0].Rev != "abc" {
+	if repos[0] != (RepoEntry{Repo: "https://example.com/repo", Rev: "abc", Path: repoDir}) {
 		t.Fatalf("unexpected repo entry: %+v", repos[0])
 	}
 
@@ -274,7 +262,11 @@ func TestDBPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(configs) != 1 || configs[0] != "/some/config" {
+	realConfig, err := filepath.EvalSymlinks(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(configs) != 1 || configs[0] != realConfig {
 		t.Fatalf("unexpected configs: %v", configs)
 	}
 }

@@ -4,7 +4,7 @@
 package cli
 
 import (
-	"encoding/json"
+	"database/sql"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,29 +40,32 @@ func TestGCKeepsReposOfOtherTrackedConfigs(t *testing.T) {
 	cfgB := writeConfig(filepath.Join(base, "b"), "https://example.com/used-by-b")
 	cfgGone := writeConfig(filepath.Join(base, "gone"), "https://example.com/used-by-gone")
 
-	type entry = store.RepoEntry
-	var repos []entry
-	for _, name := range []string{"used-by-a", "used-by-b", "used-by-gone", "unused"} {
-		dir := filepath.Join(home, "repo"+name)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	s := store.New(home)
+	for _, c := range []string{cfgA, cfgGone} {
+		if err := s.MarkConfigUsed(c); err != nil {
 			t.Fatal(err)
 		}
-		repos = append(repos, entry{Repo: "https://example.com/" + name, Rev: "v1", Path: dir})
 	}
-	data, err := json.Marshal(map[string]any{"repos": repos})
+	// The rows go straight into db.db, as another process -- Python
+	// pre-commit, say -- would have left them.
+	db, err := sql.Open("sqlite", filepath.Join(home, "db.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(home, "db.json"), data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	s := store.New(home)
-	for _, c := range []string{cfgA, cfgGone} {
-		if err = s.MarkConfigUsed(c); err != nil {
+	for _, name := range []string{"used-by-a", "used-by-b", "used-by-gone", "unused"} {
+		dir := filepath.Join(home, "repo"+name)
+		if err = os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec("INSERT INTO repos (repo, ref, path) VALUES (?, 'v1', ?)",
+			"https://example.com/"+name, dir); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	if err = os.Remove(cfgGone); err != nil {
 		t.Fatal(err)
 	}

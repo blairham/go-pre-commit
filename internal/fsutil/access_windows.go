@@ -13,3 +13,11 @@ func Executable(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
+
+// Writable is Python's os.access(path, os.W_OK), which on Windows asks only
+// whether path exists and is not a file with the read-only attribute: a
+// directory is always writable to it.
+func Writable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && (info.IsDir() || info.Mode().Perm()&0o200 != 0)
+}

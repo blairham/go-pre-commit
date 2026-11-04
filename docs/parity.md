@@ -160,32 +160,44 @@ tools on one machine, install this one somewhere earlier or later on `PATH`
 deliberately and know which one you are getting — `pre-commit --version` prints
 a `(build …)` suffix here and nothing of the sort upstream.
 
-**The cache is shared with Python pre-commit, and the formats are not
-compatible.** Both default to `~/.cache/pre-commit` and both honor
-`PRE_COMMIT_HOME`. This one indexes into `db.json` with content-addressed
-directory names; Python indexes into a SQLite `db.db` with its own. Running both
-against one store leaves the two sets of environments side by side:
+**The cache is shared with Python pre-commit, and each tool uses what the other
+built.** Both default to `~/.cache/pre-commit`, both honor `PRE_COMMIT_HOME`,
+and both keep the store the same way: one SQLite index, `db.db`, with
+upstream's schema, and upstream's install-state files in every environment. A
+hook repository one tool cloned and installed is used as it is by the other —
+no second clone, no second environment — and either tool's `gc` collects the
+repos the other cloned once no tracked config uses them. A parity row
+(`TestStoreSharedWithPython`) runs the two against one store in both orders.
 
 ```
 $PRE_COMMIT_HOME/
-  db.db                  <- Python's index
-  db.json                <- this tool's index
-  repo3_4fef0c/          <- the same hook repo, Python's copy
-  repocf9afd75442a4da1/  <- and this tool's
+  db.db                  <- the index, both tools'
+  README                 <- upstream's, written when the store is created
+  repo3_4fef0c/          <- a repo Python cloned
+  repocf9afd75442a4da1/  <- a repo this tool cloned
   .lock
 ```
 
-Neither tool disturbs the other's entries — verified by alternating runs of both
-against one store — and they take turns properly, because both take an exclusive
-`flock` on the same `.lock` file. What you pay is disk: the same hook repository
-gets an environment per tool.
+The one difference left is how a new clone's directory is named: Python uses
+`tempfile.mkdtemp`, this tool a name derived from the repo and rev. Neither
+derives a path from a name — both look it up in `db.db` — so the two kinds sit
+side by side. Concurrent runs of either tool take turns on the same `.lock`.
+
+Releases up to v4.7.1 kept an index of their own, `db.json`, which Python never
+read, so the two built every environment twice. The first command that touches
+the store imports `db.json` into `db.db` and deletes it. A row whose directory
+is no longer an intact clone is dropped rather than imported, and where `db.db`
+already has the same repo and rev — a store both tools were using side by
+side — `db.db`'s clone is kept and this tool's duplicate directory is removed.
+Environments an older release installed are recognized by its old state file,
+so upgrading reinstalls nothing.
 
 **`clean` removes the entire store, including environments Python pre-commit
 built.** This matches upstream, whose `clean` also removes the store — but
 because the store is shared, it reaches further than you may expect. Running
-`pre-commit clean` with this tool deletes Python's `db.db` and its environment
-directories along with its own; the next Python run rebuilds them from scratch
-(`[INFO] This may take a few minutes...`). Nothing is lost permanently, but
+`pre-commit clean` with either tool deletes `db.db` and every environment in the
+store, whichever tool built it; the next run of either rebuilds what it needs
+from scratch (`[INFO] This may take a few minutes...`). Nothing is lost permanently, but
 nothing is free either. Point `PRE_COMMIT_HOME` somewhere separate if you want
 the two kept apart.
 

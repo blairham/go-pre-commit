@@ -12,3 +12,9 @@ import "golang.org/x/sys/unix"
 func Executable(path string) bool {
 	return unix.Access(path, unix.X_OK) == nil
 }
+
+// Writable is Python's os.access(path, os.W_OK): whether this process may
+// write to path, by access(2).
+func Writable(path string) bool {
+	return unix.Access(path, unix.W_OK) == nil
+}

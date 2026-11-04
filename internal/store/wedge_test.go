@@ -58,7 +58,7 @@ func TestGCKeepsEntryWhenDirectoryCannotBeRemoved(t *testing.T) {
 	// repoPath needs write on its PARENT, and fsutil.RemoveAll only repairs
 	// permissions from repoPath downward — so this is genuinely irrecoverable,
 	// which is the case GC has to survive. The store dir itself stays writable
-	// so db.json can still be saved.
+	// so db.db can still be written.
 	holder := filepath.Join(s.Dir(), "holder")
 	repoPath := filepath.Join(holder, "repo-readonly")
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {

@@ -52,8 +52,9 @@ toolchain is to run its hooks.
 > `homebrew/core/pre-commit`, and `brew` will say so. If you keep both tools,
 > know which one you are getting: `pre-commit --version` prints a `(build …)`
 > suffix here and nothing of the sort upstream. The cache directory is shared
-> with the Python tool too — details, including what `clean` removes, are in
-> [docs/parity.md](docs/parity.md#deliberate-behaviors-that-surprise-people).
+> with the Python tool too, in the same format, so each reuses the hook
+> environments the other installed — details, including what `clean` removes,
+> are in [docs/parity.md](docs/parity.md#deliberate-behaviors-that-surprise-people).
 
 ### Homebrew
 
