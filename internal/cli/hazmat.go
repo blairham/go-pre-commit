@@ -24,7 +24,7 @@ func (c *HazmatCdCommand) Run(args []string) int {
 	subdir := args[0]
 	cmdArgs := args[1:]
 
-	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
+	cmd := exec.CommandContext(c.Meta.hookCtx(), cmdArgs[0], cmdArgs[1:]...)
 	cmd.Dir = subdir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -62,7 +62,7 @@ func (c *HazmatIgnoreExitCodeCommand) Run(args []string) int {
 		return 1
 	}
 
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := exec.CommandContext(c.Meta.hookCtx(), args[0], args[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -113,7 +113,7 @@ func (c *HazmatN1Command) Run(args []string) int {
 	exitCode := 0
 	for _, f := range files {
 		allArgs := append(append([]string{}, cmdArgs[1:]...), f)
-		cmd := exec.Command(cmdArgs[0], allArgs...)
+		cmd := exec.CommandContext(c.Meta.hookCtx(), cmdArgs[0], allArgs...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

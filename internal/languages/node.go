@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -107,7 +106,7 @@ func (n *Node) InstallEnvironment(prefix, version string, additionalDeps []strin
 	envDir := filepath.Join(prefix, n.EnvironmentDir()+"-"+version)
 
 	// Create the nodeenv ("system" symlinks the host node into the env).
-	cmd := exec.Command("nodeenv", nodeenvArgs(envDir, version, nodeDefaultVersion(runtime.GOOS))...)
+	cmd := command("nodeenv", nodeenvArgs(envDir, version, nodeDefaultVersion(runtime.GOOS))...)
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("nodeenv failed: %s: %w", string(out), err)
@@ -159,7 +158,7 @@ func nodeInstallArgs(pkgs []string) []string {
 // npmInstall installs pkgs into the hook environment, which npm resolves from
 // NPM_CONFIG_PREFIX in env. env is the complete environment for npm.
 func npmInstall(npm, prefix string, env, pkgs []string) error {
-	cmd := exec.Command(npm, nodeInstallArgs(pkgs)...)
+	cmd := command(npm, nodeInstallArgs(pkgs)...)
 	cmd.Dir = prefix
 	cmd.Env = env
 	if out, err := cmd.CombinedOutput(); err != nil {

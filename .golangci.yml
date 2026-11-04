@@ -36,7 +36,6 @@ linters:
     #   goconst
     #   errorlint
     #   nilerr
-    #   noctx
     #   prealloc
     #   gosec
     #   nestif
@@ -66,6 +65,7 @@ linters:
     - errname # Checks sentinel errors are prefixed with Err
     - forcetypeassert # Finds forced type assertions
     - nilnil # Checks for simultaneous return of nil error and nil value
+    - noctx # Finds HTTP requests without context.Context
     - predeclared # Find code that shadows predeclared identifiers
 
     # Performance

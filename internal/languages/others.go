@@ -19,7 +19,7 @@ var condaLang = &SimpleLanguage{
 		envDir := filepath.Join(prefix, envDirName+"-"+version)
 		condaExe := condaExecutable()
 
-		cmd := exec.Command(condaExe, "env", "create", "--file", "environment.yml", "--prefix", envDir)
+		cmd := command(condaExe, "env", "create", "--file", "environment.yml", "--prefix", envDir)
 		cmd.Dir = prefix
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("%s env create failed: %s: %w", condaExe, string(out), err)
@@ -27,7 +27,7 @@ var condaLang = &SimpleLanguage{
 
 		if len(additionalDeps) > 0 {
 			args := append([]string{"install", "--prefix", envDir, "-y"}, additionalDeps...)
-			cmd := exec.Command(condaExe, args...)
+			cmd := command(condaExe, args...)
 			cmd.Dir = prefix
 			if out, err := cmd.CombinedOutput(); err != nil {
 				return fmt.Errorf("%s install failed: %s: %w", condaExe, string(out), err)
@@ -84,7 +84,7 @@ var dartLang = &SimpleLanguage{
 			name := filepath.Base(m)
 			name = name[:len(name)-5] // Remove .dart extension.
 			outPath := filepath.Join(binDir, name)
-			cmd := exec.Command("dart", "compile", "exe", m, "-o", outPath)
+			cmd := command("dart", "compile", "exe", m, "-o", outPath)
 			cmd.Dir = prefix
 			if out, err := cmd.CombinedOutput(); err != nil {
 				return fmt.Errorf("dart compile failed: %s: %w", string(out), err)
@@ -133,7 +133,7 @@ var perlLang = &SimpleLanguage{
 	},
 	InstallDepsFn: func(envDir, prefix string, deps []string) error {
 		for _, dep := range deps {
-			cmd := exec.Command("cpan", "-T", "-l", envDir, dep)
+			cmd := command("cpan", "-T", "-l", envDir, dep)
 			cmd.Dir = prefix
 			if out, err := cmd.CombinedOutput(); err != nil {
 				return fmt.Errorf("cpan install %s failed: %s: %w", dep, string(out), err)
@@ -160,7 +160,7 @@ func (s *Swift) InstallEnvironment(prefix, version string, additionalDeps []stri
 	envDir := filepath.Join(prefix, s.EnvironmentDir()+"-"+version)
 	binDir := filepath.Join(envDir, "bin")
 
-	cmd := exec.Command("swift", "build", "-c", "release", "--build-path", envDir)
+	cmd := command("swift", "build", "-c", "release", "--build-path", envDir)
 	cmd.Dir = prefix
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("swift build failed: %s: %w", string(out), err)
@@ -169,9 +169,11 @@ func (s *Swift) InstallEnvironment(prefix, version string, additionalDeps []stri
 	// Copy built executables.
 	releaseBin := filepath.Join(envDir, "release")
 	entries, _ := filepath.Glob(filepath.Join(releaseBin, "*"))
-	_ = exec.Command("mkdir", "-p", binDir).Run()
+	// Errors are ignored, as they always have been: cp (no -r) refuses every
+	// directory release/ holds besides the executables.
+	_ = command("mkdir", "-p", binDir).Run() //nolint:errcheck // ignored, as above
 	for _, e := range entries {
-		exec.Command("cp", e, binDir).Run()
+		command("cp", e, binDir).Run() //nolint:errcheck // ignored, as above
 	}
 
 	return nil

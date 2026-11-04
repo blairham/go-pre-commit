@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/blairham/go-pre-commit/v4/internal/config"
 	"github.com/blairham/go-pre-commit/v4/internal/fatal"
+	"github.com/blairham/go-pre-commit/v4/internal/git"
 	"github.com/blairham/go-pre-commit/v4/internal/store"
 )
 
@@ -218,7 +218,7 @@ func logAndExit(storeDir, prefix string, code int, typ, msg, traceback string) i
 	fmt.Println(errorMsg)
 
 	gitVersion := ""
-	if out, err := exec.Command("git", "--version").Output(); err == nil {
+	if out, err := git.Command("--version").Output(); err == nil {
 		gitVersion = strings.TrimRight(string(out), "\n")
 	}
 	executable, err := os.Executable()

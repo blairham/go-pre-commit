@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +31,7 @@ func TestRunLegacyHook(t *testing.T) {
 	}
 
 	retv, err := runLegacyHook(
+		t.Context(),
 		"pre-commit",
 		dir,
 		[]string{"a", "b"},
@@ -49,18 +51,39 @@ func TestRunLegacyHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
-	if retv, err := runLegacyHook("pre-commit", "", nil, nil, os.Environ()); retv != 0 || err != nil {
+	if retv, err := runLegacyHook(t.Context(), "pre-commit", "", nil, nil, os.Environ()); retv != 0 || err != nil {
 		t.Errorf("no hook dir: retv=%d err=%v", retv, err)
 	}
 	// Not executable: skipped, as os.access(X_OK) does.
 	if err := os.Chmod(legacy, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if retv, err := runLegacyHook("pre-commit", dir, nil, nil, os.Environ()); retv != 0 || err != nil {
+	if retv, err := runLegacyHook(t.Context(), "pre-commit", dir, nil, nil, os.Environ()); retv != 0 || err != nil {
 		t.Errorf("non-executable: retv=%d err=%v", retv, err)
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("a skipped legacy hook ran: %v", err)
+	}
+}
+
+// A legacy hook started once the command's context is canceled -- after ^C
+// -- still runs: hookCtx drops the cancellation, so nothing here kills or
+// refuses the hook, as nothing did under exec.Command.
+func TestRunLegacyHookIgnoresCanceledCommandContext(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script legacy hooks")
+	}
+	dir := t.TempDir()
+	legacy := filepath.Join(dir, "pre-commit.legacy")
+	if err := os.WriteFile(legacy, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	m := &Meta{Ctx: ctx}
+	retv, err := runLegacyHook(m.hookCtx(), "pre-commit", dir, nil, nil, os.Environ())
+	if err != nil || retv != 3 {
+		t.Fatalf("retv=%d err=%v, want the hook's own 3", retv, err)
 	}
 }
 

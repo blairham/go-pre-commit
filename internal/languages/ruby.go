@@ -9,7 +9,6 @@ import (
 	"embed"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -125,7 +124,7 @@ func rubySetupCmd(prefix, envDir, version string, argv ...string) error {
 	if err != nil {
 		bin = argv[0]
 	}
-	cmd := exec.Command(bin, argv[1:]...)
+	cmd := command(bin, argv[1:]...)
 	cmd.Dir = prefix
 	cmd.Env = append(environWithout(os.Environ(), rubyUnset), env...)
 	if out, err := cmd.CombinedOutput(); err != nil {

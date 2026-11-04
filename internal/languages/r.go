@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -86,7 +85,7 @@ func executeR(code, envDir, cwd string, cliOpts, args []string) (_ string, err e
 	if err != nil {
 		bin = argv[0]
 	}
-	cmd := exec.Command(bin, argv[1:]...)
+	cmd := command(bin, argv[1:]...)
 	cmd.Dir = cwd
 	cmd.Env = append(environWithout(os.Environ(), rUnset), env...)
 	var stdout, stderr bytes.Buffer
