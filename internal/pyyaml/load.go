@@ -64,7 +64,11 @@ func Parse(src string) (*yaml.Node, error) {
 	var doc yaml.Node
 	if err := dec.Decode(&doc); err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, nil
+			// PyYAML's get_single_node returns None for an empty stream rather
+			// than raising, and callers (Load, migrate-config) read a nil node
+			// as that None. A sentinel error would make "no document" a failure
+			// upstream never reports.
+			return nil, nil //nolint:nilnil // get_single_node's None for an empty stream
 		}
 		return nil, composeError(src, err)
 	}

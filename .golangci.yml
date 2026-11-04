@@ -36,7 +36,6 @@ linters:
     #   goconst
     #   errorlint
     #   nilerr
-    #   nilnil
     #   noctx
     #   prealloc
     #   gosec
@@ -67,6 +66,7 @@ linters:
     - sqlclosecheck # Check that sql.Rows and sql.Stmt are closed
     - errname # Checks sentinel errors are prefixed with Err
     - forcetypeassert # Finds forced type assertions
+    - nilnil # Checks for simultaneous return of nil error and nil value
     - predeclared # Find code that shadows predeclared identifiers
 
     # Performance
