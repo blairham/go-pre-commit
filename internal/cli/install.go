@@ -322,22 +322,8 @@ func installHookScripts(configFile string, given []string, overwrite, skipOnMiss
 			return reportError(err)
 		}
 
-		// An existing hook that is not ours becomes the legacy hook, which
-		// the installed script runs first ("migration mode").
-		if _, err := os.Lstat(hookFile); err == nil && !isOurScript(hookFile) {
-			if err := os.Rename(hookFile, legacyFile); err != nil {
-				return reportError(err)
-			}
-		}
-
-		if _, err := os.Stat(legacyFile); err == nil {
-			if overwrite {
-				if err := os.Remove(legacyFile); err != nil {
-					return reportError(err)
-				}
-			} else {
-				fmt.Printf("Running in migration mode with existing hooks at %s\nUse -f to use only pre-commit.\n", legacyFile)
-			}
+		if err := setUpLegacyHook(hookFile, legacyFile, overwrite); err != nil {
+			return reportError(err)
 		}
 
 		content := hookScript(configFile, hookType, skipOnMissingConfig)
@@ -353,6 +339,24 @@ func installHookScripts(configFile string, given []string, overwrite, skipOnMiss
 		fmt.Printf("pre-commit installed at %s\n", hookFile)
 	}
 	return 0
+}
+
+// setUpLegacyHook makes an existing hook that is not ours the legacy hook,
+// which the installed script runs first ("migration mode"), then drops
+// the legacy hook with overwrite.
+func setUpLegacyHook(hookFile, legacyFile string, overwrite bool) error {
+	if _, err := os.Lstat(hookFile); err == nil && !isOurScript(hookFile) {
+		if err := os.Rename(hookFile, legacyFile); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(legacyFile); err == nil {
+		if overwrite {
+			return os.Remove(legacyFile)
+		}
+		fmt.Printf("Running in migration mode with existing hooks at %s\nUse -f to use only pre-commit.\n", legacyFile)
+	}
+	return nil
 }
 
 // installHookTypes is upstream's _hook_types: the -t types given, else the

@@ -70,32 +70,61 @@ func (c *AutoupdateCommand) Run(args []string) int {
 
 	// Upstream's config_repos: every repo autoupdate can move, in order;
 	// revInfos is indexed alongside it.
-	var configRepos []config.RepoConfig
+	configRepos, todo := updatableRepos(cfg, opts.Repo)
+	jobs := updateJobs(opts.Jobs, len(opts.Repo), len(configRepos))
+	results := startUpdates(configRepos, todo, jobs, !opts.BleedingEdge, opts.Freeze)
+
+	// As upstream's as_completed loop: each repo is reported as it finishes.
+	// An error other than "cannot be updated" ends the run unwritten, after
+	// the updates already started have finished.
+	report := collectUpdates(results, configRepos)
+	if report.unexpected != nil {
+		return unexpectedError(report.unexpected)
+	}
+
+	if report.changed && !opts.DryRun {
+		if err := writeNewConfig(opts.Config, report.revInfos); err != nil {
+			return unexpectedError(err)
+		}
+	}
+
+	return report.retv
+}
+
+// updatableRepos is upstream's config_repos, every repo in cfg autoupdate
+// can move, in order, and the indexes in it of those to update: the ones
+// only names, or all of them.
+func updatableRepos(cfg *config.Config, only []string) (configRepos []config.RepoConfig, todo []int) {
 	for _, r := range cfg.Repos {
 		if !r.IsLocal() && !r.IsMeta() {
 			configRepos = append(configRepos, r)
 		}
 	}
-	var todo []int
 	for i, r := range configRepos {
-		if len(opts.Repo) == 0 || slices.Contains(opts.Repo, r.Repo) {
+		if len(only) == 0 || slices.Contains(only, r.Repo) {
 			todo = append(todo, i)
 		}
 	}
+	return configRepos, todo
+}
 
-	// jobs: 0 is the number of cpus, at most one per repo, at least one.
-	jobs := opts.Jobs
+// updateJobs is how many repos autoupdate updates at once: jobs, or the
+// number of cpus for 0, at most one per repo and at least one.
+func updateJobs(jobs, repoFlags, configRepos int) int {
 	if jobs == 0 {
 		jobs = runtime.NumCPU()
 	}
-	if n := len(opts.Repo); n > 0 {
-		jobs = min(jobs, n)
+	if repoFlags > 0 {
+		jobs = min(jobs, repoFlags)
 	} else {
-		jobs = min(jobs, len(configRepos))
+		jobs = min(jobs, configRepos)
 	}
-	jobs = max(jobs, 1)
+	return max(jobs, 1)
+}
 
-	tagsOnly := !opts.BleedingEdge
+// startUpdates updates the repos todo indexes, jobs at a time, sending each
+// result as it finishes and closing the channel after the last.
+func startUpdates(configRepos []config.RepoConfig, todo []int, jobs int, tagsOnly, freeze bool) <-chan updateResult {
 	results := make(chan updateResult)
 	go func() {
 		var wg sync.WaitGroup
@@ -106,60 +135,57 @@ func (c *AutoupdateCommand) Run(args []string) int {
 			go func() {
 				defer wg.Done()
 				defer func() { <-sem }()
-				results <- updateOne(i, configRepos[i], tagsOnly, opts.Freeze)
+				results <- updateOne(i, configRepos[i], tagsOnly, freeze)
 			}()
 		}
 		wg.Wait()
 		close(results)
 	}()
+	return results
+}
 
-	// As upstream's as_completed loop: each repo is reported as it finishes.
-	// An error other than "cannot be updated" ends the run unwritten, after
-	// the updates already started have finished.
-	revInfos := make([]*revInfo, len(configRepos))
-	changed := false
-	retv := 0
-	var unexpected error
+// updateReport is what collectUpdates makes of the updates' results.
+type updateReport struct {
+	unexpected error
+	revInfos   []*revInfo
+	retv       int
+	changed    bool
+}
+
+// collectUpdates reports each result as it arrives, and stops reporting at
+// the first unexpected error while the rest finish.
+func collectUpdates(results <-chan updateResult, configRepos []config.RepoConfig) updateReport {
+	report := updateReport{revInfos: make([]*revInfo, len(configRepos))}
 	for res := range results {
-		if unexpected != nil {
+		if report.unexpected != nil {
 			continue
 		}
 		var cannot cannotUpdateError
 		switch {
 		case errors.As(res.err, &cannot):
 			fmt.Println(cannot)
-			retv = 1
+			report.retv = 1
 			continue
 		case res.err != nil:
-			unexpected = res.err
+			report.unexpected = res.err
 			continue
 		}
 		old, upd := configRepos[res.idx], res.info
 		var msg string
 		if upd.rev != old.Rev {
-			changed = true
+			report.changed = true
 			newS := upd.rev
 			if upd.frozen != "" {
 				newS = upd.frozen + " (frozen)"
 			}
 			msg = fmt.Sprintf("updating %s -> %s", old.Rev, newS)
-			revInfos[res.idx] = &upd
+			report.revInfos[res.idx] = &upd
 		} else {
 			msg = "already up to date!"
 		}
 		fmt.Printf("[%s] %s\n", old.Repo, msg)
 	}
-	if unexpected != nil {
-		return unexpectedError(unexpected)
-	}
-
-	if changed && !opts.DryRun {
-		if err := writeNewConfig(opts.Config, revInfos); err != nil {
-			return unexpectedError(err)
-		}
-	}
-
-	return retv
+	return report
 }
 
 func (c *AutoupdateCommand) Help() string {
@@ -271,10 +297,6 @@ func fetchRevInfo(tmp, repo string, tagsOnly, freeze bool) (revInfo, error) {
 	g := func(args ...string) []string {
 		return append(append(append([]string{}, git.NoFSMonitor...), "-C", tmp), args...)
 	}
-	tagOpt := "--exact"
-	if tagsOnly {
-		tagOpt = "--abbrev=0"
-	}
 
 	err := git.InitRepo(tmp, repo)
 	if err == nil {
@@ -287,33 +309,15 @@ func fetchRevInfo(tmp, repo string, tagsOnly, freeze bool) (revInfo, error) {
 		return revInfo{}, err
 	}
 
-	var rev string
-	out, err := git.OutputCaptured("", g("describe", "FETCH_HEAD", "--tags", tagOpt)...)
-	var cpe *git.CalledProcessError
-	switch {
-	case errors.As(err, &cpe):
-		if out, err = git.OutputCaptured("", g("rev-parse", "FETCH_HEAD")...); err != nil {
-			return revInfo{}, err
-		}
-		rev = strings.TrimSpace(out)
-	case err != nil:
+	rev, err := fetchedRev(tmp, g, tagsOnly)
+	if err != nil {
 		return revInfo{}, err
-	default:
-		rev = strings.TrimSpace(out)
-		if tagsOnly {
-			if rev, err = git.BestCandidateTag(rev, tmp); err != nil {
-				return revInfo{}, err
-			}
-		}
 	}
 
 	info := revInfo{rev: rev}
 	if freeze {
-		if out, err = git.OutputCaptured("", g("rev-parse", rev)...); err != nil {
+		if info, err = frozenRevInfo(g, rev); err != nil {
 			return revInfo{}, err
-		}
-		if exact := strings.TrimSpace(out); exact != rev {
-			info.rev, info.frozen = exact, rev
 		}
 	}
 
@@ -324,6 +328,7 @@ func fetchRevInfo(tmp, repo string, tagsOnly, freeze bool) (revInfo, error) {
 	if err == nil {
 		err = git.RunCaptured("", g("checkout", info.rev, "--", config.ManifestFile)...)
 	}
+	var cpe *git.CalledProcessError
 	if err != nil && !errors.As(err, &cpe) {
 		return revInfo{}, err
 	}
@@ -334,6 +339,45 @@ func fetchRevInfo(tmp, repo string, tagsOnly, freeze bool) (revInfo, error) {
 	info.hookIDs = make(map[string]bool, len(manifest))
 	for _, h := range manifest {
 		info.hookIDs[h.ID] = true
+	}
+	return info, nil
+}
+
+// fetchedRev is the rev to update to: the newest tag reachable from
+// FETCH_HEAD (or, bleeding edge, a tag exactly on it), else its sha.
+func fetchedRev(tmp string, g func(args ...string) []string, tagsOnly bool) (string, error) {
+	tagOpt := "--exact"
+	if tagsOnly {
+		tagOpt = "--abbrev=0"
+	}
+	out, err := git.OutputCaptured("", g("describe", "FETCH_HEAD", "--tags", tagOpt)...)
+	var cpe *git.CalledProcessError
+	switch {
+	case errors.As(err, &cpe):
+		if out, err = git.OutputCaptured("", g("rev-parse", "FETCH_HEAD")...); err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(out), nil
+	case err != nil:
+		return "", err
+	}
+	rev := strings.TrimSpace(out)
+	if tagsOnly {
+		return git.BestCandidateTag(rev, tmp)
+	}
+	return rev, nil
+}
+
+// frozenRevInfo is rev frozen: its sha is the rev, and rev is kept for the
+// "# frozen:" comment, unless rev is that sha already.
+func frozenRevInfo(g func(args ...string) []string, rev string) (revInfo, error) {
+	out, err := git.OutputCaptured("", g("rev-parse", rev)...)
+	if err != nil {
+		return revInfo{}, err
+	}
+	info := revInfo{rev: rev}
+	if exact := strings.TrimSpace(out); exact != rev {
+		info.rev, info.frozen = exact, rev
 	}
 	return info, nil
 }

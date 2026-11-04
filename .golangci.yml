@@ -40,7 +40,6 @@ linters:
     #   gosec
     #   nestif
     #   funlen
-    #   gocognit
     #   gocyclo
     #   thelper
     # Core linters (enabled by default)
@@ -74,6 +73,7 @@ linters:
     # Security
 
     # Code complexity
+    - gocognit # Reports high cognitive complexity
 
     # Testing
     - tparallel # Detects inappropriate usage of t.Parallel()

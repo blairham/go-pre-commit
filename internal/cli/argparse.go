@@ -105,18 +105,7 @@ func (s argSpec) usageParts() (parts []string, posStart int) {
 	all := append(slices.Clone(optionals), positionals...)
 	groupStart, groupEnd := -1, -1
 	for i, a := range all {
-		var part string
-		if len(a.opts) == 0 {
-			part = a.formatArgs()
-		} else {
-			part = a.opts[0]
-			if a.nargs != "0" {
-				part += " " + a.formatArgs()
-			}
-			if !a.required && !a.group {
-				part = "[" + part + "]"
-			}
-		}
+		part := a.usagePart()
 		if a.group {
 			if groupStart < 0 {
 				groupStart = i
@@ -133,6 +122,22 @@ func (s argSpec) usageParts() (parts []string, posStart int) {
 		parts[groupEnd-1] += "]"
 	}
 	return parts, len(optionals)
+}
+
+// usagePart is the action's part of the usage line, before any group's
+// brackets.
+func (a argAction) usagePart() string {
+	if len(a.opts) == 0 {
+		return a.formatArgs()
+	}
+	part := a.opts[0]
+	if a.nargs != "0" {
+		part += " " + a.formatArgs()
+	}
+	if !a.required && !a.group {
+		part = "[" + part + "]"
+	}
+	return part
 }
 
 // usage is argparse's format_usage at the given width: "usage: ..." and a
@@ -424,9 +429,23 @@ func parseArgs(cmd string, opts any, args, parseArgs []string) (positionals []st
 
 	// Split what go-flags left into positionals and the arguments argparse
 	// would leave unrecognized, in the order they were given.
-	maxPos, minPos := 0, 0
-	var required []string
-	for _, a := range spec.actions {
+	maxPos, minPos := spec.positionalCounts()
+	positionals, unrecognized := splitPositionals(rest, tail, maxPos)
+
+	if len(positionals) < minPos {
+		required := spec.requiredPositionals(len(positionals))
+		return nil, argparseError(spec, "the following arguments are required: "+strings.Join(required, ", ")), false
+	}
+	if len(unrecognized) > 0 {
+		return nil, argparseError(topLevelSpec, "unrecognized arguments: "+strings.Join(unrecognized, " ")), false
+	}
+	return positionals, 0, true
+}
+
+// positionalCounts is how many positionals the parser takes: at most
+// (-1 for any number), and at least.
+func (s argSpec) positionalCounts() (maxPos, minPos int) {
+	for _, a := range s.actions {
 		if len(a.opts) > 0 {
 			continue
 		}
@@ -440,7 +459,13 @@ func parseArgs(cmd string, opts any, args, parseArgs []string) (positionals []st
 			maxPos = -1
 		}
 	}
-	var unrecognized []string
+	return maxPos, minPos
+}
+
+// splitPositionals splits what go-flags left, rest, and what followed
+// "--", tail, into positionals, at most maxPos of them (any number when it
+// is negative), and the arguments argparse would leave unrecognized.
+func splitPositionals(rest, tail []string, maxPos int) (positionals, unrecognized []string) {
 	for _, tok := range rest {
 		switch {
 		case len(tok) > 1 && tok[0] == '-':
@@ -458,23 +483,23 @@ func parseArgs(cmd string, opts any, args, parseArgs []string) (positionals []st
 			unrecognized = append(unrecognized, tok)
 		}
 	}
+	return positionals, unrecognized
+}
 
-	if len(positionals) < minPos {
-		n := 0
-		for _, a := range spec.actions {
-			if len(a.opts) == 0 && a.nargs == "" {
-				if n >= len(positionals) {
-					required = append(required, a.dest)
-				}
-				n++
+// requiredPositionals is the names of the required positionals after the
+// first given ones.
+func (s argSpec) requiredPositionals(given int) []string {
+	var required []string
+	n := 0
+	for _, a := range s.actions {
+		if len(a.opts) == 0 && a.nargs == "" {
+			if n >= given {
+				required = append(required, a.dest)
 			}
+			n++
 		}
-		return nil, argparseError(spec, "the following arguments are required: "+strings.Join(required, ", ")), false
 	}
-	if len(unrecognized) > 0 {
-		return nil, argparseError(topLevelSpec, "unrecognized arguments: "+strings.Join(unrecognized, " ")), false
-	}
-	return positionals, 0, true
+	return required
 }
 
 // flagsErrorMessage is argparse's message for what go-flags still rejects
@@ -496,9 +521,9 @@ func flagsErrorMessage(spec argSpec, err error) string {
 // value as it is consumed, and its mutually exclusive group check, over the
 // arguments in order. It returns the first message, or "".
 func checkValues(spec argSpec, args []string) string {
-	var groupSeen *argAction
-	for i := 0; i < len(args); i++ {
-		tok := args[i]
+	w := valueWalk{args: args}
+	for ; w.i < len(args); w.i++ {
+		tok := args[w.i]
 		if tok == "--" {
 			return ""
 		}
@@ -506,37 +531,52 @@ func checkValues(spec argSpec, args []string) string {
 			continue
 		}
 		name, value, hasValue := strings.Cut(tok, "=")
-		a, ok := spec.find(name)
-		if !ok {
-			continue
-		}
-		if a.nargs == "0" && hasValue {
-			return "argument " + a.label() + ": ignored explicit argument " + config.PyRepr(value)
-		}
-		if a.group {
-			if groupSeen != nil && groupSeen.label() != a.label() {
-				return "argument " + a.label() + ": not allowed with argument " + groupSeen.label()
+		if a, ok := spec.find(name); ok {
+			if msg := w.option(a, value, hasValue); msg != "" {
+				return msg
 			}
-			seen := a
-			groupSeen = &seen
 		}
-		if a.nargs == "0" || a.nargs == "*" {
-			continue
+	}
+	return ""
+}
+
+// valueWalk is checkValues' place in the arguments, and the option of the
+// mutually exclusive group it has seen.
+type valueWalk struct {
+	groupSeen *argAction
+	args      []string
+	i         int
+}
+
+// option checks the option a at args[i], and the value it takes: after
+// "=", or from the next argument, which is then consumed.
+func (w *valueWalk) option(a argAction, value string, hasValue bool) string {
+	if a.nargs == "0" && hasValue {
+		return "argument " + a.label() + ": ignored explicit argument " + config.PyRepr(value)
+	}
+	if a.group {
+		if w.groupSeen != nil && w.groupSeen.label() != a.label() {
+			return "argument " + a.label() + ": not allowed with argument " + w.groupSeen.label()
 		}
-		if !hasValue {
-			if i+1 >= len(args) || isOptionLike(args[i+1]) {
-				if a.nargs == "" {
-					return "argument " + a.label() + ": expected one argument"
-				}
-				continue
+		seen := a
+		w.groupSeen = &seen
+	}
+	if a.nargs == "0" || a.nargs == "*" {
+		return ""
+	}
+	if !hasValue {
+		if w.i+1 >= len(w.args) || isOptionLike(w.args[w.i+1]) {
+			if a.nargs == "" {
+				return "argument " + a.label() + ": expected one argument"
 			}
-			i++
-			value = args[i]
+			return ""
 		}
-		if a.check != nil {
-			if msg := a.check(value); msg != "" {
-				return "argument " + a.label() + ": " + msg
-			}
+		w.i++
+		value = w.args[w.i]
+	}
+	if a.check != nil {
+		if msg := a.check(value); msg != "" {
+			return "argument " + a.label() + ": " + msg
 		}
 	}
 	return ""

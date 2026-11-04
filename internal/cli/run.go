@@ -64,12 +64,8 @@ func (c *RunCommand) Run(args []string) int {
 	var err error
 
 	// Handle deprecated flags.
-	if opts.Source != "" && opts.FromRef == "" {
-		opts.FromRef = opts.Source
-	}
-	if opts.Origin != "" && opts.ToRef == "" {
-		opts.ToRef = opts.Origin
-	}
+	useDeprecated(&opts.FromRef, opts.Source)
+	useDeprecated(&opts.ToRef, opts.Origin)
 
 	output.SetColorModeFromString(opts.Color)
 
@@ -113,32 +109,14 @@ func (c *RunCommand) Run(args []string) int {
 	}
 
 	// Determine files.
-	var filenames []string
 	noStash := os.Getenv("PRE_COMMIT_NO_STASH") != ""
-	if opts.AllFiles {
-		filenames, err = git.GetAllFiles()
-		if err != nil {
-			return reportError(err)
-		}
-	} else if len(opts.Files) > 0 {
-		filenames = opts.Files
-	} else if opts.FromRef != "" && opts.ToRef != "" {
-		filenames, err = git.GetChangedFiles(opts.FromRef, opts.ToRef)
-		if err != nil {
-			return reportError(err)
-		}
-	} else {
-		filenames, err = git.GetStagedFiles()
-		if err != nil {
-			return reportError(err)
-		}
+	filenames, err := hookFiles(opts.AllFiles, opts.Files, opts.FromRef, opts.ToRef)
+	if err != nil {
+		return reportError(err)
 	}
 
 	// Determine stage.
-	stage := config.TransformStage(config.Stage(opts.HookStage))
-	if stage == "" {
-		stage = config.HookTypePreCommit
-	}
+	stage := hookStage(opts.HookStage)
 
 	// Filter to a single hook if specified.
 	var hookID string
@@ -147,26 +125,11 @@ func (c *RunCommand) Run(args []string) int {
 	}
 
 	// Determine if we need to stash.
-	needsStash := !opts.AllFiles && len(opts.Files) == 0 && opts.FromRef == "" && opts.ToRef == "" && !noStash
-	if needsStash {
-		// StashUnstaged decides whether there is anything to stash itself: it
-		// must judge against the index git handed the hook, which a plain
-		// `git diff` here would not (see git.HostIndexEnv).
-		stashMgr := staged.NewManager(root, s.Dir())
-		stashed, err := stashMgr.StashUnstaged()
-		if err != nil {
-			output.Warn("Failed to stash unstaged changes: %v", err)
-		}
-		if stashed {
-			// Deferred, as upstream's staged_files_only context manager
-			// is, so an error or an interrupt from here on still gives the
-			// user their unstaged changes back.
-			defer func() {
-				if err := stashMgr.Restore(); err != nil {
-					output.Warn("Failed to restore unstaged changes: %v", err)
-				}
-			}()
-		}
+	if restore := stashUnstaged(opts.needsStash(noStash), root, s.Dir()); restore != nil {
+		// Deferred, as upstream's staged_files_only context manager
+		// is, so an error or an interrupt from here on still gives the
+		// user their unstaged changes back.
+		defer restore()
 	}
 
 	// Install environments (unless --no-install).
@@ -178,37 +141,20 @@ func (c *RunCommand) Run(args []string) int {
 
 	// Run hooks.
 	runner := hook.NewRunner(cfg, hooks, root)
-	result := runner.Run(c.Meta.ctx(), hook.RunOptions{
-		HookID:                     hookID,
-		HookStage:                  stage,
-		Files:                      filenames,
-		AllFiles:                   opts.AllFiles,
-		Verbose:                    opts.Verbose,
-		ShowDiff:                   opts.ShowDiffOnFail,
-		Color:                      opts.Color,
-		Jobs:                       opts.Jobs,
-		FromRef:                    opts.FromRef,
-		ToRef:                      opts.ToRef,
-		CommitMsgFilename:          opts.CommitMsgFn,
-		PrepareCommitMessageSource: opts.PrepareMsg,
-		CommitObjectName:           opts.CommitObjName,
-		RemoteName:                 opts.RemoteName,
-		RemoteURL:                  opts.RemoteURL,
-		RemoteBranch:               opts.RemoteBranch,
-		LocalBranch:                opts.LocalBranch,
-		CheckoutType:               opts.CheckoutType,
-		IsSquashMerge:              opts.IsSquash,
-		RewriteCommand:             opts.RewriteCmd,
-		PreRebaseUpstream:          opts.PreRebaseUp,
-		PreRebaseBranch:            opts.PreRebaseBranch,
-	})
-
-	hasFailures := result.Failed > 0 || result.Errors > 0
+	result := runner.Run(c.Meta.ctx(), opts.runOptions(hookID, stage, filenames))
 
 	// Before the stash is restored, as upstream does, so the diff shown is
 	// what the hooks changed and not the user's unstaged work.
-	if opts.ShowDiffOnFail && hasFailures {
-		hook.ShowDiffOnFailure(opts.AllFiles)
+	return runExit(result, opts.ShowDiffOnFail, opts.AllFiles)
+}
+
+// runExit is the exit status of a run that came to result, once the diff
+// the hooks made is shown, if asked for, after a failure.
+func runExit(result hook.RunResult, showDiffOnFail, allFiles bool) int {
+	hasFailures := result.Failed > 0 || result.Errors > 0
+
+	if showDiffOnFail && hasFailures {
+		hook.ShowDiffOnFailure(allFiles)
 	}
 
 	if hasFailures {
@@ -216,6 +162,98 @@ func (c *RunCommand) Run(args []string) int {
 	}
 
 	return 0
+}
+
+// useDeprecated takes a deprecated flag's value, old, as its replacement's
+// when that is not given.
+func useDeprecated(flag *string, old string) {
+	if old != "" && *flag == "" {
+		*flag = old
+	}
+}
+
+// runOptions is the hook.RunOptions for running hookID, or every hook,
+// at stage over files.
+func (o *runFlags) runOptions(hookID string, stage config.Stage, files []string) hook.RunOptions {
+	return hook.RunOptions{
+		HookID:                     hookID,
+		HookStage:                  stage,
+		Files:                      files,
+		AllFiles:                   o.AllFiles,
+		Verbose:                    o.Verbose,
+		ShowDiff:                   o.ShowDiffOnFail,
+		Color:                      o.Color,
+		Jobs:                       o.Jobs,
+		FromRef:                    o.FromRef,
+		ToRef:                      o.ToRef,
+		CommitMsgFilename:          o.CommitMsgFn,
+		PrepareCommitMessageSource: o.PrepareMsg,
+		CommitObjectName:           o.CommitObjName,
+		RemoteName:                 o.RemoteName,
+		RemoteURL:                  o.RemoteURL,
+		RemoteBranch:               o.RemoteBranch,
+		LocalBranch:                o.LocalBranch,
+		CheckoutType:               o.CheckoutType,
+		IsSquashMerge:              o.IsSquash,
+		RewriteCommand:             o.RewriteCmd,
+		PreRebaseUpstream:          o.PreRebaseUp,
+		PreRebaseBranch:            o.PreRebaseBranch,
+	}
+}
+
+// needsStash reports whether the run checks the staged files, so stashes
+// the unstaged changes first, unless noStash.
+func (o *runFlags) needsStash(noStash bool) bool {
+	return !o.AllFiles && len(o.Files) == 0 && o.FromRef == "" && o.ToRef == "" && !noStash
+}
+
+// hookFiles is the files a run checks: all of them, the ones given, those
+// changed between two refs, or the staged ones.
+func hookFiles(allFiles bool, files []string, fromRef, toRef string) ([]string, error) {
+	switch {
+	case allFiles:
+		return git.GetAllFiles()
+	case len(files) > 0:
+		return files, nil
+	case fromRef != "" && toRef != "":
+		return git.GetChangedFiles(fromRef, toRef)
+	}
+	return git.GetStagedFiles()
+}
+
+// hookStage is the stage a run's hooks run at: the one given, or
+// pre-commit.
+func hookStage(given string) config.Stage {
+	stage := config.TransformStage(config.Stage(given))
+	if stage == "" {
+		stage = config.HookTypePreCommit
+	}
+	return stage
+}
+
+// stashUnstaged stashes the unstaged changes, if needsStash and there are
+// any, and returns the function that restores them, or nil when nothing
+// was stashed.
+func stashUnstaged(needsStash bool, root, storeDir string) func() {
+	if !needsStash {
+		return nil
+	}
+	// StashUnstaged decides whether there is anything to stash itself: it
+	// must judge against the index git handed the hook, which a plain
+	// `git diff` here would not (see git.HostIndexEnv).
+	stashMgr := staged.NewManager(root, storeDir)
+	stashed, err := stashMgr.StashUnstaged()
+	if err != nil {
+		output.Warn("Failed to stash unstaged changes: %v", err)
+	}
+	if !stashed {
+		return nil
+	}
+	return func() {
+		if err := stashMgr.Restore(); err != nil {
+			output.Warn("Failed to restore unstaged changes: %v", err)
+		}
+	}
 }
 
 func (c *RunCommand) Help() string {

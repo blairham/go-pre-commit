@@ -65,15 +65,9 @@ func (c *TryRepoCommand) Run(args []string) (code int) {
 	var err error
 
 	// Handle deprecated flags.
-	if opts.Rev != "" && opts.Ref == "" {
-		opts.Ref = opts.Rev
-	}
-	if opts.Source != "" && opts.FromRef == "" {
-		opts.FromRef = opts.Source
-	}
-	if opts.Origin != "" && opts.ToRef == "" {
-		opts.ToRef = opts.Origin
-	}
+	useDeprecated(&opts.Ref, opts.Rev)
+	useDeprecated(&opts.FromRef, opts.Source)
+	useDeprecated(&opts.ToRef, opts.Origin)
 
 	output.SetColorModeFromString(opts.Color)
 
@@ -111,22 +105,9 @@ func (c *TryRepoCommand) Run(args []string) (code int) {
 	}
 
 	s := store.New(tempdir)
-	var hookCfgs []config.HookConfig
-	if hookID != "" {
-		hookCfgs = []config.HookConfig{{ID: hookID}}
-	} else {
-		repoPath, cloneErr := s.Clone(repo, ref)
-		if cloneErr != nil {
-			return unexpectedError(cloneErr)
-		}
-		manifest, loadErr := config.LoadManifest(filepath.Join(repoPath, config.ManifestFile))
-		if loadErr != nil {
-			return reportError(loadErr)
-		}
-		for _, m := range manifest {
-			hookCfgs = append(hookCfgs, config.HookConfig{ID: m.ID})
-		}
-		sort.Slice(hookCfgs, func(i, j int) bool { return hookCfgs[i].ID < hookCfgs[j].ID })
+	hookCfgs, exit, ok := tryRepoHooks(s, repo, ref, hookID)
+	if !ok {
+		return exit
 	}
 	tryConfig := &config.Config{
 		Repos: []config.RepoConfig{{Repo: repo, Rev: ref, Hooks: hookCfgs}},
@@ -140,30 +121,12 @@ func (c *TryRepoCommand) Run(args []string) (code int) {
 	}
 
 	// Determine files.
-	var filenames []string
-	if opts.AllFiles {
-		filenames, err = git.GetAllFiles()
-		if err != nil {
-			return reportError(err)
-		}
-	} else if len(opts.Files) > 0 {
-		filenames = opts.Files
-	} else if opts.FromRef != "" && opts.ToRef != "" {
-		filenames, err = git.GetChangedFiles(opts.FromRef, opts.ToRef)
-		if err != nil {
-			return reportError(err)
-		}
-	} else {
-		filenames, err = git.GetStagedFiles()
-		if err != nil {
-			return reportError(err)
-		}
+	filenames, err := hookFiles(opts.AllFiles, opts.Files, opts.FromRef, opts.ToRef)
+	if err != nil {
+		return reportError(err)
 	}
 
-	stage := config.TransformStage(config.Stage(opts.HookStage))
-	if stage == "" {
-		stage = config.HookTypePreCommit
-	}
+	stage := hookStage(opts.HookStage)
 
 	// Build a minimal config for the runner.
 	runCfg := config.DefaultConfig()
@@ -180,42 +143,60 @@ func (c *TryRepoCommand) Run(args []string) (code int) {
 
 	root, _ := git.GetRoot()
 	runner := hook.NewRunner(runCfg, hooks, root)
-	result := runner.Run(c.Meta.ctx(), hook.RunOptions{
+	result := runner.Run(c.Meta.ctx(), opts.runOptions(hookID, stage, filenames))
+
+	return runExit(result, opts.ShowDiffOnFail, opts.AllFiles)
+}
+
+// runOptions is the hook.RunOptions for running hookID, or every hook,
+// at stage over files.
+func (o *tryRepoFlags) runOptions(hookID string, stage config.Stage, files []string) hook.RunOptions {
+	return hook.RunOptions{
 		HookID:                     hookID,
 		HookStage:                  stage,
-		Files:                      filenames,
-		AllFiles:                   opts.AllFiles,
-		Verbose:                    opts.Verbose,
-		ShowDiff:                   opts.ShowDiffOnFail,
-		Color:                      opts.Color,
-		Jobs:                       opts.Jobs,
-		FromRef:                    opts.FromRef,
-		ToRef:                      opts.ToRef,
-		CommitMsgFilename:          opts.CommitMsgFn,
-		PrepareCommitMessageSource: opts.PrepareMsg,
-		CommitObjectName:           opts.CommitObjName,
-		RemoteName:                 opts.RemoteName,
-		RemoteURL:                  opts.RemoteURL,
-		RemoteBranch:               opts.RemoteBranch,
-		LocalBranch:                opts.LocalBranch,
-		CheckoutType:               opts.CheckoutType,
-		IsSquashMerge:              opts.IsSquash,
-		RewriteCommand:             opts.RewriteCmd,
-		PreRebaseUpstream:          opts.PreRebaseUp,
-		PreRebaseBranch:            opts.PreRebaseBranch,
-	})
-
-	hasFailures := result.Failed > 0 || result.Errors > 0
-
-	if opts.ShowDiffOnFail && hasFailures {
-		hook.ShowDiffOnFailure(opts.AllFiles)
+		Files:                      files,
+		AllFiles:                   o.AllFiles,
+		Verbose:                    o.Verbose,
+		ShowDiff:                   o.ShowDiffOnFail,
+		Color:                      o.Color,
+		Jobs:                       o.Jobs,
+		FromRef:                    o.FromRef,
+		ToRef:                      o.ToRef,
+		CommitMsgFilename:          o.CommitMsgFn,
+		PrepareCommitMessageSource: o.PrepareMsg,
+		CommitObjectName:           o.CommitObjName,
+		RemoteName:                 o.RemoteName,
+		RemoteURL:                  o.RemoteURL,
+		RemoteBranch:               o.RemoteBranch,
+		LocalBranch:                o.LocalBranch,
+		CheckoutType:               o.CheckoutType,
+		IsSquashMerge:              o.IsSquash,
+		RewriteCommand:             o.RewriteCmd,
+		PreRebaseUpstream:          o.PreRebaseUp,
+		PreRebaseBranch:            o.PreRebaseBranch,
 	}
+}
 
-	if hasFailures {
-		return 1
+// tryRepoHooks is the hooks try-repo runs: the one named, or every hook in
+// the repository's manifest, by id. ok is false, with the exit status to
+// return, when the manifest cannot be had.
+func tryRepoHooks(s *store.Store, repo, ref, hookID string) (hookCfgs []config.HookConfig, exit int, ok bool) {
+	if hookID != "" {
+		return []config.HookConfig{{ID: hookID}}, 0, true
 	}
-
-	return 0
+	repoPath, err := s.Clone(repo, ref)
+	if err != nil {
+		return nil, unexpectedError(err), false
+	}
+	manifest, err := config.LoadManifest(filepath.Join(repoPath, config.ManifestFile))
+	if err != nil {
+		return nil, reportError(err), false
+	}
+	for _, m := range manifest {
+		hookCfgs = append(hookCfgs, config.HookConfig{ID: m.ID})
+	}
+	sort.Slice(hookCfgs, func(i, j int) bool { return hookCfgs[i].ID < hookCfgs[j].ID })
+	return hookCfgs, 0, true
 }
 
 // printTryConfig writes the generated config the way upstream does: a rule of
