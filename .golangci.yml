@@ -44,7 +44,6 @@ linters:
     #   gocognit
     #   gocyclo
     #   thelper
-    #   wastedassign
     # Core linters (enabled by default)
     - errcheck # Check for unchecked errors
     - govet # Suspicious constructs; the analyzers are in settings
@@ -87,6 +86,7 @@ linters:
     - interfacebloat # Checks the number of methods in an interface
 
     # Memory
+    - wastedassign # Finds wasted assignment statements
 
   exclusions:
     rules:

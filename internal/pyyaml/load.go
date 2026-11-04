@@ -395,7 +395,7 @@ func isMergeKey(k *yaml.Node) bool {
 }
 
 func constructScalar(n *yaml.Node) (*Value, error) {
-	tag := ""
+	var tag string
 	switch {
 	case n.Style&yaml.TaggedStyle != 0:
 		tag = strings.TrimPrefix(n.Tag, "!!")
