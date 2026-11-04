@@ -32,7 +32,6 @@ linters:
   enable:
     # Not yet enabled here — overrides/go-pre-commit.yml says why. Adopt one
     # per pull request and shrink that list:
-    #   unparam
     #   goconst
     #   errorlint
     #   nilerr
@@ -52,6 +51,7 @@ linters:
     # Code quality and style
     - whitespace # Detection of leading and trailing whitespace
     - unconvert # Remove unnecessary type conversions
+    - unparam # Reports unused function parameters
     - gocritic # Diagnostic, performance and style checks
     - misspell # Commonly misspelled English words (US locale)
     - revive # Configurable style linter (see settings for the rule set)

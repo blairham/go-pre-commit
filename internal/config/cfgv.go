@@ -324,7 +324,11 @@ func (c condition) describeOpposite() string {
 
 // conditionalRequired is cfgv.Conditional / ConditionalRecurse: key is
 // required while condKey matches cond, and with ensureAbsent must be absent
-// while it is present and does not.
+// while it is present and does not. condKey is cfgv's condition_key, which
+// the "absent when" message names; upstream's clientlib passes 'repo' to
+// every Conditional and ConditionalRecurse too.
+//
+//nolint:unparam // mirrors cfgv.Conditional's signature, condition_key included
 func conditionalRequired(key string, fn checkFn, condKey string, cond condition, ensureAbsent bool) item {
 	req := required(key, fn)
 	return func(m map[string]any, _ any) error {
