@@ -262,40 +262,7 @@ func tryRepoRef(tmpdir, repo, ref string) (string, string, error) {
 	output.Warn("Creating temporary repo with uncommitted changes...")
 
 	shadow := filepath.Join(tmpdir, "shadow-repo")
-	err = git.RunCaptured("", "clone", repo, shadow)
-	if err == nil {
-		err = git.RunCaptured(shadow, "checkout", ref, "-b", "_pc_tmp")
-	}
-	if err != nil {
-		return "", "", err
-	}
-
-	idx, err := git.Path(shadow, "index")
-	if err != nil {
-		return "", "", err
-	}
-	objs, err := git.Path(shadow, "objects")
-	if err != nil {
-		return "", "", err
-	}
-	env := append(git.NoGitEnv(), "GIT_INDEX_FILE="+idx, "GIT_OBJECT_DIRECTORY="+objs)
-
-	staged, err := git.StagedFilesIn(repo)
-	if err != nil {
-		return "", "", err
-	}
-	// Upstream's xargs, whose exit status it does not check.
-	var cpe *git.CalledProcessError
-	for _, batch := range argBatches(staged) {
-		err = git.RunCapturedEnv(repo, env, append([]string{"add", "--"}, batch...)...)
-		if err != nil && !errors.As(err, &cpe) {
-			return "", "", err
-		}
-	}
-	err = git.RunCapturedEnv(repo, env, "add", "-u")
-	if err == nil {
-		err = git.Commit(shadow)
-	}
+	err = commitToShadow(repo, ref, shadow)
 	if err != nil {
 		return "", "", err
 	}
@@ -305,6 +272,46 @@ func tryRepoRef(tmpdir, repo, ref string) (string, string, error) {
 		return "", "", err
 	}
 	return shadow, rev, nil
+}
+
+// commitToShadow clones repo at ref into shadow and commits there the
+// changes to repo's tracked files, staged or not.
+func commitToShadow(repo, ref, shadow string) error {
+	err := git.RunCaptured("", "clone", repo, shadow)
+	if err == nil {
+		err = git.RunCaptured(shadow, "checkout", ref, "-b", "_pc_tmp")
+	}
+	if err != nil {
+		return err
+	}
+
+	idx, err := git.Path(shadow, "index")
+	if err != nil {
+		return err
+	}
+	objs, err := git.Path(shadow, "objects")
+	if err != nil {
+		return err
+	}
+	env := append(git.NoGitEnv(), "GIT_INDEX_FILE="+idx, "GIT_OBJECT_DIRECTORY="+objs)
+
+	staged, err := git.StagedFilesIn(repo)
+	if err != nil {
+		return err
+	}
+	// Upstream's xargs, whose exit status it does not check.
+	var cpe *git.CalledProcessError
+	for _, batch := range argBatches(staged) {
+		err = git.RunCapturedEnv(repo, env, append([]string{"add", "--"}, batch...)...)
+		if err != nil && !errors.As(err, &cpe) {
+			return err
+		}
+	}
+	err = git.RunCapturedEnv(repo, env, "add", "-u")
+	if err == nil {
+		err = git.Commit(shadow)
+	}
+	return err
 }
 
 // argBatches splits files into command lines that stay well under the
