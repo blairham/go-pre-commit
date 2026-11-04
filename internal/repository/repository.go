@@ -139,7 +139,7 @@ func checkAdditionalDependencies(h *hook.Hook) error {
 	if err != nil || lang.EnvironmentDir() != "" {
 		return nil
 	}
-	field := ""
+	var field string
 	switch {
 	case h.LanguageVersion != "default" && h.LanguageVersion != "":
 		field = "language_version"
