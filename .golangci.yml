@@ -30,9 +30,6 @@ linters:
   # The hook reports only what a commit introduces, so an older finding surfaces
   # when its lines are next touched: fix it then rather than adding a disable.
   enable:
-    # Not yet enabled here — overrides/go-pre-commit.yml says why. Adopt one
-    # per pull request and shrink that list:
-    #   thelper
     # Core linters (enabled by default)
     - errcheck # Check for unchecked errors
     - govet # Suspicious constructs; the analyzers are in settings
@@ -76,6 +73,7 @@ linters:
     - gocyclo # Reports high cyclomatic complexity
 
     # Testing
+    - thelper # Detects test helpers not starting with t.Helper()
     - tparallel # Detects inappropriate usage of t.Parallel()
     - testableexamples # Checks if examples are testable
 
