@@ -32,33 +32,33 @@ linters:
   enable:
     # Not yet enabled here — overrides/go-pre-commit.yml says why. Adopt one
     # per pull request and shrink that list:
-    #   whitespace
-    #   unparam
-    #   goconst
-    #   bodyclose
-    #   contextcheck
-    #   rowserrcheck
-    #   sqlclosecheck
-    #   errname
-    #   errorlint
-    #   forcetypeassert
-    #   nilerr
-    #   nilnil
-    #   noctx
-    #   predeclared
-    #   prealloc
-    #   sloglint
-    #   gosec
-    #   nestif
-    #   funlen
-    #   gocognit
-    #   gocyclo
-    #   thelper
-    #   tparallel
-    #   testableexamples
-    #   importas
-    #   interfacebloat
-    #   wastedassign
+    - whitespace
+    - unparam
+    - goconst
+    - bodyclose
+    - contextcheck
+    - rowserrcheck
+    - sqlclosecheck
+    - errname
+    - errorlint
+    - forcetypeassert
+    - nilerr
+    - nilnil
+    - noctx
+    - predeclared
+    - prealloc
+    - sloglint
+    - gosec
+    - nestif
+    - funlen
+    - gocognit
+    - gocyclo
+    - thelper
+    - tparallel
+    - testableexamples
+    - importas
+    - interfacebloat
+    - wastedassign
     # Core linters (enabled by default)
     - errcheck # Check for unchecked errors
     - govet # Suspicious constructs; the analyzers are in settings

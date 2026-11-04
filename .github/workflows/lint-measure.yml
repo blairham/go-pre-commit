@@ -1,0 +1,21 @@
+# Measurement only, never merged: every pending linter over the whole tree, for #98.
+name: Lint measure
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - run: go tool golangci-lint run --color=never --max-issues-per-linter=0 --max-same-issues=0 --issues-exit-code=0 --output.text.path=lint.txt ./...
+      - run: cat lint.txt; echo; grep -oE '\(([a-z0-9]+)\)$' lint.txt | sort | uniq -c | sort -rn
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lint
+          path: lint.txt
