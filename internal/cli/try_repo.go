@@ -319,7 +319,7 @@ func commitToShadow(repo, ref, shadow string) error {
 func argBatches(files []string) [][]string {
 	const maxLen = 32 * 1024
 	var batches [][]string
-	var cur []string
+	cur := make([]string, 0, len(files))
 	size := 0
 	for _, f := range files {
 		if len(cur) > 0 && size+len(f)+1 > maxLen {

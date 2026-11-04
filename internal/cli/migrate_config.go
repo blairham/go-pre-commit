@@ -192,7 +192,7 @@ func deref(n *yaml.Node) *yaml.Node {
 func matchNodes(root *yaml.Node, steps []yamlStep) []*yaml.Node {
 	gen := []*yaml.Node{root}
 	for _, step := range steps {
-		var next []*yaml.Node
+		next := make([]*yaml.Node, 0, len(gen))
 		for _, n := range gen {
 			next = append(next, step(n)...)
 		}
