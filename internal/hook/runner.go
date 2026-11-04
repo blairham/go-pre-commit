@@ -104,8 +104,6 @@ func NewRunner(cfg *config.Config, hooks []*Hook, root string) *Runner {
 
 // Run executes all hooks and returns the result.
 func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
-	result := RunResult{}
-
 	// Set PRE_COMMIT=1 environment variable.
 	os.Setenv("PRE_COMMIT", "1")
 	defer os.Unsetenv("PRE_COMMIT")
@@ -114,40 +112,20 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 	r.setEnvVars(opts)
 	defer r.unsetEnvVars()
 
-	// Parse SKIP env var.
-	skipSet := make(map[string]bool)
-	if skipEnv := os.Getenv("SKIP"); skipEnv != "" {
-		for _, id := range strings.Split(skipEnv, ",") {
-			skipSet[strings.TrimSpace(id)] = true
-		}
-	}
-	for _, id := range opts.SkipList {
-		skipSet[id] = true
-	}
+	st := runState{skip: skippedHooks(opts.SkipList), opts: &opts}
 
 	// Apply top-level files/exclude filters from config.
-	files := opts.Files
+	st.files = opts.Files
 	if r.cfg.Files != "" || r.cfg.Exclude != "" {
-		files = filterByIncludeExclude(files, r.cfg.Files, r.cfg.Exclude)
+		st.files = filterByIncludeExclude(st.files, r.cfg.Files, r.cfg.Exclude)
 	}
 
-	// Filter hooks by stage and ID.
-	var hooksToRun []*Hook
-	for _, h := range r.hooks {
-		if opts.HookID != "" && h.ID != opts.HookID && h.Alias != opts.HookID {
-			continue
-		}
-		if opts.HookStage != "" && !h.MatchesStage(opts.HookStage) {
-			continue
-		}
-		hooksToRun = append(hooksToRun, h)
-	}
-
+	hooksToRun := r.hooksFor(opts.HookID, opts.HookStage)
 	if len(hooksToRun) == 0 && opts.HookID != "" {
 		// Upstream writes this with output.write_line: stdout, no [ERROR].
 		fmt.Printf("No hook with id `%s` in stage `%s`\n", opts.HookID, opts.HookStage)
-		result.Errors++
-		return result
+		st.result.Errors++
+		return st.result
 	}
 
 	// Every status line in a run shares one width, from the longest name, as
@@ -156,140 +134,211 @@ func (r *Runner) Run(ctx context.Context, opts RunOptions) RunResult {
 	for i, h := range hooksToRun {
 		names[i] = h.Name
 	}
-	cols := output.ReportCols(names)
-	verbose := func(h *Hook) bool { return opts.Verbose || h.Verbose }
+	st.cols = output.ReportCols(names)
 
 	for _, h := range hooksToRun {
 		select {
 		case <-ctx.Done():
-			return result
+			return st.result
 		default:
 		}
-
-		// Check minimum_pre_commit_version.
-		if h.MinimumPreCommitVersion != "" && h.MinimumPreCommitVersion != "0" {
-			if !checkMinVersion(h.MinimumPreCommitVersion) {
-				output.PrintHookHeader(h.Name, cols, output.ResultError)
-				output.Error("hook requires pre-commit >= %s", h.MinimumPreCommitVersion)
-				result.Errors++
-				if shouldFailFast(r.cfg, h) {
-					return result
-				}
-				continue
-			}
-		}
-
-		// Check if skipped.
-		if skipSet[h.ID] || (h.Alias != "" && skipSet[h.Alias]) {
-			output.PrintHookSkipped(h.Name, cols, false)
-			output.PrintHookDetails(output.HookDetails{ID: h.ID, Verbose: verbose(h)})
-			result.Skipped++
-			continue
-		}
-
-		// Filter files by hook's patterns and types.
-		matchedFiles := filterFiles(files, h)
-
-		if len(matchedFiles) == 0 && !h.AlwaysRun {
-			output.PrintHookSkipped(h.Name, cols, true)
-			output.PrintHookDetails(output.HookDetails{ID: h.ID, Verbose: verbose(h)})
-			result.Skipped++
-			continue
-		}
-
-		// Get the language handler.
-		lang, err := languages.Get(h.Language)
-		if err != nil {
-			output.PrintHookHeader(h.Name, cols, output.ResultError)
-			output.Error("unsupported language %q: %v", h.Language, err)
-			result.Errors++
-			if shouldFailFast(r.cfg, h) {
-				return result
-			}
-			continue
-		}
-
-		// Name and dots first, so a slow hook shows what is running.
-		output.PrintHookStart(h.Name, cols)
-		start := time.Now()
-
-		// Handle meta hooks specially.
-		if h.ID == "check-hooks-apply" || h.ID == "check-useless-excludes" {
-			metaExit, metaOut := r.runMetaHook(h, files)
-			elapsed := time.Since(start)
-			output.PrintHookStatus(metaExit == 0)
-			output.PrintHookDetails(output.HookDetails{
-				ID: h.ID, Verbose: verbose(h), Duration: &elapsed,
-				ExitCode: metaExit, Output: metaOut, LogFile: h.LogFile,
-			})
-			if metaExit != 0 {
-				result.Failed++
-			} else {
-				result.Passed++
-			}
-			continue
-		}
-
-		// Determine file args to pass.
-		var fileArgs []string
-		if h.PassFilenames {
-			fileArgs = matchedFiles
-		}
-
-		// Snapshot the working tree's diff against the index: a hook that
-		// changes it has modified files, whether or not it was passed them.
-		diffBefore := r.worktreeDiff()
-
-		// Run the hook using xargs for batching.
-		var exitCode int
-		var hookOutput []byte
-		exitCode, hookOutput, err = runHookXargs(ctx, lang, h, fileArgs, r.root, opts.Jobs)
-		if ctx.Err() != nil {
-			// Interrupted mid-hook: upstream's KeyboardInterrupt leaves the
-			// name and dots on the line with no status, and the error
-			// handler's message completes it.
-			return result
-		}
-		if err != nil {
-			if !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, fs.ErrNotExist) {
-				fmt.Println()
-				output.Error("hook execution error: %v", err)
-				result.Errors++
-				if shouldFailFast(r.cfg, h) {
-					return result
-				}
-				continue
-			}
-			// Upstream reports a missing executable as the hook failing,
-			// with its own wording as the output.
-			exe := h.Entry
-			if parts := languages.ParseEntry(h.Entry); len(parts) > 0 {
-				exe = parts[0]
-			}
-			exitCode, hookOutput = 1, []byte(fmt.Sprintf("Executable %#q not found", exe))
-		}
-		elapsed := time.Since(start)
-
-		filesModified := !bytes.Equal(diffBefore, r.worktreeDiff())
-		failed := exitCode != 0 || filesModified
-
-		output.PrintHookStatus(!failed)
-		output.PrintHookDetails(output.HookDetails{
-			ID: h.ID, Verbose: verbose(h), Duration: &elapsed,
-			ExitCode: exitCode, FilesModified: filesModified,
-			Output: hookOutput, LogFile: h.LogFile,
-		})
-		if failed {
-			result.Failed++
-			if shouldFailFast(r.cfg, h) {
-				return result
-			}
-		} else {
-			result.Passed++
+		if r.runHook(ctx, &st, h) {
+			return st.result
 		}
 	}
+	return st.result
+}
 
-	return result
+// runState is what the hooks of one Run share: the hooks to skip, the
+// options, the files, the tally and the width of the status lines.
+type runState struct {
+	skip   map[string]bool
+	opts   *RunOptions
+	files  []string
+	result RunResult
+	cols   int
+}
+
+// hookRun is one hook being run: when it started, its language and the
+// files it matched.
+type hookRun struct {
+	start time.Time
+	lang  languages.Language
+	h     *Hook
+	files []string
+}
+
+// skippedHooks is the ids and aliases of the hooks not to run: SKIP's,
+// comma-separated, and those given.
+func skippedHooks(skipList []string) map[string]bool {
+	skip := make(map[string]bool)
+	if skipEnv := os.Getenv("SKIP"); skipEnv != "" {
+		for _, id := range strings.Split(skipEnv, ",") {
+			skip[strings.TrimSpace(id)] = true
+		}
+	}
+	for _, id := range skipList {
+		skip[id] = true
+	}
+	return skip
+}
+
+// hooksFor is the hooks to run: with id or alias hookID, and for stage,
+// when they are given.
+func (r *Runner) hooksFor(hookID string, stage config.Stage) []*Hook {
+	var hooks []*Hook
+	for _, h := range r.hooks {
+		if hookID != "" && h.ID != hookID && h.Alias != hookID {
+			continue
+		}
+		if stage != "" && !h.MatchesStage(stage) {
+			continue
+		}
+		hooks = append(hooks, h)
+	}
+	return hooks
+}
+
+// runHook runs h, or reports why it does not, and tallies the outcome. It
+// reports whether the run stops there: after a failure with fail_fast, or
+// when ctx is done while the hook runs.
+func (r *Runner) runHook(ctx context.Context, st *runState, h *Hook) (stop bool) {
+	// Check minimum_pre_commit_version.
+	if h.MinimumPreCommitVersion != "" && h.MinimumPreCommitVersion != "0" &&
+		!checkMinVersion(h.MinimumPreCommitVersion) {
+		output.PrintHookHeader(h.Name, st.cols, output.ResultError)
+		output.Error("hook requires pre-commit >= %s", h.MinimumPreCommitVersion)
+		return r.hookError(st, h)
+	}
+
+	// Check if skipped.
+	if st.skip[h.ID] || (h.Alias != "" && st.skip[h.Alias]) {
+		st.skipped(h, false)
+		return false
+	}
+
+	// Filter files by hook's patterns and types.
+	matchedFiles := filterFiles(st.files, h)
+
+	if len(matchedFiles) == 0 && !h.AlwaysRun {
+		st.skipped(h, true)
+		return false
+	}
+
+	// Get the language handler.
+	lang, err := languages.Get(h.Language)
+	if err != nil {
+		output.PrintHookHeader(h.Name, st.cols, output.ResultError)
+		output.Error("unsupported language %q: %v", h.Language, err)
+		return r.hookError(st, h)
+	}
+
+	// Name and dots first, so a slow hook shows what is running.
+	output.PrintHookStart(h.Name, st.cols)
+	hr := &hookRun{start: time.Now(), lang: lang, h: h, files: matchedFiles}
+
+	// Handle meta hooks specially.
+	if h.ID == "check-hooks-apply" || h.ID == "check-useless-excludes" {
+		r.runMeta(st, hr)
+		return false
+	}
+	return r.runCommand(ctx, st, hr)
+}
+
+// hookError tallies a hook that could not run; the run stops there with
+// fail_fast.
+func (r *Runner) hookError(st *runState, h *Hook) bool {
+	st.result.Errors++
+	return shouldFailFast(r.cfg, h)
+}
+
+// skipped reports and tallies a skipped hook: skipped outright, or with
+// no files to check.
+func (st *runState) skipped(h *Hook, noFiles bool) {
+	output.PrintHookSkipped(h.Name, st.cols, noFiles)
+	output.PrintHookDetails(output.HookDetails{ID: h.ID, Verbose: st.verbose(h)})
+	st.result.Skipped++
+}
+
+func (st *runState) verbose(h *Hook) bool { return st.opts.Verbose || h.Verbose }
+
+// runMeta runs one of the meta hooks, which are built in.
+func (r *Runner) runMeta(st *runState, hr *hookRun) {
+	h := hr.h
+	metaExit, metaOut := r.runMetaHook(h, st.files)
+	elapsed := time.Since(hr.start)
+	output.PrintHookStatus(metaExit == 0)
+	output.PrintHookDetails(output.HookDetails{
+		ID: h.ID, Verbose: st.verbose(h), Duration: &elapsed,
+		ExitCode: metaExit, Output: metaOut, LogFile: h.LogFile,
+	})
+	if metaExit != 0 {
+		st.result.Failed++
+	} else {
+		st.result.Passed++
+	}
+}
+
+// runCommand runs a hook's entry over its files and reports it; the hook
+// fails if it exits non-zero or changes the working tree.
+func (r *Runner) runCommand(ctx context.Context, st *runState, hr *hookRun) (stop bool) {
+	h := hr.h
+
+	// Determine file args to pass.
+	var fileArgs []string
+	if h.PassFilenames {
+		fileArgs = hr.files
+	}
+
+	// Snapshot the working tree's diff against the index: a hook that
+	// changes it has modified files, whether or not it was passed them.
+	diffBefore := r.worktreeDiff()
+
+	// Run the hook using xargs for batching.
+	exitCode, hookOutput, err := runHookXargs(ctx, hr.lang, h, fileArgs, r.root, st.opts.Jobs)
+	if ctx.Err() != nil {
+		// Interrupted mid-hook: upstream's KeyboardInterrupt leaves the
+		// name and dots on the line with no status, and the error
+		// handler's message completes it.
+		return true
+	}
+	if err != nil {
+		if !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, fs.ErrNotExist) {
+			fmt.Println()
+			output.Error("hook execution error: %v", err)
+			return r.hookError(st, h)
+		}
+		// Upstream reports a missing executable as the hook failing,
+		// with its own wording as the output.
+		exitCode, hookOutput = 1, notFoundOutput(h.Entry)
+	}
+	elapsed := time.Since(hr.start)
+
+	filesModified := !bytes.Equal(diffBefore, r.worktreeDiff())
+	failed := exitCode != 0 || filesModified
+
+	output.PrintHookStatus(!failed)
+	output.PrintHookDetails(output.HookDetails{
+		ID: h.ID, Verbose: st.verbose(h), Duration: &elapsed,
+		ExitCode: exitCode, FilesModified: filesModified,
+		Output: hookOutput, LogFile: h.LogFile,
+	})
+	if !failed {
+		st.result.Passed++
+		return false
+	}
+	st.result.Failed++
+	return shouldFailFast(r.cfg, h)
+}
+
+// notFoundOutput is upstream's output for a hook whose executable is
+// missing.
+func notFoundOutput(entry string) []byte {
+	exe := entry
+	if parts := languages.ParseEntry(entry); len(parts) > 0 {
+		exe = parts[0]
+	}
+	return []byte(fmt.Sprintf("Executable %#q not found", exe))
 }
 
 // setEnvVars sets hook-stage-specific environment variables.
@@ -803,21 +852,9 @@ func (r *Runner) checkUselessExcludes(allFiles []string) (int, []byte) {
 	exitCode := 0
 
 	// Check top-level exclude.
-	if r.cfg.Exclude != "" && r.cfg.Exclude != "^$" {
-		excludeRe, err := pcre.Compile(r.cfg.Exclude)
-		if err == nil {
-			matched := false
-			for _, f := range allFiles {
-				if pcre.Match(excludeRe, f) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				msgs = append(msgs, fmt.Sprintf("The top-level exclude pattern %q does not match any files", r.cfg.Exclude))
-				exitCode = 1
-			}
-		}
+	if isUselessExclude(r.cfg.Exclude, allFiles) {
+		msgs = append(msgs, fmt.Sprintf("The top-level exclude pattern %q does not match any files", r.cfg.Exclude))
+		exitCode = 1
 	}
 
 	for _, h := range r.hooks {
@@ -827,34 +864,9 @@ func (r *Runner) checkUselessExcludes(allFiles []string) (int, []byte) {
 		if h.Exclude == "" || h.Exclude == "^$" {
 			continue
 		}
-
-		// Find files that match the hook's include pattern and types.
-		var included []string
-		includeRe, _ := pcre.Compile(h.Files)
-		for _, f := range allFiles {
-			if includeRe != nil && !pcre.Match(includeRe, f) {
-				continue
-			}
-			tags := identify.TagsForFile(f)
-			if !identify.MatchesTypes(tags, h.Types, h.TypesOr, h.ExcludeTypes) {
-				continue
-			}
-			included = append(included, f)
-		}
-
-		// Check if exclude actually excludes anything from the included set.
-		excludeRe, err := pcre.Compile(h.Exclude)
-		if err != nil {
-			continue
-		}
-		matched := false
-		for _, f := range included {
-			if pcre.Match(excludeRe, f) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
+		// Check if exclude actually excludes anything from the files that
+		// match the hook's include pattern and types.
+		if isUselessExclude(h.Exclude, includedFiles(allFiles, h)) {
 			msgs = append(msgs, fmt.Sprintf("The exclude pattern %q for hook %q does not match any files", h.Exclude, h.ID))
 			exitCode = 1
 		}
@@ -864,4 +876,42 @@ func (r *Runner) checkUselessExcludes(allFiles []string) (int, []byte) {
 		return exitCode, []byte(strings.Join(msgs, "\n") + "\n")
 	}
 	return 0, nil
+}
+
+// isUselessExclude reports whether exclude, a pattern that compiles and
+// excludes anything at all, matches none of files.
+func isUselessExclude(exclude string, files []string) bool {
+	if exclude == "" || exclude == "^$" {
+		return false
+	}
+	excludeRe, err := pcre.Compile(exclude)
+	if err != nil {
+		return false
+	}
+	for _, f := range files {
+		if pcre.Match(excludeRe, f) {
+			return false
+		}
+	}
+	return true
+}
+
+// includedFiles is the files that match h's include pattern and types.
+func includedFiles(allFiles []string, h *Hook) []string {
+	var included []string
+	var includeRe *regexp2.Regexp
+	if re, err := pcre.Compile(h.Files); err == nil {
+		includeRe = re
+	}
+	for _, f := range allFiles {
+		if includeRe != nil && !pcre.Match(includeRe, f) {
+			continue
+		}
+		tags := identify.TagsForFile(f)
+		if !identify.MatchesTypes(tags, h.Types, h.TypesOr, h.ExcludeTypes) {
+			continue
+		}
+		included = append(included, f)
+	}
+	return included
 }

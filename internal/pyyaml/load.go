@@ -329,47 +329,56 @@ func flatten(n *yaml.Node) ([][2]*yaml.Node, error) {
 			own = append(own, [2]*yaml.Node{k, v})
 			continue
 		}
-		for v.Kind == yaml.AliasNode {
-			v = v.Alias
+		sub, err := flattenMerge(n, v)
+		if err != nil {
+			return nil, err
 		}
-		switch v.Kind {
-		case yaml.MappingNode:
-			sub, err := flatten(v)
+		merge = append(merge, sub...)
+	}
+	return append(merge, own...), nil
+}
+
+// flattenMerge is the pairs that v, the value of a merge key in mapping n,
+// merges into it: a mapping's, or each of a sequence of mappings', the
+// last first.
+func flattenMerge(n, v *yaml.Node) ([][2]*yaml.Node, error) {
+	for v.Kind == yaml.AliasNode {
+		v = v.Alias
+	}
+	switch v.Kind {
+	case yaml.MappingNode:
+		return flatten(v)
+	case yaml.SequenceNode:
+		var subs [][][2]*yaml.Node
+		for _, s := range v.Content {
+			for s.Kind == yaml.AliasNode {
+				s = s.Alias
+			}
+			if s.Kind != yaml.MappingNode {
+				return nil, &MarkedError{
+					Context: "while constructing a mapping", ContextMark: nodeMark(n),
+					Problem:     "expected a mapping for merging, but found " + nodeID(s),
+					ProblemMark: nodeMark(s),
+				}
+			}
+			sub, err := flatten(s)
 			if err != nil {
 				return nil, err
 			}
-			merge = append(merge, sub...)
-		case yaml.SequenceNode:
-			var subs [][][2]*yaml.Node
-			for _, s := range v.Content {
-				for s.Kind == yaml.AliasNode {
-					s = s.Alias
-				}
-				if s.Kind != yaml.MappingNode {
-					return nil, &MarkedError{
-						Context: "while constructing a mapping", ContextMark: nodeMark(n),
-						Problem:     "expected a mapping for merging, but found " + nodeID(s),
-						ProblemMark: nodeMark(s),
-					}
-				}
-				sub, err := flatten(s)
-				if err != nil {
-					return nil, err
-				}
-				subs = append(subs, sub)
-			}
-			for i := len(subs) - 1; i >= 0; i-- {
-				merge = append(merge, subs[i]...)
-			}
-		default:
-			return nil, &MarkedError{
-				Context: "while constructing a mapping", ContextMark: nodeMark(n),
-				Problem:     "expected a mapping or list of mappings for merging, but found " + nodeID(v),
-				ProblemMark: nodeMark(v),
-			}
+			subs = append(subs, sub)
+		}
+		var merge [][2]*yaml.Node
+		for i := len(subs) - 1; i >= 0; i-- {
+			merge = append(merge, subs[i]...)
+		}
+		return merge, nil
+	default:
+		return nil, &MarkedError{
+			Context: "while constructing a mapping", ContextMark: nodeMark(n),
+			Problem:     "expected a mapping or list of mappings for merging, but found " + nodeID(v),
+			ProblemMark: nodeMark(v),
 		}
 	}
-	return append(merge, own...), nil
 }
 
 // nodeID is PyYAML's Node.id: the kind of node, as error messages name it.

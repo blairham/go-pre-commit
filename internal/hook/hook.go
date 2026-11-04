@@ -128,57 +128,9 @@ func MergeManifest(
 	}
 
 	// Apply config overrides.
-	if hookCfg.Alias != "" {
-		h.Alias = hookCfg.Alias
-	}
-	if hookCfg.Name != "" {
-		h.Name = hookCfg.Name
-	}
-	if hookCfg.LanguageVersion != "" {
-		h.LanguageVersion = hookCfg.LanguageVersion
-	}
-	if hookCfg.Files != "" {
-		h.Files = hookCfg.Files
-	}
-	if hookCfg.Exclude != "" {
-		h.Exclude = hookCfg.Exclude
-	}
-	if len(hookCfg.Types) > 0 {
-		h.Types = hookCfg.Types
-	}
-	if len(hookCfg.TypesOr) > 0 {
-		h.TypesOr = hookCfg.TypesOr
-	}
-	if len(hookCfg.ExcludeTypes) > 0 {
-		h.ExcludeTypes = hookCfg.ExcludeTypes
-	}
-	if len(hookCfg.Args) > 0 {
-		h.Args = hookCfg.Args
-	}
-	if len(hookCfg.Stages) > 0 {
-		h.Stages = hookCfg.Stages
-	}
-	if len(hookCfg.AdditionalDependencies) > 0 {
-		h.AdditionalDependencies = hookCfg.AdditionalDependencies
-	}
-	if hookCfg.AlwaysRun != nil {
-		h.AlwaysRun = *hookCfg.AlwaysRun
-	}
-	if hookCfg.Verbose != nil {
-		h.Verbose = *hookCfg.Verbose
-	}
-	if hookCfg.PassFilenames != nil {
-		h.PassFilenames = *hookCfg.PassFilenames
-	}
-	if hookCfg.RequireSerial != nil {
-		h.RequireSerial = *hookCfg.RequireSerial
-	}
-	if hookCfg.FailFast != nil {
-		h.FailFast = *hookCfg.FailFast
-	}
-	if hookCfg.LogFile != "" {
-		h.LogFile = hookCfg.LogFile
-	}
+	overrideString(&h.Alias, hookCfg.Alias)
+	overrideString(&h.Name, hookCfg.Name)
+	h.applyConfig(hookCfg)
 
 	// Apply global config defaults.
 	if globalCfg != nil {
@@ -200,58 +152,11 @@ func FromLocalConfig(hookCfg *config.HookConfig, globalCfg *config.Config) *Hook
 		Language: hookCfg.Language,
 		Repo:     "local",
 		Alias:    hookCfg.Alias,
+		// Unless the config says otherwise.
+		PassFilenames: true,
 	}
-
-	if hookCfg.Files != "" {
-		h.Files = hookCfg.Files
-	}
-	if hookCfg.Exclude != "" {
-		h.Exclude = hookCfg.Exclude
-	}
-	if len(hookCfg.Types) > 0 {
-		h.Types = hookCfg.Types
-	}
-	if len(hookCfg.TypesOr) > 0 {
-		h.TypesOr = hookCfg.TypesOr
-	}
-	if len(hookCfg.ExcludeTypes) > 0 {
-		h.ExcludeTypes = hookCfg.ExcludeTypes
-	}
-	if len(hookCfg.Args) > 0 {
-		h.Args = hookCfg.Args
-	}
-	if len(hookCfg.Stages) > 0 {
-		h.Stages = hookCfg.Stages
-	}
-	if len(hookCfg.AdditionalDependencies) > 0 {
-		h.AdditionalDependencies = hookCfg.AdditionalDependencies
-	}
-	if hookCfg.AlwaysRun != nil {
-		h.AlwaysRun = *hookCfg.AlwaysRun
-	}
-	if hookCfg.Verbose != nil {
-		h.Verbose = *hookCfg.Verbose
-	}
-	if hookCfg.PassFilenames != nil {
-		h.PassFilenames = *hookCfg.PassFilenames
-	} else {
-		h.PassFilenames = true
-	}
-	if hookCfg.RequireSerial != nil {
-		h.RequireSerial = *hookCfg.RequireSerial
-	}
-	if hookCfg.FailFast != nil {
-		h.FailFast = *hookCfg.FailFast
-	}
-	if hookCfg.LanguageVersion != "" {
-		h.LanguageVersion = hookCfg.LanguageVersion
-	}
-	if hookCfg.LogFile != "" {
-		h.LogFile = hookCfg.LogFile
-	}
-	if hookCfg.Description != "" {
-		h.Description = hookCfg.Description
-	}
+	h.applyConfig(hookCfg)
+	overrideString(&h.Description, hookCfg.Description)
 
 	// Apply defaults.
 	if len(h.Types) == 0 && len(h.TypesOr) == 0 {
@@ -267,6 +172,47 @@ func FromLocalConfig(hookCfg *config.HookConfig, globalCfg *config.Config) *Hook
 	resolveLanguageVersion(h, globalCfg)
 
 	return h
+}
+
+// applyConfig applies the overrides a hook's config entry gives, for a
+// manifest hook and a local one alike.
+func (h *Hook) applyConfig(hookCfg *config.HookConfig) {
+	overrideString(&h.LanguageVersion, hookCfg.LanguageVersion)
+	overrideString(&h.Files, hookCfg.Files)
+	overrideString(&h.Exclude, hookCfg.Exclude)
+	overrideSlice(&h.Types, hookCfg.Types)
+	overrideSlice(&h.TypesOr, hookCfg.TypesOr)
+	overrideSlice(&h.ExcludeTypes, hookCfg.ExcludeTypes)
+	overrideSlice(&h.Args, hookCfg.Args)
+	overrideSlice(&h.Stages, hookCfg.Stages)
+	overrideSlice(&h.AdditionalDependencies, hookCfg.AdditionalDependencies)
+	overrideBool(&h.AlwaysRun, hookCfg.AlwaysRun)
+	overrideBool(&h.Verbose, hookCfg.Verbose)
+	overrideBool(&h.PassFilenames, hookCfg.PassFilenames)
+	overrideBool(&h.RequireSerial, hookCfg.RequireSerial)
+	overrideBool(&h.FailFast, hookCfg.FailFast)
+	overrideString(&h.LogFile, hookCfg.LogFile)
+}
+
+// overrideString sets *dst to v when the config gives v.
+func overrideString(dst *string, v string) {
+	if v != "" {
+		*dst = v
+	}
+}
+
+// overrideSlice sets *dst to v when the config gives v.
+func overrideSlice[T any](dst *[]T, v []T) {
+	if len(v) > 0 {
+		*dst = v
+	}
+}
+
+// overrideBool sets *dst to *v when the config gives v.
+func overrideBool(dst, v *bool) {
+	if v != nil {
+		*dst = *v
+	}
 }
 
 // FromManifestHook creates a Hook directly from a manifest hook (used by try-repo).

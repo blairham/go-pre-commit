@@ -41,30 +41,43 @@ func dedupeKeys(n *yaml.Node, seen map[*yaml.Node]bool) {
 	var keys []*Value
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		k, v := n.Content[i], n.Content[i+1]
-		var kv *Value
-		if deref(k).Kind == yaml.ScalarNode && !isMergeKey(deref(k)) {
-			// A scalar always constructs; on any error the key is
-			// simply not compared.
-			if built, err := c.construct(k); err == nil {
-				kv = built
-			}
+		kv := comparedKey(c, k)
+		if j := repeatedKey(keys, kv); j >= 0 {
+			kept[2*j+1] = v
+			continue
 		}
-		replaced := false
-		if kv != nil {
-			for j, prev := range keys {
-				if prev != nil && sameKey(prev, kv) {
-					kept[2*j+1] = v
-					replaced = true
-					break
-				}
-			}
-		}
-		if !replaced {
-			kept = append(kept, k, v)
-			keys = append(keys, kv)
-		}
+		kept = append(kept, k, v)
+		keys = append(keys, kv)
 	}
 	n.Content = kept
+}
+
+// comparedKey is the value k constructs, to compare with the mapping's other
+// keys, or nil when k is not compared: only a scalar other than a merge key
+// is.
+func comparedKey(c *constructor, k *yaml.Node) *Value {
+	if deref(k).Kind != yaml.ScalarNode || isMergeKey(deref(k)) {
+		return nil
+	}
+	// A scalar always constructs; on any error the key is
+	// simply not compared.
+	if built, err := c.construct(k); err == nil {
+		return built
+	}
+	return nil
+}
+
+// repeatedKey is the index in keys of the one kv repeats, or -1.
+func repeatedKey(keys []*Value, kv *Value) int {
+	if kv == nil {
+		return -1
+	}
+	for j, prev := range keys {
+		if prev != nil && sameKey(prev, kv) {
+			return j
+		}
+	}
+	return -1
 }
 
 func deref(n *yaml.Node) *yaml.Node {

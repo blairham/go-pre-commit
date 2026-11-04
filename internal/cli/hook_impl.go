@@ -95,79 +95,96 @@ func (c *HookImplCommand) Run(args []string) int {
 	runArgs = append(runArgs, "--hook-stage", opts.HookType)
 
 	// Map hook-type-specific arguments.
-	switch opts.HookType {
-	case "pre-commit", "pre-merge-commit":
-		// No additional args.
-
-	case "pre-push":
-		// Args: <remote-name> <remote-url>
-		if len(remaining) != 2 {
-			fmt.Fprintf(os.Stderr, "hook-impl for pre-push expected 2 arguments but got %d: %q\n", len(remaining), remaining)
-			return 1
-		}
-		pushArgs, err := prePushArgs("", remaining[0], remaining[1], stdin)
-		if err != nil {
-			return reportError(err)
-		}
-		if pushArgs == nil {
-			// Nothing being pushed needs checking (only deletions, or
-			// commits the remote already has): upstream runs no hooks.
-			return retv
-		}
-		runArgs = append(runArgs, pushArgs...)
-
-	case "commit-msg":
-		if len(remaining) >= 1 {
-			runArgs = append(runArgs, "--commit-msg-filename", remaining[0])
-		}
-
-	case "prepare-commit-msg":
-		if len(remaining) >= 1 {
-			runArgs = append(runArgs, "--commit-msg-filename", remaining[0])
-		}
-		if len(remaining) >= 2 {
-			runArgs = append(runArgs, "--prepare-commit-message-source", remaining[1])
-		}
-		if len(remaining) >= 3 {
-			runArgs = append(runArgs, "--commit-object-name", remaining[2])
-		}
-
-	case "post-checkout":
-		if len(remaining) >= 3 {
-			runArgs = append(runArgs, "--from-ref", remaining[0])
-			runArgs = append(runArgs, "--to-ref", remaining[1])
-			runArgs = append(runArgs, "--checkout-type", remaining[2])
-		}
-		runArgs = append(runArgs, "--all-files")
-
-	case "post-commit":
-		runArgs = append(runArgs, "--all-files")
-
-	case "post-merge":
-		if len(remaining) >= 1 {
-			runArgs = append(runArgs, "--is-squash-merge", remaining[0])
-		}
-		runArgs = append(runArgs, "--all-files")
-
-	case "post-rewrite":
-		if len(remaining) >= 1 {
-			runArgs = append(runArgs, "--rewrite-command", remaining[0])
-		}
-		runArgs = append(runArgs, "--all-files")
-
-	case "pre-rebase":
-		// Args: <upstream> [<branch>]
-		if len(remaining) >= 1 {
-			runArgs = append(runArgs, "--pre-rebase-upstream", remaining[0])
-		}
-		if len(remaining) >= 2 {
-			runArgs = append(runArgs, "--pre-rebase-branch", remaining[1])
-		}
+	typeArgs, exit, ok := hookTypeRunArgs(opts.HookType, remaining, stdin, retv)
+	if !ok {
+		return exit
 	}
+	runArgs = append(runArgs, typeArgs...)
 
 	// Execute the run command directly.
 	runCmd := &RunCommand{Meta: c.Meta}
 	return retv | runCmd.Run(runArgs)
+}
+
+// hookTypeRunArgs is the run arguments that git's arguments to a hook of
+// hookType, remaining, become. ok is false, with the exit status to return,
+// when there is nothing to run.
+func hookTypeRunArgs(hookType string, remaining []string, stdin []byte, retv int) (args []string, exit int, ok bool) {
+	if hookType == "pre-push" {
+		return prePushRunArgs(remaining, stdin, retv)
+	}
+	if typeArgs := hookTypeArgs[hookType]; typeArgs != nil {
+		return typeArgs(remaining), 0, true
+	}
+	// pre-commit and pre-merge-commit take no additional args.
+	return nil, 0, true
+}
+
+// prePushRunArgs is the run arguments for pre-push, from git's
+// <remote-name> <remote-url> and the refs it gave on stdin. ok is false,
+// with the exit status to return, for the wrong number of arguments, refs
+// that cannot be read, or nothing pushed that needs checking.
+func prePushRunArgs(remaining []string, stdin []byte, retv int) (args []string, exit int, ok bool) {
+	if len(remaining) != 2 {
+		fmt.Fprintf(os.Stderr, "hook-impl for pre-push expected 2 arguments but got %d: %q\n", len(remaining), remaining)
+		return nil, 1, false
+	}
+	pushArgs, err := prePushArgs("", remaining[0], remaining[1], stdin)
+	if err != nil {
+		return nil, reportError(err), false
+	}
+	if pushArgs == nil {
+		// Nothing being pushed needs checking (only deletions, or
+		// commits the remote already has): upstream runs no hooks.
+		return nil, retv, false
+	}
+	return pushArgs, 0, true
+}
+
+// hookTypeArgs maps the other hook types that take arguments from git to
+// the run arguments those become.
+var hookTypeArgs = map[string]func(remaining []string) []string{
+	"commit-msg": func(remaining []string) []string {
+		return positionalFlags(remaining, "--commit-msg-filename")
+	},
+	"prepare-commit-msg": func(remaining []string) []string {
+		return positionalFlags(remaining,
+			"--commit-msg-filename", "--prepare-commit-message-source", "--commit-object-name")
+	},
+	"post-checkout": func(remaining []string) []string {
+		var args []string
+		if len(remaining) >= 3 {
+			args = append(args,
+				"--from-ref", remaining[0], "--to-ref", remaining[1], "--checkout-type", remaining[2])
+		}
+		return append(args, "--all-files")
+	},
+	"post-commit": func([]string) []string {
+		return []string{"--all-files"}
+	},
+	"post-merge": func(remaining []string) []string {
+		return append(positionalFlags(remaining, "--is-squash-merge"), "--all-files")
+	},
+	"post-rewrite": func(remaining []string) []string {
+		return append(positionalFlags(remaining, "--rewrite-command"), "--all-files")
+	},
+	// Args: <upstream> [<branch>]
+	"pre-rebase": func(remaining []string) []string {
+		return positionalFlags(remaining, "--pre-rebase-upstream", "--pre-rebase-branch")
+	},
+}
+
+// positionalFlags is each of names followed by the argument in its
+// position, for the arguments git gave.
+func positionalFlags(remaining []string, names ...string) []string {
+	var args []string
+	for i, flag := range names {
+		if i >= len(remaining) {
+			break
+		}
+		args = append(args, flag, remaining[i])
+	}
+	return args
 }
 
 // validateHookConfig is upstream's _validate_config: with no config file, a

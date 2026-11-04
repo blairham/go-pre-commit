@@ -311,20 +311,47 @@ func lineOffsets(s string) []int {
 // A block scalar, or a node whose source is not where it should be, has no
 // span and is left alone.
 func scalarSpan(src string, offsets []int, n *yaml.Node) (start, end int, ok bool) {
-	if n.Line < 1 || n.Line > len(offsets) || n.Column < 1 {
+	start, ok = nodeOffset(src, offsets, n)
+	if !ok {
 		return 0, 0, false
+	}
+	pos := skipProperties(src, start)
+
+	switch {
+	case n.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0:
+		return 0, 0, false
+	case n.Style&yaml.SingleQuotedStyle != 0:
+		end, ok = singleQuotedEnd(src, pos)
+	case n.Style&yaml.DoubleQuotedStyle != 0:
+		end, ok = doubleQuotedEnd(src, pos)
+	default:
+		end, ok = pos+len(n.Value), strings.HasPrefix(src[pos:], n.Value)
+	}
+	if !ok {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+// nodeOffset is the byte offset in src of n's line and column.
+func nodeOffset(src string, offsets []int, n *yaml.Node) (int, bool) {
+	if n.Line < 1 || n.Line > len(offsets) || n.Column < 1 {
+		return 0, false
 	}
 	pos := offsets[n.Line-1]
 	for col := 1; col < n.Column; col++ {
 		if pos >= len(src) {
-			return 0, 0, false
+			return 0, false
 		}
 		_, w := utf8.DecodeRuneInString(src[pos:])
 		pos += w
 	}
-	start = pos
+	return pos, true
+}
 
-	// Skip properties: "&anchor" and "!tag", each followed by whitespace.
+// skipProperties is the offset past the properties at pos: "&anchor" and
+// "!tag", each followed by whitespace.
+func skipProperties(src string, pos int) int {
 	for pos < len(src) && (src[pos] == '&' || src[pos] == '!') {
 		for pos < len(src) && !strings.ContainsRune(" \t\n", rune(src[pos])) {
 			pos++
@@ -333,43 +360,41 @@ func scalarSpan(src string, offsets []int, n *yaml.Node) (start, end int, ok boo
 			pos++
 		}
 	}
+	return pos
+}
 
-	switch {
-	case n.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0:
-		return 0, 0, false
-	case n.Style&yaml.SingleQuotedStyle != 0:
-		if pos >= len(src) || src[pos] != '\'' {
-			return 0, 0, false
-		}
-		for i := pos + 1; i < len(src); i++ {
-			if src[i] != '\'' {
-				continue
-			}
-			if i+1 < len(src) && src[i+1] == '\'' {
-				i++
-				continue
-			}
-			return start, i + 1, true
-		}
-		return 0, 0, false
-	case n.Style&yaml.DoubleQuotedStyle != 0:
-		if pos >= len(src) || src[pos] != '"' {
-			return 0, 0, false
-		}
-		for i := pos + 1; i < len(src); i++ {
-			switch src[i] {
-			case '\\':
-				i++
-			case '"':
-				return start, i + 1, true
-			}
-		}
-		return 0, 0, false
+// singleQuotedEnd is the offset after the single-quoted scalar at pos.
+func singleQuotedEnd(src string, pos int) (int, bool) {
+	if pos >= len(src) || src[pos] != '\'' {
+		return 0, false
 	}
-	if !strings.HasPrefix(src[pos:], n.Value) {
-		return 0, 0, false
+	for i := pos + 1; i < len(src); i++ {
+		if src[i] != '\'' {
+			continue
+		}
+		if i+1 < len(src) && src[i+1] == '\'' {
+			i++
+			continue
+		}
+		return i + 1, true
 	}
-	return start, pos + len(n.Value), true
+	return 0, false
+}
+
+// doubleQuotedEnd is the offset after the double-quoted scalar at pos.
+func doubleQuotedEnd(src string, pos int) (int, bool) {
+	if pos >= len(src) || src[pos] != '"' {
+		return 0, false
+	}
+	for i := pos + 1; i < len(src); i++ {
+		switch src[i] {
+		case '\\':
+			i++
+		case '"':
+			return i + 1, true
+		}
+	}
+	return 0, false
 }
 
 func (c *MigrateConfigCommand) Help() string {
