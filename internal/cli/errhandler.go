@@ -45,12 +45,12 @@ var (
 	errorReported atomic.Bool
 )
 
-// keyboardInterrupt stands for Python's KeyboardInterrupt, whose str() is
+// keyboardInterruptError stands for Python's KeyboardInterrupt, whose str() is
 // empty.
-type keyboardInterrupt struct{}
+type keyboardInterruptError struct{}
 
-func (keyboardInterrupt) Error() string     { return "" }
-func (keyboardInterrupt) ErrorType() string { return "KeyboardInterrupt" }
+func (keyboardInterruptError) Error() string     { return "" }
+func (keyboardInterruptError) ErrorType() string { return "KeyboardInterrupt" }
 
 // fatalError reports err as upstream's plain FatalError.
 func fatalError(err error) int {
@@ -68,7 +68,7 @@ func unexpectedError(err error) int {
 // back after SIGINT is the interrupt unwinding, and is reported as one.
 func reportError(err error) int {
 	if interrupted.Load() {
-		err = keyboardInterrupt{}
+		err = keyboardInterruptError{}
 	}
 	prefix, code := classifyError(err)
 	typ, msg := errorTypeAndMessage(err)
@@ -96,7 +96,7 @@ func reportPanic(r any, stack []byte) int {
 func classifyError(err error) (string, int) {
 	var fe *fatal.Error
 	switch {
-	case errors.As(err, new(keyboardInterrupt)):
+	case errors.As(err, new(keyboardInterruptError)):
 		return "Interrupted (^C)", config.ExitCodeInterrupt
 	case errors.As(err, &fe):
 		return "An error has occurred", config.ExitCodeError

@@ -34,7 +34,6 @@ linters:
     # per pull request and shrink that list:
     #   unparam
     #   goconst
-    #   errname
     #   errorlint
     #   nilerr
     #   nilnil
@@ -66,6 +65,7 @@ linters:
     - contextcheck # Check if function use a non-inherited context
     - rowserrcheck # Check whether Err of rows is checked
     - sqlclosecheck # Check that sql.Rows and sql.Stmt are closed
+    - errname # Checks sentinel errors are prefixed with Err
     - forcetypeassert # Finds forced type assertions
     - predeclared # Find code that shadows predeclared identifiers
 

@@ -147,7 +147,7 @@ func Run(args []string, build BuildInfo) (code int) {
 
 	exitCode, err := c.Run()
 	if interrupted.Load() && !errorReported.Load() {
-		return reportError(keyboardInterrupt{})
+		return reportError(keyboardInterruptError{})
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

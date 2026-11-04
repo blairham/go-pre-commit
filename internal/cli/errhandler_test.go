@@ -84,7 +84,7 @@ func TestReportError(t *testing.T) {
 		},
 		{
 			"interrupt",
-			keyboardInterrupt{},
+			keyboardInterruptError{},
 			"Interrupted (^C): KeyboardInterrupt: ",
 			130,
 		},
