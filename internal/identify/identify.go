@@ -16,6 +16,17 @@ import (
 	"strings"
 )
 
+// The tags a path gets from what it is rather than from its name: upstream
+// identify's TYPE_TAGS and ENCODING_TAGS, under its own names.
+const (
+	TagDirectory = "directory"
+	TagSymlink   = "symlink"
+	TagSocket    = "socket"
+	TagFile      = "file"
+	TagText      = "text"
+	TagBinary    = "binary"
+)
+
 // TagsForFile returns the set of type tags for a file path.
 //
 // Non-regular files get exactly one tag and nothing else, matching upstream
@@ -27,25 +38,25 @@ func TagsForFile(path string) map[string]bool {
 	if info, err := os.Lstat(path); err == nil {
 		switch mode := info.Mode(); {
 		case mode.IsDir():
-			return map[string]bool{"directory": true}
+			return map[string]bool{TagDirectory: true}
 		case mode&os.ModeSymlink != 0:
-			return map[string]bool{"symlink": true}
+			return map[string]bool{TagSymlink: true}
 		case mode&os.ModeSocket != 0:
-			return map[string]bool{"socket": true}
+			return map[string]bool{TagSocket: true}
 		}
 	}
 
 	tags := make(map[string]bool)
 
 	// Always add "file".
-	tags["file"] = true
+	tags[TagFile] = true
 
 	// Check if binary.
 	if isBinaryFile(path) {
-		tags["binary"] = true
+		tags[TagBinary] = true
 		return tags
 	}
-	tags["text"] = true
+	tags[TagText] = true
 
 	// Add extension-based tags.
 	ext := strings.ToLower(filepath.Ext(path))
@@ -170,7 +181,9 @@ func getShebangTags(path string) []string {
 	interp := filepath.Base(line)
 
 	// Strip version numbers.
-	for _, lang := range []string{"python", "ruby", "perl", "node", "bash", "sh", "zsh", "fish"} {
+	for _, lang := range []string{
+		interpPython, interpRuby, interpPerl, interpNode, interpBash, interpSh, interpZsh, interpFish,
+	} {
 		if strings.HasPrefix(interp, lang) {
 			return shebangInterpreters[lang]
 		}
@@ -183,291 +196,401 @@ func getShebangTags(path string) []string {
 	return nil
 }
 
+// The interpreters getShebangTags matches by prefix, so that a versioned
+// name such as python3.12 finds its entry in shebangInterpreters.
+const (
+	interpPython = "python"
+	interpRuby   = "ruby"
+	interpPerl   = "perl"
+	interpNode   = "node"
+	interpBash   = "bash"
+	interpSh     = "sh"
+	interpZsh    = "zsh"
+	interpFish   = "fish"
+)
+
 // shebangInterpreters maps interpreter names to tags.
 var shebangInterpreters = map[string][]string{
-	"python":  {"python"},
-	"python3": {"python", "python3"},
-	"ruby":    {"ruby"},
-	"node":    {"javascript"},
-	"bash":    {"bash", "shell"},
-	"sh":      {"sh", "shell"},
-	"zsh":     {"zsh", "shell"},
-	"fish":    {"fish", "shell"},
-	"perl":    {"perl"},
-	"php":     {"php"},
-	"lua":     {"lua"},
-	"Rscript": {"r"},
+	interpPython: {tagPython},
+	"python3":    {tagPython, "python3"},
+	interpRuby:   {tagRuby},
+	interpNode:   {tagJavaScript},
+	interpBash:   {tagBash, tagShell},
+	interpSh:     {"sh", tagShell},
+	interpZsh:    {tagZsh, tagShell},
+	interpFish:   {tagFish, tagShell},
+	interpPerl:   {tagPerl},
+	"php":        {tagPHP},
+	"lua":        {tagLua},
+	"Rscript":    {tagR},
 }
+
+// Tags that more than one entry below shares. A tag only one entry uses stays
+// a literal beside its extension or filename.
+const (
+	tagArchive       = "archive"
+	tagAssembly      = "assembly"
+	tagAudio         = "audio"
+	tagAuthors       = "authors"
+	tagAvro          = "avro"
+	tagBash          = "bash"
+	tagBatch         = "batch"
+	tagC             = "c"
+	tagCSharp        = "c#"
+	tagCPlusPlus     = "c++"
+	tagCertificate   = "certificate"
+	tagChangelog     = "changelog"
+	tagClippy        = "clippy"
+	tagClojure       = "clojure"
+	tagCMake         = "cmake"
+	tagCodeowners    = "codeowners"
+	tagCSS           = "css"
+	tagCython        = "cython"
+	tagDart          = "dart"
+	tagDiff          = "diff"
+	tagDlang         = "dlang"
+	tagDockerCompose = "docker-compose"
+	tagDockerfile    = "dockerfile"
+	tagDockerignore  = "dockerignore"
+	tagDocument      = "document"
+	tagDotenv        = "dotenv"
+	tagElixir        = "elixir"
+	tagErlang        = "erlang"
+	tagESLint        = "eslint"
+	tagFSharp        = "f#"
+	tagFish          = "fish"
+	tagFont          = "font"
+	tagFortran       = "fortran"
+	tagGoMod         = "go-mod"
+	tagGoSum         = "go-sum"
+	tagGolangci      = "golangci"
+	tagGoReleaser    = "goreleaser"
+	tagGraphQL       = "graphql"
+	tagGroovy        = "groovy"
+	tagHaskell       = "haskell"
+	tagHCL           = "hcl"
+	tagHeader        = "header"
+	tagHTML          = "html"
+	tagIcon          = "icon"
+	tagImage         = "image"
+	tagINI           = "ini"
+	tagJava          = "java"
+	tagJavaScript    = "javascript"
+	tagJinja         = "jinja"
+	tagJPEG          = "jpeg"
+	tagJSON          = "json"
+	tagJsonnet       = "jsonnet"
+	tagKotlin        = "kotlin"
+	tagLaTeX         = "latex"
+	tagLicense       = "license"
+	tagLisp          = "lisp"
+	tagLock          = "lock"
+	tagLua           = "lua"
+	tagMakefile      = "makefile"
+	tagMarkdown      = "markdown"
+	tagMypy          = "mypy"
+	tagNim           = "nim"
+	tagOCaml         = "ocaml"
+	tagPackageJSON   = "package-json"
+	tagPEM           = "pem"
+	tagPerl          = "perl"
+	tagPHP           = "php"
+	tagPip           = "pip"
+	tagPowerShell    = "powershell"
+	tagPreCommit     = "pre-commit"
+	tagPrettier      = "prettier"
+	tagPug           = "pug"
+	tagPython        = "python"
+	tagR             = "r"
+	tagReadme        = "readme"
+	tagReason        = "reason"
+	tagRST           = "rst"
+	tagRuby          = "ruby"
+	tagRustfmt       = "rustfmt"
+	tagSetuptools    = "setuptools"
+	tagShell         = "shell"
+	tagStata         = "stata"
+	tagTerraform     = "terraform"
+	tagTeX           = "tex"
+	tagTIFF          = "tiff"
+	tagTOML          = "toml"
+	tagTypeScript    = "typescript"
+	tagVideo         = "video"
+	tagXML           = "xml"
+	tagXSL           = "xsl"
+	tagYAML          = "yaml"
+	tagZsh           = "zsh"
+)
 
 // extensionMap maps file extensions to type tags.
 var extensionMap = map[string][]string{
 	// Python
-	"py":  {"python"},
-	"pyi": {"python", "pyi"},
-	"pyx": {"python", "cython"},
-	"pxd": {"python", "cython"},
-	"pyw": {"python"},
+	"py":  {tagPython},
+	"pyi": {tagPython, "pyi"},
+	"pyx": {tagPython, tagCython},
+	"pxd": {tagPython, tagCython},
+	"pyw": {tagPython},
 
 	// JavaScript / TypeScript
-	"js":  {"javascript"},
-	"jsx": {"javascript", "jsx"},
-	"ts":  {"typescript"},
-	"tsx": {"typescript", "tsx"},
-	"mjs": {"javascript"},
-	"cjs": {"javascript"},
-	"mts": {"typescript"},
-	"cts": {"typescript"},
+	"js":  {tagJavaScript},
+	"jsx": {tagJavaScript, "jsx"},
+	"ts":  {tagTypeScript},
+	"tsx": {tagTypeScript, "tsx"},
+	"mjs": {tagJavaScript},
+	"cjs": {tagJavaScript},
+	"mts": {tagTypeScript},
+	"cts": {tagTypeScript},
 
 	// Ruby
-	"rb":      {"ruby"},
-	"erb":     {"ruby", "erb"},
-	"gemspec": {"ruby"},
-	"rake":    {"ruby"},
-	"ru":      {"ruby"},
+	"rb":      {tagRuby},
+	"erb":     {tagRuby, "erb"},
+	"gemspec": {tagRuby},
+	"rake":    {tagRuby},
+	"ru":      {tagRuby},
 
 	// Go
 	"go":   {"go"},
-	"mod":  {"go-mod"},
-	"sum":  {"go-sum"},
+	"mod":  {tagGoMod},
+	"sum":  {tagGoSum},
 	"tmpl": {"go-template"},
 
 	// Rust
 	"rs": {"rust"},
 
 	// Java / JVM
-	"java":   {"java"},
-	"class":  {"java", "binary"},
-	"jar":    {"java", "binary"},
-	"kt":     {"kotlin"},
-	"kts":    {"kotlin"},
+	"java":   {tagJava},
+	"class":  {tagJava, TagBinary},
+	"jar":    {tagJava, TagBinary},
+	"kt":     {tagKotlin},
+	"kts":    {tagKotlin},
 	"scala":  {"scala"},
-	"groovy": {"groovy"},
-	"gradle": {"groovy", "gradle"},
-	"clj":    {"clojure"},
+	"groovy": {tagGroovy},
+	"gradle": {tagGroovy, "gradle"},
+	"clj":    {tagClojure},
 	"cljs":   {"clojurescript"},
-	"cljc":   {"clojure"},
-	"edn":    {"clojure", "edn"},
+	"cljc":   {tagClojure},
+	"edn":    {tagClojure, "edn"},
 
 	// C / C++ / ObjC
-	"c":     {"c"},
-	"h":     {"c", "header"},
-	"cpp":   {"c++"},
-	"cc":    {"c++"},
-	"cxx":   {"c++"},
-	"c++":   {"c++"},
-	"hpp":   {"c++", "header"},
-	"hxx":   {"c++", "header"},
-	"hh":    {"c++", "header"},
-	"inl":   {"c++"},
-	"ipp":   {"c++"},
-	"tcc":   {"c++"},
-	"cs":    {"c#"},
-	"csx":   {"c#"},
+	"c":     {tagC},
+	"h":     {tagC, tagHeader},
+	"cpp":   {tagCPlusPlus},
+	"cc":    {tagCPlusPlus},
+	"cxx":   {tagCPlusPlus},
+	"c++":   {tagCPlusPlus},
+	"hpp":   {tagCPlusPlus, tagHeader},
+	"hxx":   {tagCPlusPlus, tagHeader},
+	"hh":    {tagCPlusPlus, tagHeader},
+	"inl":   {tagCPlusPlus},
+	"ipp":   {tagCPlusPlus},
+	"tcc":   {tagCPlusPlus},
+	"cs":    {tagCSharp},
+	"csx":   {tagCSharp},
 	"swift": {"swift"},
 	"m":     {"objective-c"},
 	"mm":    {"objective-c++"},
 
 	// Perl
-	"pl":  {"perl"},
-	"pm":  {"perl"},
-	"pod": {"perl", "pod"},
-	"t":   {"perl"},
+	"pl":  {tagPerl},
+	"pm":  {tagPerl},
+	"pod": {tagPerl, "pod"},
+	"t":   {tagPerl},
 
 	// R
-	"r":   {"r"},
-	"R":   {"r"},
-	"rmd": {"r", "markdown"},
-	"Rmd": {"r", "markdown"},
-	"rnw": {"r"},
-	"Rnw": {"r"},
+	"r":   {tagR},
+	"R":   {tagR},
+	"rmd": {tagR, tagMarkdown},
+	"Rmd": {tagR, tagMarkdown},
+	"rnw": {tagR},
+	"Rnw": {tagR},
 
 	// Lua
-	"lua":  {"lua"},
-	"luau": {"lua"},
+	"lua":  {tagLua},
+	"luau": {tagLua},
 
 	// Shell
-	"sh":   {"shell", "bash"},
-	"bash": {"shell", "bash"},
-	"zsh":  {"shell", "zsh"},
-	"fish": {"shell", "fish"},
-	"ksh":  {"shell", "ksh"},
-	"csh":  {"shell", "csh"},
-	"tcsh": {"shell", "tcsh"},
-	"ash":  {"shell", "ash"},
-	"dash": {"shell"},
-	"bats": {"shell", "bash", "bats"},
-	"ps1":  {"powershell"},
-	"psm1": {"powershell"},
-	"psd1": {"powershell"},
-	"bat":  {"batch"},
-	"cmd":  {"batch"},
+	"sh":   {tagShell, tagBash},
+	"bash": {tagShell, tagBash},
+	"zsh":  {tagShell, tagZsh},
+	"fish": {tagShell, tagFish},
+	"ksh":  {tagShell, "ksh"},
+	"csh":  {tagShell, "csh"},
+	"tcsh": {tagShell, "tcsh"},
+	"ash":  {tagShell, "ash"},
+	"dash": {tagShell},
+	"bats": {tagShell, tagBash, "bats"},
+	"ps1":  {tagPowerShell},
+	"psm1": {tagPowerShell},
+	"psd1": {tagPowerShell},
+	"bat":  {tagBatch},
+	"cmd":  {tagBatch},
 
 	// PHP
-	"php":   {"php"},
-	"phtml": {"php"},
-	"php3":  {"php"},
-	"php4":  {"php"},
-	"php5":  {"php"},
-	"phps":  {"php"},
+	"php":   {tagPHP},
+	"phtml": {tagPHP},
+	"php3":  {tagPHP},
+	"php4":  {tagPHP},
+	"php5":  {tagPHP},
+	"phps":  {tagPHP},
 
 	// Markup and data formats
-	"json":     {"json"},
-	"jsonl":    {"json"},
+	"json":     {tagJSON},
+	"jsonl":    {tagJSON},
 	"json5":    {"json5"},
-	"geojson":  {"json", "geojson"},
-	"yaml":     {"yaml"},
-	"yml":      {"yaml"},
-	"toml":     {"toml"},
-	"xml":      {"xml"},
-	"xsl":      {"xml", "xsl"},
-	"xslt":     {"xml", "xsl"},
-	"xsd":      {"xml", "xsd"},
-	"dtd":      {"xml", "dtd"},
-	"plist":    {"xml", "plist"},
-	"html":     {"html"},
-	"htm":      {"html"},
-	"xhtml":    {"html", "xhtml"},
+	"geojson":  {tagJSON, "geojson"},
+	"yaml":     {tagYAML},
+	"yml":      {tagYAML},
+	"toml":     {tagTOML},
+	"xml":      {tagXML},
+	"xsl":      {tagXML, tagXSL},
+	"xslt":     {tagXML, tagXSL},
+	"xsd":      {tagXML, "xsd"},
+	"dtd":      {tagXML, "dtd"},
+	"plist":    {tagXML, "plist"},
+	"html":     {tagHTML},
+	"htm":      {tagHTML},
+	"xhtml":    {tagHTML, "xhtml"},
 	"vue":      {"vue"},
 	"svelte":   {"svelte"},
-	"css":      {"css"},
-	"scss":     {"scss", "css"},
-	"sass":     {"sass", "css"},
-	"less":     {"less", "css"},
-	"styl":     {"stylus", "css"},
-	"md":       {"markdown"},
-	"mdx":      {"markdown", "mdx"},
-	"markdown": {"markdown"},
-	"rst":      {"rst"},
-	"tex":      {"tex", "latex"},
-	"latex":    {"tex", "latex"},
-	"bib":      {"bib", "latex"},
+	"css":      {tagCSS},
+	"scss":     {"scss", tagCSS},
+	"sass":     {"sass", tagCSS},
+	"less":     {"less", tagCSS},
+	"styl":     {"stylus", tagCSS},
+	"md":       {tagMarkdown},
+	"mdx":      {tagMarkdown, "mdx"},
+	"markdown": {tagMarkdown},
+	"rst":      {tagRST},
+	"tex":      {tagTeX, tagLaTeX},
+	"latex":    {tagTeX, tagLaTeX},
+	"bib":      {"bib", tagLaTeX},
 	"csv":      {"csv"},
 	"tsv":      {"tsv"},
 
 	// Config files
-	"ini":        {"ini"},
-	"cfg":        {"ini"},
+	"ini":        {tagINI},
+	"cfg":        {tagINI},
 	"conf":       {"conf"},
 	"properties": {"properties", "java-properties"},
-	"env":        {"dotenv"},
-	"envrc":      {"dotenv"},
+	"env":        {tagDotenv},
+	"envrc":      {tagDotenv},
 	"gitconfig":  {"gitconfig"},
 
 	// Images
-	"png":  {"image", "png"},
-	"jpg":  {"image", "jpeg"},
-	"jpeg": {"image", "jpeg"},
-	"gif":  {"image", "gif"},
-	"bmp":  {"image", "bmp"},
-	"tiff": {"image", "tiff"},
-	"tif":  {"image", "tiff"},
-	"webp": {"image", "webp"},
-	"svg":  {"image", "svg"},
-	"ico":  {"image", "icon"},
-	"icns": {"image", "icon"},
-	"psd":  {"image", "psd"},
-	"ai":   {"image", "ai"},
-	"eps":  {"image", "eps"},
+	"png":  {tagImage, "png"},
+	"jpg":  {tagImage, tagJPEG},
+	"jpeg": {tagImage, tagJPEG},
+	"gif":  {tagImage, "gif"},
+	"bmp":  {tagImage, "bmp"},
+	"tiff": {tagImage, tagTIFF},
+	"tif":  {tagImage, tagTIFF},
+	"webp": {tagImage, "webp"},
+	"svg":  {tagImage, "svg"},
+	"ico":  {tagImage, tagIcon},
+	"icns": {tagImage, tagIcon},
+	"psd":  {tagImage, "psd"},
+	"ai":   {tagImage, "ai"},
+	"eps":  {tagImage, "eps"},
 
 	// Audio/Video
-	"mp3":  {"audio"},
-	"mp4":  {"video"},
-	"avi":  {"video"},
-	"mkv":  {"video"},
-	"mov":  {"video"},
-	"wav":  {"audio"},
-	"flac": {"audio"},
-	"ogg":  {"audio"},
-	"webm": {"video"},
+	"mp3":  {tagAudio},
+	"mp4":  {tagVideo},
+	"avi":  {tagVideo},
+	"mkv":  {tagVideo},
+	"mov":  {tagVideo},
+	"wav":  {tagAudio},
+	"flac": {tagAudio},
+	"ogg":  {tagAudio},
+	"webm": {tagVideo},
 
 	// Fonts
-	"ttf":   {"font"},
-	"otf":   {"font"},
-	"woff":  {"font"},
-	"woff2": {"font"},
-	"eot":   {"font"},
+	"ttf":   {tagFont},
+	"otf":   {tagFont},
+	"woff":  {tagFont},
+	"woff2": {tagFont},
+	"eot":   {tagFont},
 
 	// Documents
 	"pdf":  {"pdf"},
-	"doc":  {"document"},
-	"docx": {"document"},
-	"xls":  {"document"},
-	"xlsx": {"document"},
-	"ppt":  {"document"},
-	"pptx": {"document"},
-	"odt":  {"document"},
-	"ods":  {"document"},
-	"odp":  {"document"},
-	"rtf":  {"document", "rtf"},
+	"doc":  {tagDocument},
+	"docx": {tagDocument},
+	"xls":  {tagDocument},
+	"xlsx": {tagDocument},
+	"ppt":  {tagDocument},
+	"pptx": {tagDocument},
+	"odt":  {tagDocument},
+	"ods":  {tagDocument},
+	"odp":  {tagDocument},
+	"rtf":  {tagDocument, "rtf"},
 
 	// Build, package, and DevOps
 	"sql":     {"sql"},
-	"tf":      {"terraform", "hcl"},
-	"tfvars":  {"terraform", "hcl"},
-	"hcl":     {"hcl"},
+	"tf":      {tagTerraform, tagHCL},
+	"tfvars":  {tagTerraform, tagHCL},
+	"hcl":     {tagHCL},
 	"proto":   {"protobuf"},
 	"thrift":  {"thrift"},
-	"avro":    {"avro"},
-	"graphql": {"graphql"},
-	"gql":     {"graphql"},
+	"avro":    {tagAvro},
+	"graphql": {tagGraphQL},
+	"gql":     {tagGraphQL},
 
 	// Haskell
-	"hs":    {"haskell"},
-	"lhs":   {"haskell"},
-	"cabal": {"haskell", "cabal"},
+	"hs":    {tagHaskell},
+	"lhs":   {tagHaskell},
+	"cabal": {tagHaskell, "cabal"},
 
 	// Elixir / Erlang
-	"ex":  {"elixir"},
-	"exs": {"elixir"},
-	"erl": {"erlang"},
-	"hrl": {"erlang"},
+	"ex":  {tagElixir},
+	"exs": {tagElixir},
+	"erl": {tagErlang},
+	"hrl": {tagErlang},
 
 	// Dart / Flutter
-	"dart": {"dart"},
+	"dart": {tagDart},
 
 	// Zig
 	"zig": {"zig"},
 
 	// Nim
-	"nim":    {"nim"},
-	"nimble": {"nim"},
+	"nim":    {tagNim},
+	"nimble": {tagNim},
 
 	// Julia
 	"jl": {"julia"},
 
 	// F# / OCaml / ML
-	"fs":  {"f#"},
-	"fsx": {"f#"},
-	"fsi": {"f#"},
-	"ml":  {"ocaml"},
-	"mli": {"ocaml"},
-	"re":  {"reason"},
-	"rei": {"reason"},
+	"fs":  {tagFSharp},
+	"fsx": {tagFSharp},
+	"fsi": {tagFSharp},
+	"ml":  {tagOCaml},
+	"mli": {tagOCaml},
+	"re":  {tagReason},
+	"rei": {tagReason},
 
 	// Lisp family
-	"el":   {"emacs-lisp", "lisp"},
-	"lisp": {"lisp"},
-	"lsp":  {"lisp"},
-	"scm":  {"scheme", "lisp"},
-	"rkt":  {"racket", "lisp"},
-	"hy":   {"hy", "lisp"},
+	"el":   {"emacs-lisp", tagLisp},
+	"lisp": {tagLisp},
+	"lsp":  {tagLisp},
+	"scm":  {"scheme", tagLisp},
+	"rkt":  {"racket", tagLisp},
+	"hy":   {"hy", tagLisp},
 
 	// Assembly
-	"asm":  {"assembly"},
-	"s":    {"assembly"},
-	"S":    {"assembly"},
-	"nasm": {"assembly"},
+	"asm":  {tagAssembly},
+	"s":    {tagAssembly},
+	"S":    {tagAssembly},
+	"nasm": {tagAssembly},
 
 	// Fortran
-	"f":   {"fortran"},
-	"f90": {"fortran"},
-	"f95": {"fortran"},
-	"f03": {"fortran"},
-	"for": {"fortran"},
+	"f":   {tagFortran},
+	"f90": {tagFortran},
+	"f95": {tagFortran},
+	"f03": {tagFortran},
+	"for": {tagFortran},
 
 	// D
-	"d":  {"dlang"},
-	"di": {"dlang"},
+	"d":  {tagDlang},
+	"di": {tagDlang},
 
 	// V
 	"v": {"vlang"},
@@ -476,40 +599,40 @@ var extensionMap = map[string][]string{
 	"cr": {"crystal"},
 
 	// Templates
-	"j2":       {"jinja"},
-	"jinja":    {"jinja"},
-	"jinja2":   {"jinja"},
+	"j2":       {tagJinja},
+	"jinja":    {tagJinja},
+	"jinja2":   {tagJinja},
 	"twig":     {"twig"},
 	"ejs":      {"ejs"},
 	"hbs":      {"handlebars"},
 	"mustache": {"mustache"},
-	"pug":      {"pug"},
-	"jade":     {"pug"},
+	"pug":      {tagPug},
+	"jade":     {tagPug},
 	"slim":     {"slim"},
 	"haml":     {"haml"},
 
 	// Config / Schema
-	"jsonschema": {"json", "jsonschema"},
-	"avsc":       {"json", "avro"},
+	"jsonschema": {tagJSON, "jsonschema"},
+	"avsc":       {tagJSON, tagAvro},
 	"prisma":     {"prisma"},
 	"nginx":      {"nginx"},
 
 	// Notebooks / Data
 	"ipynb": {"jupyter"},
-	"rdata": {"r"},
-	"rds":   {"r"},
+	"rdata": {tagR},
+	"rds":   {tagR},
 	"sas":   {"sas"},
 	"sps":   {"spss"},
-	"do":    {"stata"},
-	"dta":   {"stata"},
+	"do":    {tagStata},
+	"dta":   {tagStata},
 	"mat":   {"matlab"},
 
 	// Makefile-like
-	"mk":    {"makefile"},
-	"cmake": {"cmake"},
+	"mk":    {tagMakefile},
+	"cmake": {tagCMake},
 
 	// Docker / CI
-	"dockerignore": {"dockerignore"},
+	"dockerignore": {tagDockerignore},
 
 	// Nix
 	"nix": {"nix"},
@@ -518,55 +641,55 @@ var extensionMap = map[string][]string{
 	"cue": {"cue"},
 
 	// Jsonnet
-	"jsonnet":   {"jsonnet"},
-	"libsonnet": {"jsonnet"},
+	"jsonnet":   {tagJsonnet},
+	"libsonnet": {tagJsonnet},
 
 	// WASM
-	"wasm": {"wasm", "binary"},
+	"wasm": {"wasm", TagBinary},
 	"wat":  {"wasm-text"},
 
 	// Certificates / Keys
-	"pem": {"pem"},
-	"crt": {"pem", "certificate"},
-	"key": {"pem", "key"},
-	"cer": {"certificate"},
-	"p12": {"certificate", "binary"},
-	"pfx": {"certificate", "binary"},
+	"pem": {tagPEM},
+	"crt": {tagPEM, tagCertificate},
+	"key": {tagPEM, "key"},
+	"cer": {tagCertificate},
+	"p12": {tagCertificate, TagBinary},
+	"pfx": {tagCertificate, TagBinary},
 
 	// Archives
-	"zip": {"archive", "binary"},
-	"tar": {"archive", "binary"},
-	"gz":  {"archive", "binary"},
-	"bz2": {"archive", "binary"},
-	"xz":  {"archive", "binary"},
-	"7z":  {"archive", "binary"},
-	"rar": {"archive", "binary"},
-	"tgz": {"archive", "binary"},
+	"zip": {tagArchive, TagBinary},
+	"tar": {tagArchive, TagBinary},
+	"gz":  {tagArchive, TagBinary},
+	"bz2": {tagArchive, TagBinary},
+	"xz":  {tagArchive, TagBinary},
+	"7z":  {tagArchive, TagBinary},
+	"rar": {tagArchive, TagBinary},
+	"tgz": {tagArchive, TagBinary},
 
 	// Misc
-	"diff":  {"diff"},
-	"patch": {"diff", "patch"},
+	"diff":  {tagDiff},
+	"patch": {tagDiff, "patch"},
 	"log":   {"log"},
-	"lock":  {"lock"},
+	"lock":  {tagLock},
 	"pid":   {"pid"},
 	"map":   {"sourcemap"},
-	"wsdl":  {"xml", "wsdl"},
+	"wsdl":  {tagXML, "wsdl"},
 }
 
 // filenameMap maps specific filenames to type tags.
 var filenameMap = map[string][]string{
-	"makefile":       {"makefile"},
-	"gnumakefile":    {"makefile"},
-	"dockerfile":     {"dockerfile"},
-	"containerfile":  {"dockerfile"},
-	"vagrantfile":    {"ruby"},
-	"gemfile":        {"ruby"},
-	"gemfile.lock":   {"ruby", "lock"},
-	"rakefile":       {"ruby"},
-	"cmakelists.txt": {"cmake"},
-	"jenkinsfile":    {"groovy"},
+	"makefile":       {tagMakefile},
+	"gnumakefile":    {tagMakefile},
+	"dockerfile":     {tagDockerfile},
+	"containerfile":  {tagDockerfile},
+	"vagrantfile":    {tagRuby},
+	"gemfile":        {tagRuby},
+	"gemfile.lock":   {tagRuby, tagLock},
+	"rakefile":       {tagRuby},
+	"cmakelists.txt": {tagCMake},
+	"jenkinsfile":    {tagGroovy},
 	"procfile":       {"procfile"},
-	"brewfile":       {"ruby"},
+	"brewfile":       {tagRuby},
 
 	// Git
 	".gitignore":     {"gitignore"},
@@ -577,121 +700,121 @@ var filenameMap = map[string][]string{
 
 	// Editor
 	".editorconfig":   {"editorconfig"},
-	".prettierrc":     {"json", "prettier"},
-	".prettierignore": {"prettier"},
-	".eslintrc":       {"json", "eslint"},
-	".eslintrc.json":  {"json", "eslint"},
-	".eslintrc.yml":   {"yaml", "eslint"},
-	".eslintrc.yaml":  {"yaml", "eslint"},
-	".eslintrc.js":    {"javascript", "eslint"},
-	".eslintignore":   {"eslint"},
-	".stylelintrc":    {"json"},
-	".babelrc":        {"json"},
+	".prettierrc":     {tagJSON, tagPrettier},
+	".prettierignore": {tagPrettier},
+	".eslintrc":       {tagJSON, tagESLint},
+	".eslintrc.json":  {tagJSON, tagESLint},
+	".eslintrc.yml":   {tagYAML, tagESLint},
+	".eslintrc.yaml":  {tagYAML, tagESLint},
+	".eslintrc.js":    {tagJavaScript, tagESLint},
+	".eslintignore":   {tagESLint},
+	".stylelintrc":    {tagJSON},
+	".babelrc":        {tagJSON},
 	".browserslistrc": {"browserslist"},
 
 	// Package managers
-	"package.json":      {"json", "package-json"},
-	"package-lock.json": {"json", "package-json", "lock"},
-	"tsconfig.json":     {"json", "tsconfig"},
-	"yarn.lock":         {"yaml", "lock"},
-	"pnpm-lock.yaml":    {"yaml", "lock"},
-	"composer.json":     {"json", "composer"},
-	"composer.lock":     {"json", "lock"},
-	"cargo.toml":        {"toml", "cargo"},
-	"cargo.lock":        {"toml", "lock"},
-	"go.mod":            {"go-mod"},
-	"go.sum":            {"go-sum"},
-	"pubspec.yaml":      {"yaml", "dart"},
-	"pubspec.lock":      {"yaml", "dart", "lock"},
-	"requirements.txt":  {"requirements-txt", "pip"},
-	"setup.py":          {"python", "setuptools"},
-	"setup.cfg":         {"ini", "setuptools"},
+	"package.json":      {tagJSON, tagPackageJSON},
+	"package-lock.json": {tagJSON, tagPackageJSON, tagLock},
+	"tsconfig.json":     {tagJSON, "tsconfig"},
+	"yarn.lock":         {tagYAML, tagLock},
+	"pnpm-lock.yaml":    {tagYAML, tagLock},
+	"composer.json":     {tagJSON, "composer"},
+	"composer.lock":     {tagJSON, tagLock},
+	"cargo.toml":        {tagTOML, "cargo"},
+	"cargo.lock":        {tagTOML, tagLock},
+	"go.mod":            {tagGoMod},
+	"go.sum":            {tagGoSum},
+	"pubspec.yaml":      {tagYAML, tagDart},
+	"pubspec.lock":      {tagYAML, tagDart, tagLock},
+	"requirements.txt":  {"requirements-txt", tagPip},
+	"setup.py":          {tagPython, tagSetuptools},
+	"setup.cfg":         {tagINI, tagSetuptools},
 	// Upstream identify tags this {toml, pyproject} — NOT python. Tagging it
 	// python makes python-only hooks (black, isort, …) try to parse TOML.
-	"pyproject.toml": {"toml", "pyproject"},
-	"pipfile":        {"toml", "pip"},
-	"pipfile.lock":   {"json", "pip", "lock"},
-	"poetry.lock":    {"toml", "lock"},
+	"pyproject.toml": {tagTOML, "pyproject"},
+	"pipfile":        {tagTOML, tagPip},
+	"pipfile.lock":   {tagJSON, tagPip, tagLock},
+	"poetry.lock":    {tagTOML, tagLock},
 
 	// CI
-	".travis.yml":            {"yaml", "travis"},
-	".circleci/config.yml":   {"yaml", "circleci"},
-	"appveyor.yml":           {"yaml", "appveyor"},
-	"azure-pipelines.yml":    {"yaml", "azure"},
-	".github/dependabot.yml": {"yaml", "dependabot"},
-	"netlify.toml":           {"toml", "netlify"},
-	"vercel.json":            {"json", "vercel"},
-	"render.yaml":            {"yaml"},
+	".travis.yml":            {tagYAML, "travis"},
+	".circleci/config.yml":   {tagYAML, "circleci"},
+	"appveyor.yml":           {tagYAML, "appveyor"},
+	"azure-pipelines.yml":    {tagYAML, "azure"},
+	".github/dependabot.yml": {tagYAML, "dependabot"},
+	"netlify.toml":           {tagTOML, "netlify"},
+	"vercel.json":            {tagJSON, "vercel"},
+	"render.yaml":            {tagYAML},
 
 	// Docker
-	"docker-compose.yml":  {"yaml", "docker-compose"},
-	"docker-compose.yaml": {"yaml", "docker-compose"},
-	".dockerignore":       {"dockerignore"},
+	"docker-compose.yml":  {tagYAML, tagDockerCompose},
+	"docker-compose.yaml": {tagYAML, tagDockerCompose},
+	".dockerignore":       {tagDockerignore},
 
 	// Config files
-	".pre-commit-config.yaml": {"yaml", "pre-commit"},
-	".pre-commit-hooks.yaml":  {"yaml", "pre-commit"},
-	".flake8":                 {"ini", "flake8"},
-	".pylintrc":               {"ini", "pylint"},
-	".rubocop.yml":            {"yaml", "rubocop"},
-	".yamllint":               {"yaml"},
-	".yamllint.yml":           {"yaml"},
-	".yamllint.yaml":          {"yaml"},
-	".markdownlint.yml":       {"yaml"},
-	".clang-format":           {"yaml", "clang-format"},
-	".clang-tidy":             {"yaml"},
-	"tox.ini":                 {"ini", "tox"},
-	"mypy.ini":                {"ini", "mypy"},
-	".mypy.ini":               {"ini", "mypy"},
-	".coveragerc":             {"ini", "coverage"},
-	".isort.cfg":              {"ini", "isort"},
-	"rustfmt.toml":            {"toml", "rustfmt"},
-	".rustfmt.toml":           {"toml", "rustfmt"},
-	"clippy.toml":             {"toml", "clippy"},
-	".clippy.toml":            {"toml", "clippy"},
-	".golangci.yml":           {"yaml", "golangci"},
-	".golangci.yaml":          {"yaml", "golangci"},
-	".goreleaser.yml":         {"yaml", "goreleaser"},
-	".goreleaser.yaml":        {"yaml", "goreleaser"},
+	".pre-commit-config.yaml": {tagYAML, tagPreCommit},
+	".pre-commit-hooks.yaml":  {tagYAML, tagPreCommit},
+	".flake8":                 {tagINI, "flake8"},
+	".pylintrc":               {tagINI, "pylint"},
+	".rubocop.yml":            {tagYAML, "rubocop"},
+	".yamllint":               {tagYAML},
+	".yamllint.yml":           {tagYAML},
+	".yamllint.yaml":          {tagYAML},
+	".markdownlint.yml":       {tagYAML},
+	".clang-format":           {tagYAML, "clang-format"},
+	".clang-tidy":             {tagYAML},
+	"tox.ini":                 {tagINI, "tox"},
+	"mypy.ini":                {tagINI, tagMypy},
+	".mypy.ini":               {tagINI, tagMypy},
+	".coveragerc":             {tagINI, "coverage"},
+	".isort.cfg":              {tagINI, "isort"},
+	"rustfmt.toml":            {tagTOML, tagRustfmt},
+	".rustfmt.toml":           {tagTOML, tagRustfmt},
+	"clippy.toml":             {tagTOML, tagClippy},
+	".clippy.toml":            {tagTOML, tagClippy},
+	".golangci.yml":           {tagYAML, tagGolangci},
+	".golangci.yaml":          {tagYAML, tagGolangci},
+	".goreleaser.yml":         {tagYAML, tagGoReleaser},
+	".goreleaser.yaml":        {tagYAML, tagGoReleaser},
 
 	// Shell
-	".bashrc":       {"shell", "bash"},
-	".bash_profile": {"shell", "bash"},
-	".bash_logout":  {"shell", "bash"},
-	".zshrc":        {"shell", "zsh"},
-	".zshenv":       {"shell", "zsh"},
-	".zprofile":     {"shell", "zsh"},
-	".profile":      {"shell"},
+	".bashrc":       {tagShell, tagBash},
+	".bash_profile": {tagShell, tagBash},
+	".bash_logout":  {tagShell, tagBash},
+	".zshrc":        {tagShell, tagZsh},
+	".zshenv":       {tagShell, tagZsh},
+	".zprofile":     {tagShell, tagZsh},
+	".profile":      {tagShell},
 	".inputrc":      {"inputrc"},
 
 	// Env
-	".env":             {"dotenv"},
-	".env.example":     {"dotenv"},
-	".env.local":       {"dotenv"},
-	".env.development": {"dotenv"},
-	".env.production":  {"dotenv"},
-	".env.test":        {"dotenv"},
-	".envrc":           {"dotenv", "direnv"},
+	".env":             {tagDotenv},
+	".env.example":     {tagDotenv},
+	".env.local":       {tagDotenv},
+	".env.development": {tagDotenv},
+	".env.production":  {tagDotenv},
+	".env.test":        {tagDotenv},
+	".envrc":           {tagDotenv, "direnv"},
 
 	// License
-	"license":     {"license"},
-	"licence":     {"license"}, //nolint:misspell // British English filename
-	"license.md":  {"license", "markdown"},
-	"licence.md":  {"license", "markdown"},
-	"license.txt": {"license"},
-	"licence.txt": {"license"},
-	"copying":     {"license"},
+	"license":     {tagLicense},
+	"licence":     {tagLicense}, //nolint:misspell // British English filename
+	"license.md":  {tagLicense, tagMarkdown},
+	"licence.md":  {tagLicense, tagMarkdown},
+	"license.txt": {tagLicense},
+	"licence.txt": {tagLicense},
+	"copying":     {tagLicense},
 
 	// Docs
-	"readme":       {"readme"},
-	"readme.md":    {"readme", "markdown"},
-	"readme.rst":   {"readme", "rst"},
-	"readme.txt":   {"readme"},
-	"changelog":    {"changelog"},
-	"changelog.md": {"changelog", "markdown"},
-	"changes":      {"changelog"},
-	"authors":      {"authors"},
-	"contributors": {"authors"},
-	"codeowners":   {"codeowners"},
-	".codeowners":  {"codeowners"},
+	"readme":       {tagReadme},
+	"readme.md":    {tagReadme, tagMarkdown},
+	"readme.rst":   {tagReadme, tagRST},
+	"readme.txt":   {tagReadme},
+	"changelog":    {tagChangelog},
+	"changelog.md": {tagChangelog, tagMarkdown},
+	"changes":      {tagChangelog},
+	"authors":      {tagAuthors},
+	"contributors": {tagAuthors},
+	"codeowners":   {tagCodeowners},
+	".codeowners":  {tagCodeowners},
 }
