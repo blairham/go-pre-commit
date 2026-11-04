@@ -158,16 +158,16 @@ var hookTypeArgs = map[config.HookType]func(remaining []string) []string{
 			args = append(args,
 				"--from-ref", remaining[0], "--to-ref", remaining[1], "--checkout-type", remaining[2])
 		}
-		return append(args, "--all-files")
+		return append(args, optAllFiles)
 	},
 	config.HookTypePostCommit: func([]string) []string {
-		return []string{"--all-files"}
+		return []string{optAllFiles}
 	},
 	config.HookTypePostMerge: func(remaining []string) []string {
-		return append(positionalFlags(remaining, "--is-squash-merge"), "--all-files")
+		return append(positionalFlags(remaining, "--is-squash-merge"), optAllFiles)
 	},
 	config.HookTypePostRewrite: func(remaining []string) []string {
-		return append(positionalFlags(remaining, "--rewrite-command"), "--all-files")
+		return append(positionalFlags(remaining, "--rewrite-command"), optAllFiles)
 	},
 	// Args: <upstream> [<branch>]
 	config.HookTypePreRebase: func(remaining []string) []string {
@@ -298,7 +298,7 @@ func prePushArgs(dir, remoteName, remoteURL string, stdin []byte) ([]string, err
 		}
 		if slices.Contains(strings.Split(roots, "\n"), firstAncestor) {
 			// Pushing the whole tree, root commit included.
-			return append([]string{"--all-files"}, common...), nil
+			return append([]string{optAllFiles}, common...), nil
 		}
 		source, err := gitOutput(dir, "rev-parse", firstAncestor+"^")
 		if err != nil {

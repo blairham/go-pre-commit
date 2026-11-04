@@ -310,6 +310,10 @@ var (
 	}
 )
 
+// optAllFiles is run's --all-files, which hook-impl passes for the hook types
+// that check the whole tree.
+const optAllFiles = "--all-files"
+
 // runOptions is _add_run_options.
 func runOptions() []argAction {
 	opt := func(dest string, opts ...string) argAction { return argAction{opts: opts, dest: dest} }
@@ -317,7 +321,7 @@ func runOptions() []argAction {
 	return []argAction{
 		{dest: "hook", nargs: "?"},
 		{opts: []string{"--verbose", "-v"}, nargs: "0"},
-		{opts: []string{"--all-files", "-a"}, nargs: "0", group: true},
+		{opts: []string{optAllFiles, "-a"}, nargs: "0", group: true},
 		{opts: []string{"--files"}, dest: "files", nargs: "*", group: true},
 		{opts: []string{"--show-diff-on-failure"}, nargs: "0"},
 		{opts: []string{"--fail-fast"}, nargs: "0"},
