@@ -31,18 +31,13 @@ func RemoveAll(path string) error {
 		return nil
 	}
 
-	// Grant write+execute on every directory in the tree, then retry. Walk
-	// errors are deliberately swallowed — the retry below reports the real
-	// failure, and a partially-walkable tree is exactly the case to push on.
+	// Grant write+execute on every directory in the tree, then retry. What
+	// the walk cannot read or stat is passed over, not reported: the retry
+	// below reports the real failure, and a partially-walkable tree is
+	// exactly the case to push on.
 	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if !d.IsDir() {
-			return nil
-		}
-		info, statErr := d.Info()
-		if statErr != nil {
+		info, ok := reachableDir(d, walkErr)
+		if !ok {
 			return nil
 		}
 		if mode := info.Mode().Perm(); mode&0o300 != 0o300 {
@@ -52,4 +47,15 @@ func RemoveAll(path string) error {
 	})
 
 	return os.RemoveAll(path)
+}
+
+// reachableDir is the FileInfo of the directory a WalkDir callback was handed,
+// with ok false for anything else: a file, or an entry the walk could not
+// read (walkErr) or stat.
+func reachableDir(d fs.DirEntry, walkErr error) (fs.FileInfo, bool) {
+	if walkErr != nil || !d.IsDir() {
+		return nil, false
+	}
+	info, err := d.Info()
+	return info, err == nil
 }

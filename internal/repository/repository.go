@@ -105,8 +105,8 @@ func (r *Resolver) resolveLocalRepo(repo *config.RepoConfig) ([]*hook.Hook, erro
 // Languages that install nothing (system, script, pygrep, …) keep an empty
 // prefix and run from the working directory, as upstream does.
 func (r *Resolver) setLocalPrefix(h *hook.Hook) error {
-	lang, err := languages.Get(h.Language)
-	if err != nil {
+	lang, ok := languages.Lookup(h.Language)
+	if !ok {
 		// Unknown language — the runner reports it with better context than a
 		// resolution-time error would.
 		return nil
@@ -134,8 +134,8 @@ func (r *Resolver) setLocalPrefix(h *hook.Hook) error {
 // additional_dependencies, and declaring either is a config error rather
 // than something to drop on the floor. The wording is upstream's.
 func checkAdditionalDependencies(h *hook.Hook) error {
-	lang, err := languages.Get(h.Language)
-	if err != nil || lang.EnvironmentDir() != "" {
+	lang, ok := languages.Lookup(h.Language)
+	if !ok || lang.EnvironmentDir() != "" {
 		return nil
 	}
 	var field string

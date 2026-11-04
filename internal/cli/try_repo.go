@@ -255,7 +255,7 @@ func tryRepoRef(tmpdir, repo, ref string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	if _, statErr := os.Stat(repo); statErr != nil || !git.HasDiff(repo, "HEAD") {
+	if !exists(repo) || !git.HasDiff(repo, "HEAD") {
 		return repo, ref, nil
 	}
 
