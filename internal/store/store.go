@@ -5,14 +5,14 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 
@@ -29,17 +29,13 @@ type Store struct {
 	cache map[string]string // repo@rev -> path, in-memory lookup cache
 }
 
-// RepoEntry tracks a cloned repository.
+// RepoEntry is a row of upstream's repos table: the clone (or local
+// placeholder tree) at Path backs Repo -- a DBRepoName -- at Rev, the table's
+// ref column.
 type RepoEntry struct {
-	Repo string `json:"repo"`
-	Rev  string `json:"rev"`
-	Path string `json:"path"`
-}
-
-// storeDB is the JSON-based database for tracking repos.
-type storeDB struct {
-	Repos       []RepoEntry `json:"repos"`
-	ConfigsUsed []string    `json:"configs_used,omitempty"`
+	Repo string
+	Rev  string
+	Path string
 }
 
 // DefaultDir returns the default store directory.
@@ -70,9 +66,24 @@ func (s *Store) Dir() string {
 	return s.dir
 }
 
-// Init initializes the store directory.
+// Init creates the store directory, with upstream's README in it, if it does
+// not exist yet.
 func (s *Store) Init() error {
-	return os.MkdirAll(s.dir, 0o755)
+	if _, err := os.Stat(s.dir); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.dir, "README"), []byte(storeReadme), 0o644)
+}
+
+// readonly is upstream's Store.readonly: the store directory exists and this
+// process may not write to it. Such a store is used as it is -- nothing is
+// recorded in it.
+func (s *Store) readonly() bool {
+	info, err := os.Stat(s.dir)
+	return err == nil && info.IsDir() && !fsutil.Writable(s.dir)
 }
 
 // Clean removes the entire store directory.
@@ -83,6 +94,11 @@ func (s *Store) Clean() error {
 // cloneDirName derives the cache directory name for a repo+rev. It is
 // deterministic, which is why a leftover directory at this path blocks every
 // future clone of the same repo+rev until it is cleared.
+//
+// Upstream names its clones with tempfile.mkdtemp(prefix='repo') instead.
+// Neither tool derives a path from a name -- both look the path up in db.db
+// -- so the two schemes share a store, and they cannot collide: mkdtemp's
+// suffix is 8 characters, this one 16.
 func cloneDirName(repo, rev string) string {
 	hash := sha256.Sum256([]byte(repo + rev))
 	return fmt.Sprintf("repo%x", hash[:8])
@@ -133,7 +149,10 @@ func (s *Store) CloneWithDeps(repo, rev string, deps []string) (string, error) {
 	defer unlock()
 
 	// Double-check after acquiring lock (another process may have cloned).
-	if path, err := s.lookup(name, rev); err == nil {
+	if err := s.readyLocked(); err != nil {
+		return "", err
+	}
+	if path, err := s.find(name, rev, isClone); err == nil {
 		return path, nil
 	}
 
@@ -227,6 +246,9 @@ func (s *Store) GetPath(repo, rev string) string {
 // does not exist is not recorded, and a store the user cannot write to is
 // left alone rather than reported -- upstream skips a readonly store.
 func (s *Store) MarkConfigUsed(configPath string) error {
+	if s.readonly() {
+		return nil
+	}
 	absPath, err := filepath.Abs(configPath)
 	if err != nil {
 		return err
@@ -252,15 +274,17 @@ func (s *Store) MarkConfigUsed(configPath string) error {
 	}
 	defer unlock()
 
-	db, err := s.loadDB()
-	if err != nil {
-		return err
-	}
-	if slices.Contains(db.ConfigsUsed, realPath) {
-		return nil
-	}
-	db.ConfigsUsed = append(db.ConfigsUsed, realPath)
-	return s.saveDB(db)
+	return s.write(func(ctx context.Context, conn *sql.Conn) error {
+		return inTx(ctx, conn, func(tx *sql.Tx) error {
+			// Upstream creates the table here too, for a database made before
+			// configs were tracked.
+			if _, err := tx.ExecContext(ctx, createConfigsTable); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO configs VALUES (?)", realPath)
+			return err
+		})
+	})
 }
 
 // ForgetConfigs drops configs from the tracked list. gc calls it for every
@@ -279,18 +303,21 @@ func (s *Store) ForgetConfigs(dead []string) error {
 	}
 	defer unlock()
 
-	db, err := s.loadDB()
-	if err != nil {
-		return err
-	}
-	db.ConfigsUsed = slices.DeleteFunc(db.ConfigsUsed, func(c string) bool {
-		return slices.Contains(dead, c)
+	return s.write(func(ctx context.Context, conn *sql.Conn) error {
+		return inTx(ctx, conn, func(tx *sql.Tx) error {
+			for _, path := range dead {
+				if _, err := tx.ExecContext(ctx, "DELETE FROM configs WHERE path = ?", path); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	})
-	return s.saveDB(db)
 }
 
 // GC garbage-collects unused repos and returns how many it removed, which
-// upstream's gc reports as "{n} repo(s) removed.".
+// upstream's gc reports as "{n} repo(s) removed.". Every row in the store is a
+// candidate, whichever tool cloned it.
 func (s *Store) GC(usedRepos map[string]bool) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -301,18 +328,15 @@ func (s *Store) GC(usedRepos map[string]bool) (int, error) {
 	}
 	defer unlock()
 
-	db, err := s.loadDB()
+	repos, err := s.reposLocked()
 	if err != nil {
 		return 0, err
 	}
 
-	var kept []RepoEntry
+	var removed []RepoEntry
 	var failures []string
-	removed := 0
-	for _, entry := range db.Repos {
-		key := entry.Repo + "@" + entry.Rev
-		if usedRepos[key] {
-			kept = append(kept, entry)
+	for _, entry := range repos {
+		if usedRepos[entry.Repo+"@"+entry.Rev] {
 			continue
 		}
 		// If the directory cannot be removed, KEEP the database entry. Dropping
@@ -322,69 +346,99 @@ func (s *Store) GC(usedRepos map[string]bool) (int, error) {
 		// until someone clears the cache by hand.
 		if err := fsutil.RemoveAll(entry.Path); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", entry.Path, err))
-			kept = append(kept, entry)
 			continue
 		}
-		removed++
+		removed = append(removed, entry)
 	}
-	db.Repos = kept
-	if err := s.saveDB(db); err != nil {
+	// The directories go first and the rows after, in one short transaction:
+	// upstream's mark_config_used writes without the store lock, so holding
+	// the database while trees are deleted would make it wait on them.
+	if err := s.deleteRows(removed); err != nil {
 		return 0, err
 	}
 	if len(failures) > 0 {
-		return removed, fmt.Errorf("failed to remove %d cached repo(s): %s",
+		return len(removed), fmt.Errorf("failed to remove %d cached repo(s): %s",
 			len(failures), strings.Join(failures, "; "))
 	}
-	return removed, nil
+	return len(removed), nil
+}
+
+// reposLocked is listRepos for a caller holding the store lock.
+func (s *Store) reposLocked() ([]RepoEntry, error) {
+	if err := s.readyLocked(); err != nil {
+		return nil, err
+	}
+	return s.listRepos()
+}
+
+// deleteRows drops the rows of entries, in one transaction. The caller holds
+// the store lock.
+func (s *Store) deleteRows(entries []RepoEntry) error {
+	return s.write(func(ctx context.Context, conn *sql.Conn) error {
+		return inTx(ctx, conn, func(tx *sql.Tx) error {
+			for _, e := range entries {
+				if _, err := tx.ExecContext(ctx,
+					"DELETE FROM repos WHERE repo = ? and ref = ?", e.Repo, e.Rev); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	})
 }
 
 // ListRepos returns all cached repos.
 func (s *Store) ListRepos() ([]RepoEntry, error) {
-	db, err := s.loadDB()
-	if err != nil {
+	if err := s.importPending(); err != nil {
 		return nil, err
 	}
-	return db.Repos, nil
+	return s.listRepos()
+}
+
+// listRepos reads every row of the repos table, without importing db.json.
+func (s *Store) listRepos() ([]RepoEntry, error) {
+	var repos []RepoEntry
+	err := s.query(func(ctx context.Context, conn *sql.Conn) error {
+		return queryRows(ctx, conn, "SELECT repo, ref, path FROM repos ORDER BY rowid", func(rows *sql.Rows) error {
+			var e RepoEntry
+			if err := rows.Scan(&e.Repo, &e.Rev, &e.Path); err != nil {
+				return err
+			}
+			repos = append(repos, e)
+			return nil
+		})
+	})
+	return repos, err
 }
 
 // GetTrackedConfigs returns the list of config files that have been tracked via MarkConfigUsed.
 func (s *Store) GetTrackedConfigs() ([]string, error) {
-	db, err := s.loadDB()
-	if err != nil {
-		return nil, err
-	}
-	return db.ConfigsUsed, nil
-}
-
-func (s *Store) dbPath() string {
-	return filepath.Join(s.dir, "db.json")
+	var configs []string
+	err := s.read(func(ctx context.Context, conn *sql.Conn) error {
+		// A database made before configs were tracked has no such table;
+		// upstream's gc creates it, empty, before reading it.
+		var tables int
+		if err := conn.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'configs'").Scan(&tables); err != nil {
+			return err
+		}
+		if tables == 0 {
+			return nil
+		}
+		return queryRows(ctx, conn, "SELECT path FROM configs ORDER BY rowid", func(rows *sql.Rows) error {
+			var path string
+			if err := rows.Scan(&path); err != nil {
+				return err
+			}
+			configs = append(configs, path)
+			return nil
+		})
+	})
+	return configs, err
 }
 
 func (s *Store) lockPath() string {
 	return filepath.Join(s.dir, ".lock")
-}
-
-func (s *Store) loadDB() (*storeDB, error) {
-	data, err := os.ReadFile(s.dbPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &storeDB{}, nil
-		}
-		return nil, err
-	}
-	var db storeDB
-	if err := json.Unmarshal(data, &db); err != nil {
-		return nil, err
-	}
-	return &db, nil
-}
-
-func (s *Store) saveDB(db *storeDB) error {
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.dbPath(), data, 0o644)
 }
 
 func (s *Store) cacheKey(repo, rev string) string {
@@ -406,10 +460,23 @@ func (s *Store) lookup(repo, rev string) (string, error) {
 	return s.lookupWith(repo, rev, isClone)
 }
 
+// errNotCached is lookup's miss.
+var errNotCached = errors.New("not found")
+
 // lookupWith finds a cached entry, using valid to decide whether what is on
 // disk still backs it — a real clone for cloned repos, an intact placeholder
-// tree for local ones.
+// tree for local ones. It is for callers without the store lock; one holding
+// it calls find.
 func (s *Store) lookupWith(repo, rev string, valid func(string) bool) (string, error) {
+	if err := s.importPending(); err != nil {
+		return "", err
+	}
+	return s.find(repo, rev, valid)
+}
+
+// find is lookupWith without the import, for a caller holding the store
+// lock.
+func (s *Store) find(repo, rev string, valid func(string) bool) (string, error) {
 	key := s.cacheKey(repo, rev)
 
 	// Check in-memory cache first.
@@ -423,51 +490,43 @@ func (s *Store) lookupWith(repo, rev string, valid func(string) bool) (string, e
 		}
 	}
 
-	db, err := s.loadDB()
+	var path string
+	err := s.query(func(ctx context.Context, conn *sql.Conn) error {
+		err := conn.QueryRowContext(ctx,
+			"SELECT path FROM repos WHERE repo = ? AND ref = ?", repo, rev).Scan(&path)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
-	for _, entry := range db.Repos {
-		if entry.Repo == repo && entry.Rev == rev {
-			if valid(entry.Path) {
-				// Populate in-memory cache.
-				if s.cache == nil {
-					s.cache = make(map[string]string)
-				}
-				s.cache[key] = entry.Path
-				return entry.Path, nil
-			}
-			// The row points at something that is no longer intact. Treat it as
-			// a miss so the caller rebuilds it; both Clone and MakeLocal clear
-			// the path first, so the leftover does not block the retry.
-			break
-		}
+	// A row that points at something no longer intact is a miss, so the
+	// caller rebuilds it; both Clone and MakeLocal clear their path first, so
+	// a leftover does not block the retry, and save replaces the row.
+	if path == "" || !valid(path) {
+		return "", errNotCached
 	}
-	return "", fmt.Errorf("not found")
+	if s.cache == nil {
+		s.cache = make(map[string]string)
+	}
+	s.cache[key] = path
+	return path, nil
 }
 
+// save records path as the clone of repo at rev, replacing any row already
+// there for them (one find rejected as no longer intact). The caller holds
+// the store lock.
 func (s *Store) save(repo, rev, path string) error {
-	db, err := s.loadDB()
+	err := s.write(func(ctx context.Context, conn *sql.Conn) error {
+		return inTx(ctx, conn, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx,
+				"INSERT OR REPLACE INTO repos (repo, ref, path) VALUES (?, ?, ?)", repo, rev, path)
+			return err
+		})
+	})
 	if err != nil {
-		return err
-	}
-	// Replace any existing row for this repo+rev rather than appending a second
-	// one. lookup stops at the first matching row, so a duplicate left by a
-	// rebuild (the old row pointing at a directory that no longer exists) would
-	// shadow the new entry and force a rebuild on every single run.
-	entry := RepoEntry{Repo: repo, Rev: rev, Path: path}
-	replaced := false
-	for i := range db.Repos {
-		if db.Repos[i].Repo == repo && db.Repos[i].Rev == rev {
-			db.Repos[i] = entry
-			replaced = true
-			break
-		}
-	}
-	if !replaced {
-		db.Repos = append(db.Repos, entry)
-	}
-	if err := s.saveDB(db); err != nil {
 		return err
 	}
 	// Update in-memory cache.

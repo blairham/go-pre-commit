@@ -760,7 +760,7 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 	}
 
 	// Simulate the poisoned state: env dir with a populated module cache but
-	// no install_state_v2. The junk module has its own go.mod, which is what
+	// no install state. The junk module has its own go.mod, which is what
 	// breaks the `./...` pattern walk when it survives into the install.
 	junk := filepath.Join(repoDir, "golangenv-system", "pkg", "mod", "example.com", "junk@v1.0.0")
 	if err := os.MkdirAll(junk, 0o755); err != nil {
@@ -788,8 +788,10 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(envPath, "bin", "hookrepo")); err != nil {
 		t.Errorf("hook binary not installed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(envPath, installStateFile)); err != nil {
-		t.Errorf("install state not written: %v", err)
+	for _, name := range []string{installStateV1, installStateV2} {
+		if _, err := os.Stat(filepath.Join(envPath, name)); err != nil {
+			t.Errorf("install state %s not written: %v", name, err)
+		}
 	}
 	if _, err := os.Stat(junk); !os.IsNotExist(err) {
 		t.Errorf("leftover env content survived the install (err=%v)", err)
@@ -850,7 +852,7 @@ func TestInstallEnvironmentsRechecksUnderLock(t *testing.T) {
 		if err := os.MkdirAll(envPath, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(envPath, installStateFile), []byte(h.InstallKey()), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(envPath, installStateV2), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		return func() { unlocked++ }, nil

@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -626,11 +625,6 @@ func parseVersionParts(v string) []int {
 	return parts
 }
 
-// installStateFile is the filename used to track installed environment state.
-// This matches Python pre-commit's install_state tracking to avoid unnecessary
-// reinstalls and to detect when dependencies have changed.
-const installStateFile = "install_state_v2"
-
 // installTask represents a single environment install job.
 type installTask struct {
 	hook *Hook
@@ -702,11 +696,9 @@ func environmentsToInstall(hooks []*Hook) ([]installTask, error) {
 		}
 
 		envPath := languages.EnvPath(envDir, lang, h.LanguageVersion)
-		stateFile := filepath.Join(envPath, installStateFile)
 		// upstream's _hook_installed: the install state matches and the
 		// language's health_check finds the env still healthy.
-		if data, err := os.ReadFile(stateFile); err == nil && string(data) == h.InstallKey() &&
-			lang.HealthCheck(envDir, h.LanguageVersion) == nil {
+		if installStateMatches(envPath, h) && lang.HealthCheck(envDir, h.LanguageVersion) == nil {
 			continue // Already installed with same deps.
 		}
 		// A state mismatch (deps changed), or an env dir with no valid state
@@ -769,11 +761,9 @@ func installTasks(tasks []installTask) error {
 				return
 			}
 
-			// Write install state file.
-			stateFile := filepath.Join(envPath, installStateFile)
-			stateDir := filepath.Dir(stateFile)
-			os.MkdirAll(stateDir, 0o755)
-			if err := os.WriteFile(stateFile, []byte(t.hook.InstallKey()), 0o644); err != nil {
+			if err := os.MkdirAll(envPath, 0o755); err != nil {
+				output.Warn("Failed to write install state: %v", err)
+			} else if err := writeInstallState(envPath, t.hook.AdditionalDependencies); err != nil {
 				output.Warn("Failed to write install state: %v", err)
 			}
 		}(i, task)

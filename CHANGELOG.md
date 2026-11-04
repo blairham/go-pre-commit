@@ -13,6 +13,22 @@ file was introduced; the full notes are on the
 
 ## [Unreleased]
 
+### Fixed
+
+- The store keeps upstream's index, the SQLite `db.db` with its `repos` and
+  `configs` tables, instead of this port's own `db.json`, and an installed
+  environment carries upstream's `.install_state_v1` and `.install_state_v2`.
+  Python pre-commit and this tool can now share one `PRE_COMMIT_HOME`:
+  whichever runs second reuses the clones and environments the first made
+  rather than cloning and installing its own, and either tool's `gc` sees and
+  collects the other's unused repos. A new store gets upstream's `README`. An
+  existing `db.json` is imported on first use and then deleted; where a store
+  had both indexes, `db.db`'s clone of a repo wins and this tool's duplicate
+  directory is removed. Environments an older release installed are still
+  recognized, so upgrading reinstalls nothing. The SQLite driver is
+  `modernc.org/sqlite`, which is pure Go, so releases still build with
+  `CGO_ENABLED=0`; the binary is about 4 MB larger. (#165)
+
 ## [4.7.1] - 2026-11-02
 
 ### Documentation
