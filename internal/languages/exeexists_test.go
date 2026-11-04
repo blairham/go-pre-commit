@@ -31,6 +31,7 @@ func nodeLayouts(t *testing.T) map[string]func(t *testing.T) {
 	return map[string]func(t *testing.T){
 		// A real install outside the home directory.
 		"system": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			t.Setenv("HOME", filepath.Join(root, "home", "u"))
 			fakeTools(t, filepath.Join(root, "usr", "bin"), "node", "npm")
@@ -38,6 +39,7 @@ func nodeLayouts(t *testing.T) map[string]func(t *testing.T) {
 		},
 		// asdf: ~/.asdf/shims, but a shims dir anywhere is refused.
 		"shim": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			t.Setenv("HOME", filepath.Join(root, "home", "u"))
 			fakeTools(t, filepath.Join(root, "opt", "asdf", "shims"), "node", "npm")
@@ -45,6 +47,7 @@ func nodeLayouts(t *testing.T) map[string]func(t *testing.T) {
 		},
 		// nvm and friends: a real binary, but under the home directory.
 		"in-home": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			home := filepath.Join(root, "home", "u")
 			t.Setenv("HOME", home+"/") // expanduser strips the slash
@@ -54,6 +57,7 @@ func nodeLayouts(t *testing.T) map[string]func(t *testing.T) {
 		// HOME=/ (a container or service user): everything is "in" home, so
 		// the home check is skipped.
 		"home-is-root": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			t.Setenv("HOME", "/")
 			fakeTools(t, filepath.Join(root, "usr", "bin"), "node", "npm")
@@ -61,6 +65,7 @@ func nodeLayouts(t *testing.T) map[string]func(t *testing.T) {
 		},
 		// node without npm is not a usable system install.
 		"no-npm": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			t.Setenv("HOME", filepath.Join(root, "home", "u"))
 			fakeTools(t, filepath.Join(root, "usr", "bin"), "node")
@@ -215,18 +220,21 @@ func TestPyCommonPathAndDirname(t *testing.T) {
 func exeLayouts(tools ...string) map[string]func(t *testing.T) {
 	layouts := map[string]func(t *testing.T){
 		"system": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			t.Setenv("HOME", filepath.Join(root, "home", "u"))
 			fakeTools(t, filepath.Join(root, "usr", "bin"), tools...)
 			t.Setenv("PATH", filepath.Join(root, "usr", "bin"))
 		},
 		"shim": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			t.Setenv("HOME", filepath.Join(root, "home", "u"))
 			fakeTools(t, filepath.Join(root, "opt", "asdf", "shims"), tools...)
 			t.Setenv("PATH", filepath.Join(root, "opt", "asdf", "shims"))
 		},
 		"in-home": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			home := filepath.Join(root, "home", "u")
 			t.Setenv("HOME", home+"/")
@@ -234,6 +242,7 @@ func exeLayouts(tools ...string) map[string]func(t *testing.T) {
 			t.Setenv("PATH", filepath.Join(home, ".local", "bin"))
 		},
 		"home-is-root": func(t *testing.T) {
+			t.Helper()
 			root := t.TempDir()
 			t.Setenv("HOME", "/")
 			fakeTools(t, filepath.Join(root, "usr", "bin"), tools...)
@@ -244,6 +253,7 @@ func exeLayouts(tools ...string) map[string]func(t *testing.T) {
 		for i, missing := range tools {
 			rest := append(append([]string{}, tools[:i]...), tools[i+1:]...)
 			layouts["no-"+missing] = func(t *testing.T) {
+				t.Helper()
 				root := t.TempDir()
 				t.Setenv("HOME", filepath.Join(root, "home", "u"))
 				fakeTools(t, filepath.Join(root, "usr", "bin"), rest...)
