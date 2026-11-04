@@ -46,7 +46,7 @@ func NewManager(dir, patchDir string) *Manager {
 
 // gitCmd builds a git command against the host index in the manager's repo.
 func (m *Manager) gitCmd(args ...string) *exec.Cmd {
-	cmd := exec.Command("git", args...)
+	cmd := git.Command(args...)
 	cmd.Dir = m.dir
 	cmd.Env = git.HostIndexEnv()
 	return cmd

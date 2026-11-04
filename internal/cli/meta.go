@@ -28,6 +28,15 @@ func (m *Meta) ctx() context.Context {
 	return m.Ctx
 }
 
+// hookCtx is the context for a process that is a hook's own command (a
+// legacy hook, the command a hazmat wrapper runs): m's, without its
+// cancellation, so the hook is never killed from here. On ^C it gets the
+// terminal's SIGINT itself and acts on it; bound to the canceled context it
+// would be SIGKILLed as soon as this process saw the same signal.
+func (m *Meta) hookCtx() context.Context {
+	return context.WithoutCancel(m.ctx())
+}
+
 // GlobalFlags are flags available to all commands.
 // ColorFlags is the one option every subcommand has: upstream's commands
 // without -c (clean, gc, sample-config, validate-*) take only --color.

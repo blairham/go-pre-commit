@@ -532,7 +532,7 @@ func targetConcurrency(jobs int) int {
 // "files were modified by this hook". Outside a repository it returns nil both
 // times, so nothing is reported.
 func (r *Runner) worktreeDiff() []byte {
-	cmd := exec.Command("git", "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules")
+	cmd := git.Command("diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules")
 	cmd.Dir = r.root
 	cmd.Env = git.HostIndexEnv()
 	out, _ := cmd.Output()
@@ -746,7 +746,7 @@ func installTasks(tasks []installTask) error {
 // first under --all-files, and before unstaged changes are restored, so the
 // diff is the hooks' alone.
 func ShowDiffOnFailure(allFiles bool) {
-	check := exec.Command("git", "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules")
+	check := git.Command("diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules")
 	check.Env = git.HostIndexEnv()
 	if out, err := check.Output(); err != nil || len(out) == 0 {
 		return
@@ -761,7 +761,7 @@ func ShowDiffOnFailure(allFiles bool) {
 	if output.UseColor() {
 		useColor = "always"
 	}
-	cmd := exec.Command("git", "--no-pager", "diff", "--no-ext-diff", "--color="+useColor)
+	cmd := git.Command("--no-pager", "diff", "--no-ext-diff", "--color="+useColor)
 	cmd.Env = git.HostIndexEnv()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -34,7 +33,7 @@ func (r *Rust) GetDefaultVersion() string { return rustDefaultVersionOnce() }
 var rustDefaultVersionOnce = sync.OnceValue(rustDefaultVersion)
 
 func rustDefaultVersion() string {
-	cmd := exec.Command("cargo", "--version")
+	cmd := command("cargo", "--version")
 	cmd.Dir = string(filepath.Separator)
 	if cmd.Run() == nil {
 		return "system"
@@ -81,7 +80,7 @@ func rustCmd(dir string, env []string, argv ...string) error {
 	if err != nil {
 		bin = argv[0]
 	}
-	cmd := exec.Command(bin, argv[1:]...)
+	cmd := command(bin, argv[1:]...)
 	cmd.Dir = dir
 	cmd.Env = append(environWithout(os.Environ(), envKeys(env)), env...)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -143,7 +142,7 @@ func installRustWithToolchain(toolchain, envDir string, env []string) (err error
 
 // download writes url's body to path, executable.
 func download(url, path string) (err error) {
-	resp, err := http.Get(url)
+	resp, err := httpGet(url)
 	if err != nil {
 		return err
 	}

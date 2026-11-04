@@ -6,7 +6,6 @@ package languages
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -67,7 +66,7 @@ func (s *SimpleLanguage) HealthCheck(prefix, version string) error {
 	if len(s.HealthCmd) == 0 {
 		return nil
 	}
-	cmd := exec.Command(s.HealthCmd[0], s.HealthCmd[1:]...)
+	cmd := command(s.HealthCmd[0], s.HealthCmd[1:]...)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s not available: %w", s.HealthCmd[0], err)
 	}
@@ -83,7 +82,7 @@ func (s *SimpleLanguage) InstallEnvironment(prefix, version string, additionalDe
 
 	if s.InstallCmd != nil {
 		name, args := s.InstallCmd(envDir, prefix)
-		cmd := exec.Command(name, args...)
+		cmd := command(name, args...)
 		cmd.Dir = prefix
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("%s failed: %s: %w", name, string(out), err)
