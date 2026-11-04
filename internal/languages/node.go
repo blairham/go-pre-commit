@@ -39,24 +39,24 @@ var nodeDefaultVersionOnce = sync.OnceValue(func() string {
 // whatever version the manager resolves, and its npm is not one the hook was
 // installed against; upstream refuses to reuse it.
 func nodeDefaultVersion(goos string) string {
-	if goos == "windows" {
-		return "default"
+	if goos == goosWindows {
+		return VersionDefault
 	}
 	if exeExists("node") && exeExists("npm") {
-		return "system"
+		return VersionSystem
 	}
-	return "default"
+	return VersionDefault
 }
 
 // nodeenvArgs is upstream's nodeenv command line: `default` resolves through
 // get_default_version, and only a version other than `default` is passed as
 // -n, so a `default` env gets nodeenv's own prebuilt node.
 func nodeenvArgs(envDir, version, defaultVersion string) []string {
-	if version == "default" {
+	if version == VersionDefault {
 		version = defaultVersion
 	}
 	args := []string{"--prebuilt", "--clean-src", envDir}
-	if version != "default" {
+	if version != VersionDefault {
 		args = append(args, "-n", version)
 	}
 	return args
@@ -86,7 +86,7 @@ func nodeEnvVars(envDir string) []string {
 func nodeEnvVarsFor(goos, envDir string) []string {
 	binDir := venvBinDirFor(goos, envDir)
 	prefix, libDir := envDir, "lib"
-	if goos == "windows" {
+	if goos == goosWindows {
 		prefix, libDir = binDir, "Scripts"
 	}
 	return []string{
@@ -152,6 +152,7 @@ func pathExists(p string) bool {
 
 // nodeInstallArgs is upstream's install command, verbatim.
 func nodeInstallArgs(pkgs []string) []string {
+	//nolint:goconst // npm's verb; each backend's "install" is its own tool's
 	return append([]string{"install", "--allow-git=root", "--install-links", "-g"}, pkgs...)
 }
 

@@ -12,6 +12,23 @@ import (
 	"sync"
 )
 
+// The language_version values that name no particular version.
+const (
+	// VersionDefault is upstream's C.DEFAULT: the language picks its own
+	// version, and GetDefaultVersion says which.
+	VersionDefault = "default"
+	// VersionSystem is the host's own toolchain, which golang, node, ruby and
+	// rust default to when the host has a real one.
+	VersionSystem = "system"
+)
+
+const (
+	// goosWindows is runtime.GOOS on Windows.
+	goosWindows = "windows"
+	// exeSuffix ends an executable's file name on Windows.
+	exeSuffix = ".exe"
+)
+
 // Language defines the interface that each language handler must implement.
 type Language interface {
 	// Name returns the canonical name of the language.

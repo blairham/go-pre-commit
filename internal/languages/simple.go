@@ -20,9 +20,14 @@ import (
 // It always fails with the entry message.
 type Fail struct{}
 
-func (f *Fail) Name() string              { return "fail" }
-func (f *Fail) EnvironmentDir() string    { return "" }
-func (f *Fail) GetDefaultVersion() string { return "default" }
+// Name is the language's name in a hook manifest.
+func (f *Fail) Name() string { return "fail" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR: None, as it installs nothing.
+func (f *Fail) EnvironmentDir() string { return "" }
+
+// GetDefaultVersion is upstream's basic_get_default_version.
+func (f *Fail) GetDefaultVersion() string { return VersionDefault }
 
 func (f *Fail) HealthCheck(prefix, version string) error { return nil }
 
@@ -46,9 +51,14 @@ func (f *Fail) Run(
 // pygrep is a regex-based grep that uses Go's regexp.
 type Pygrep struct{}
 
-func (p *Pygrep) Name() string              { return "pygrep" }
-func (p *Pygrep) EnvironmentDir() string    { return "" }
-func (p *Pygrep) GetDefaultVersion() string { return "default" }
+// Name is the language's name in a hook manifest.
+func (p *Pygrep) Name() string { return "pygrep" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR: None, as it installs nothing.
+func (p *Pygrep) EnvironmentDir() string { return "" }
+
+// GetDefaultVersion is upstream's basic_get_default_version.
+func (p *Pygrep) GetDefaultVersion() string { return VersionDefault }
 
 func (p *Pygrep) HealthCheck(prefix, version string) error { return nil }
 
@@ -384,9 +394,14 @@ func isOctal(c byte) bool { return c >= '0' && c <= '7' }
 // Unsupported implements the Language interface for system hooks.
 type Unsupported struct{}
 
-func (u *Unsupported) Name() string                             { return "unsupported" }
-func (u *Unsupported) EnvironmentDir() string                   { return "" }
-func (u *Unsupported) GetDefaultVersion() string                { return "default" }
+// Name is the language's name in a hook manifest.
+func (u *Unsupported) Name() string { return "unsupported" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR: None, as it installs nothing.
+func (u *Unsupported) EnvironmentDir() string { return "" }
+
+// GetDefaultVersion is upstream's basic_get_default_version.
+func (u *Unsupported) GetDefaultVersion() string                { return VersionDefault }
 func (u *Unsupported) HealthCheck(prefix, version string) error { return nil }
 
 func (u *Unsupported) InstallEnvironment(prefix, version string, additionalDeps []string) error {
@@ -406,9 +421,14 @@ func (u *Unsupported) Run(
 // UnsupportedScript implements the Language interface for script hooks.
 type UnsupportedScript struct{}
 
-func (u *UnsupportedScript) Name() string                             { return "unsupported_script" }
-func (u *UnsupportedScript) EnvironmentDir() string                   { return "" }
-func (u *UnsupportedScript) GetDefaultVersion() string                { return "default" }
+// Name is the language's name in a hook manifest.
+func (u *UnsupportedScript) Name() string { return "unsupported_script" }
+
+// EnvironmentDir is upstream's ENVIRONMENT_DIR: None, as it installs nothing.
+func (u *UnsupportedScript) EnvironmentDir() string { return "" }
+
+// GetDefaultVersion is upstream's basic_get_default_version.
+func (u *UnsupportedScript) GetDefaultVersion() string                { return VersionDefault }
 func (u *UnsupportedScript) HealthCheck(prefix, version string) error { return nil }
 
 func (u *UnsupportedScript) InstallEnvironment(prefix, version string, additionalDeps []string) error {

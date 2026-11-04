@@ -87,6 +87,13 @@ type Config struct {
 	CIConfig                map[string]any    `yaml:"ci,omitempty"`
 }
 
+// The repo values that name no remote repository: upstream clientlib's LOCAL
+// and META.
+const (
+	repoLocal = "local"
+	repoMeta  = "meta"
+)
+
 // RepoConfig represents a single repo entry in the config.
 type RepoConfig struct {
 	Repo  string       `yaml:"repo"`
@@ -96,12 +103,12 @@ type RepoConfig struct {
 
 // IsLocal returns true if this is a local repo config.
 func (r *RepoConfig) IsLocal() bool {
-	return r.Repo == "local"
+	return r.Repo == repoLocal
 }
 
 // IsMeta returns true if this is a meta repo config.
 func (r *RepoConfig) IsMeta() bool {
-	return r.Repo == "meta"
+	return r.Repo == repoMeta
 }
 
 // HookConfig represents a hook entry within a repo config.

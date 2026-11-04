@@ -74,7 +74,7 @@ func pyFindExecutable(exe, path, pathext string, hasPathext bool) (string, bool)
 			if err != nil || !info.Mode().IsRegular() {
 				continue
 			}
-			if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
+			if runtime.GOOS != goosWindows && info.Mode().Perm()&0o111 == 0 {
 				continue
 			}
 			return joined, true
@@ -87,7 +87,7 @@ func pyFindExecutable(exe, path, pathext string, hasPathext bool) (string, bool)
 // set, even if empty, else the account's home directory.
 func pyHomeDir() string {
 	key := "HOME"
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		key = "USERPROFILE"
 	}
 	h, ok := os.LookupEnv(key)
@@ -98,7 +98,7 @@ func pyHomeDir() string {
 		}
 		h = u.HomeDir
 	}
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		return h
 	}
 	// posixpath.expanduser strips trailing slashes, and an empty result
@@ -131,7 +131,7 @@ func pyDirnameFor(goos, p string) string {
 }
 
 func pathSepsFor(goos string) string {
-	if goos == "windows" {
+	if goos == goosWindows {
 		return `\/`
 	}
 	return "/"
@@ -140,7 +140,7 @@ func pathSepsFor(goos string) string {
 // splitDriveFor is ntpath.splitdrive on windows (a drive letter and colon,
 // or the \\server\share of a UNC path) and posixpath's, which has no drive.
 func splitDriveFor(goos, p string) (drive, rest string) {
-	if goos != "windows" {
+	if goos != goosWindows {
 		return "", p
 	}
 	isSep := func(c byte) bool { return c == '\\' || c == '/' }
@@ -196,7 +196,7 @@ func pyCommonPathFor(goos, a, b string) (string, bool) {
 	pa, pb := parts(a), parts(b)
 	n := 0
 	for n < len(pa) && n < len(pb) {
-		if goos == "windows" {
+		if goos == goosWindows {
 			if !strings.EqualFold(pa[n], pb[n]) {
 				break
 			}
@@ -206,7 +206,7 @@ func pyCommonPathFor(goos, a, b string) (string, bool) {
 		n++
 	}
 	sep := "/"
-	if goos == "windows" {
+	if goos == goosWindows {
 		sep = `\`
 	}
 	prefix := volA

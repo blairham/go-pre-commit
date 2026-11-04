@@ -41,16 +41,16 @@ var rubyDefaultVersionOnce = sync.OnceValue(rubyDefaultVersion)
 
 func rubyDefaultVersion() string {
 	if exeExists("ruby") && exeExists("gem") {
-		return "system"
+		return VersionSystem
 	}
-	return "default"
+	return VersionDefault
 }
 
 // effectiveVersion resolves `default` through GetDefaultVersion, as upstream
 // does before the hook reaches the backend; the env directory keeps the name
 // it was given.
 func (r *Ruby) effectiveVersion(version string) string {
-	if version == "default" {
+	if version == VersionDefault {
 		return r.GetDefaultVersion()
 	}
 	return version
@@ -73,13 +73,13 @@ func rubyEnvPatch(envDir, version string) []string {
 		"BUNDLE_IGNORE_CONFIG=1",
 	}
 	path := []string{filepath.Join(gems, "bin")}
-	if version != "system" {
+	if version != VersionSystem {
 		env = append(env, "RBENV_ROOT="+envDir)
 		path = append(path, filepath.Join(envDir, "shims"), filepath.Join(envDir, "bin"))
 	}
 	path = append(path, os.Getenv("PATH"))
 	env = append(env, "PATH="+strings.Join(path, string(os.PathListSeparator)))
-	if version != "system" && version != "default" {
+	if version != VersionSystem && version != VersionDefault {
 		env = append(env, "RBENV_VERSION="+version)
 	}
 	return env
@@ -104,7 +104,7 @@ func installRbenv(prefix, envDir, version string) error {
 	if err := os.Rename(filepath.Join(prefix, "rbenv"), envDir); err != nil {
 		return err
 	}
-	if version != "default" {
+	if version != VersionDefault {
 		plugins := filepath.Join(envDir, "plugins")
 		for _, name := range []string{"ruby-download.tar.gz", "ruby-build.tar.gz"} {
 			if err := extractRubyResource(name, plugins); err != nil {
@@ -155,7 +155,7 @@ func (r *Ruby) InstallEnvironment(prefix, version string, additionalDeps []strin
 	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
 	version = r.effectiveVersion(version)
 
-	if version != "system" {
+	if version != VersionSystem {
 		if err := installRbenv(prefix, envDir, version); err != nil {
 			return err
 		}
@@ -163,7 +163,7 @@ func (r *Ruby) InstallEnvironment(prefix, version string, additionalDeps []strin
 		if err := rubySetupCmd(prefix, envDir, version, "rbenv", "init", "-"); err != nil {
 			return err
 		}
-		if version != "default" {
+		if version != VersionDefault {
 			// upstream's _install_ruby: download a prebuilt ruby, and build
 			// one only when the download fails.
 			if err := rubySetupCmd(prefix, envDir, version, "rbenv", "download", version); err != nil {
@@ -191,7 +191,7 @@ func (r *Ruby) InstallEnvironment(prefix, version string, additionalDeps []strin
 		return err
 	}
 	install := []string{
-		"gem", "install",
+		"gem", "install", //nolint:goconst // gem's verb; each backend's "install" is its own tool's
 		"--no-document", "--no-format-executable",
 		"--no-user-install",
 		"--install-dir", filepath.Join(envDir, "gems"),

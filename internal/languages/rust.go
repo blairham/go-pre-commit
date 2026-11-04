@@ -36,9 +36,9 @@ func rustDefaultVersion() string {
 	cmd := command("cargo", "--version")
 	cmd.Dir = string(filepath.Separator)
 	if cmd.Run() == nil {
-		return "system"
+		return VersionSystem
 	}
-	return "default"
+	return VersionDefault
 }
 
 // HealthCheck is upstream's lang_base.basic_health_check: an installed
@@ -47,7 +47,7 @@ func (r *Rust) HealthCheck(_, _ string) error { return nil }
 
 // rustToolchain is upstream's _rust_toolchain: `default` is stable.
 func rustToolchain(version string) string {
-	if version == "default" {
+	if version == VersionDefault {
 		return "stable"
 	}
 	return version
@@ -57,7 +57,7 @@ func rustToolchain(version string) string {
 // toolchain pinned through RUSTUP_TOOLCHAIN unless the system's is wanted.
 func rustEnvPatch(envDir, version string) []string {
 	env := []string{PrependPath(filepath.Join(envDir, "bin"))}
-	if version != "system" {
+	if version != VersionSystem {
 		env = append(env, "RUSTUP_TOOLCHAIN="+rustToolchain(version))
 	}
 	return env
@@ -66,7 +66,7 @@ func rustEnvPatch(envDir, version string) []string {
 // rustupInitURL is where upstream downloads rustup-init; a variable so tests
 // can serve their own.
 var rustupInitURL = func() string {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		return "https://win.rustup.rs/x86_64"
 	}
 	return "https://sh.rustup.rs"
@@ -117,8 +117,8 @@ func installRustWithToolchain(toolchain, envDir string, env []string) (err error
 
 	if _, findErr := lookPathInEnv("rustup", env); findErr != nil {
 		name := "rustup-init"
-		if runtime.GOOS == "windows" {
-			name += ".exe"
+		if runtime.GOOS == goosWindows {
+			name += exeSuffix
 		}
 		rustupInit := filepath.Join(rustupDir, name)
 		if dlErr := download(rustupInitURL, rustupInit); dlErr != nil {
@@ -172,7 +172,7 @@ func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []strin
 	libDeps, packages := rustDeps(additionalDeps)
 
 	env := rustEnvPatch(envDir, version)
-	if version != "system" {
+	if version != VersionSystem {
 		if err := installRustWithToolchain(rustToolchain(version), envDir, env); err != nil {
 			return err
 		}
@@ -190,6 +190,7 @@ func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []strin
 		}
 	}
 	for _, pkg := range packages {
+		//nolint:goconst // cargo's verb; each backend's "install" is its own tool's
 		argv := append([]string{"cargo", "install", "--bins", "--root", envDir}, pkg...)
 		if err := rustCmd(prefix, env, argv...); err != nil {
 			return err

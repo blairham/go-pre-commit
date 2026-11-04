@@ -56,13 +56,16 @@ func environSize(env []string) int {
 	return size
 }
 
+// goosWindows is runtime.GOOS on Windows.
+const goosWindows = "windows"
+
 // PlatformMaxLength is upstream's xargs._get_platform_max_length: on POSIX,
 // ARG_MAX less 2048 bytes of headroom and the size of the environment,
 // clamped to [2**12, 2**17]; on Windows, the UNICODE_STRING maximum less
 // headroom.
 func PlatformMaxLength() int {
 	switch runtime.GOOS {
-	case "windows":
+	case goosWindows:
 		return 1<<15 - 2048
 	case "plan9", "js", "wasip1":
 		return 1 << 12
@@ -76,7 +79,7 @@ func PlatformMaxLength() int {
 // 8192-character limit; upstream subtracts the cmd.exe invocation and 1024
 // characters of headroom for expansion inside the batch file.
 func MaxLength(cmd []string) int {
-	if runtime.GOOS == "windows" && len(cmd) > 0 {
+	if runtime.GOOS == goosWindows && len(cmd) > 0 {
 		lower := strings.ToLower(cmd[0])
 		if strings.HasSuffix(lower, ".bat") || strings.HasSuffix(lower, ".cmd") {
 			cmdExe, err := exec.LookPath("cmd.exe")
@@ -93,7 +96,7 @@ func MaxLength(cmd []string) int {
 // measured in UTF-16 code units on Windows and in bytes elsewhere.
 func commandLength(args ...string) int {
 	full := strings.Join(args, " ")
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		return len(utf16.Encode([]rune(full)))
 	}
 	return len(full)

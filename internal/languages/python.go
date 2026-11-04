@@ -44,12 +44,19 @@ type pythonHost struct {
 	major, minor string // sys.version_info[:2]
 }
 
+// The interpreter's executable names. A language_version such as python3.12
+// is one of these with a version appended, so they double as its prefix.
+const (
+	pythonExe  = "python"
+	python3Exe = "python3"
+)
+
 var pythonHostOnce = sync.OnceValue(findPythonHost)
 
 func findPythonHost() pythonHost {
-	names := []string{"python3", "python"}
-	if runtime.GOOS == "windows" {
-		names = []string{"python", "python3"}
+	names := []string{python3Exe, pythonExe}
+	if runtime.GOOS == goosWindows {
+		names = []string{pythonExe, python3Exe}
 	}
 	for _, name := range names {
 		exe, err := exec.LookPath(name)
@@ -80,33 +87,33 @@ func pythonFind(exe string) (string, bool) {
 // otherwise `default`.
 func pythonDefaultVersion(host pythonHost) string {
 	if host.exe == "" {
-		return "default"
+		return VersionDefault
 	}
 	for _, potential := range []string{host.major + "." + host.minor, host.major} {
-		if _, ok := pythonFind("python" + potential); ok {
-			return "python" + potential
+		if _, ok := pythonFind(pythonExe + potential); ok {
+			return pythonExe + potential
 		}
 	}
 	// _find_by_sys_executable's _norm.
 	exe := strings.ToLower(filepath.Base(host.exe))
-	exe, _, _ = strings.Cut(exe, ".exe")
-	if exe != "python" && exe != "pythonw" {
+	exe, _, _ = strings.Cut(exe, exeSuffix)
+	if exe != pythonExe && exe != "pythonw" {
 		if _, ok := pythonFind(exe); ok {
 			return exe
 		}
 	}
-	if runtime.GOOS == "windows" {
-		if pyLauncher("python"+host.major+"."+host.minor) != "" {
-			return "python" + host.major + "." + host.minor
+	if runtime.GOOS == goosWindows {
+		if pyLauncher(pythonExe+host.major+"."+host.minor) != "" {
+			return pythonExe + host.major + "." + host.minor
 		}
 	}
-	return "default"
+	return VersionDefault
 }
 
 // pyLauncher is upstream's _find_by_py_launcher: the interpreter `py -X.Y`
 // runs, or "" when there is none.
 func pyLauncher(version string) string {
-	num, ok := strings.CutPrefix(version, "python")
+	num, ok := strings.CutPrefix(version, pythonExe)
 	if !ok {
 		return ""
 	}
@@ -121,10 +128,10 @@ func pyLauncher(version string) string {
 
 // sysExecutableMatches is upstream's _sys_executable_matches against host.
 func sysExecutableMatches(version string, host pythonHost) bool {
-	if version == "python" {
+	if version == pythonExe {
 		return true
 	}
-	num, ok := strings.CutPrefix(version, "python")
+	num, ok := strings.CutPrefix(version, pythonExe)
 	if !ok || host.exe == "" {
 		return false
 	}
@@ -145,10 +152,10 @@ func sysExecutableMatches(version string, host pythonHost) bool {
 // virtualenv as -p, or "" for virtualenv's default (the host interpreter):
 // `default`, or a version the host already is.
 func normPythonVersion(version string, host pythonHost) string {
-	if version == "default" || sysExecutableMatches(version, host) {
+	if version == VersionDefault || sysExecutableMatches(version, host) {
 		return ""
 	}
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		if exe := pyLauncher(version); exe != "" {
 			return exe
 		}
@@ -193,9 +200,9 @@ func (p *Python) HealthCheck(prefix, version string) error {
 		trim = firstVersionParts
 	}
 
-	pyExe := filepath.Join(venvBinDir(envDir), "python")
-	if runtime.GOOS == "windows" {
-		pyExe += ".exe"
+	pyExe := filepath.Join(venvBinDir(envDir), pythonExe)
+	if runtime.GOOS == goosWindows {
+		pyExe += exeSuffix
 	}
 	if got := trim(pythonVersionInfo(pyExe)); got != want {
 		return fmt.Errorf( //nolint:staticcheck // upstream's wording, trailing newline and all
@@ -273,9 +280,9 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 
 	base := host.exe
 	if base == "" {
-		base = "python3"
-		if runtime.GOOS == "windows" {
-			base = "python"
+		base = python3Exe
+		if runtime.GOOS == goosWindows {
+			base = pythonExe
 		}
 	}
 	args := []string{"-mvirtualenv", envDir}
@@ -298,6 +305,7 @@ func (p *Python) InstallEnvironment(prefix, version string, additionalDeps []str
 
 	// Install the hook package.
 	pip := filepath.Join(venvBinDir(envDir), "pip")
+	//nolint:goconst // pip's verb; each backend's "install" is its own tool's
 	pipArgs := append([]string{"install", "."}, additionalDeps...)
 	cmd = command(pip, pipArgs...)
 	cmd.Dir = prefix

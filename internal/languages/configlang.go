@@ -9,6 +9,10 @@ import (
 	"path/filepath"
 )
 
+// envBinSubdir is the environment subdirectory the backends that set
+// RunBinSubdir install their executables into.
+const envBinSubdir = "bin"
+
 // SimpleLanguage is a declarative, config-driven implementation of the
 // Language interface. It eliminates boilerplate for languages that follow
 // the standard health-check / install / prepend-PATH-and-run pattern.
@@ -56,7 +60,7 @@ func (s *SimpleLanguage) GetDefaultVersion() string {
 	if s.DefaultVersion != "" {
 		return s.DefaultVersion
 	}
-	return "default"
+	return VersionDefault
 }
 
 func (s *SimpleLanguage) HealthCheck(prefix, version string) error {
