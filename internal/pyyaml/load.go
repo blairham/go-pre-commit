@@ -531,16 +531,7 @@ func parseInt(s string) (*big.Int, bool) {
 	case s[0] == '0':
 		_, ok = v.SetString(s, 8)
 	case strings.Contains(s, ":"):
-		parts := strings.Split(s, ":")
-		ok = true
-		for _, p := range parts {
-			d, err := strconv.ParseInt(p, 10, 64)
-			if err != nil {
-				return nil, false
-			}
-			v.Mul(v, big.NewInt(60))
-			v.Add(v, big.NewInt(d))
-		}
+		ok = setSexagesimal(v, s)
 	default:
 		_, ok = v.SetString(s, 10)
 	}
@@ -551,6 +542,20 @@ func parseInt(s string) (*big.Int, bool) {
 		v.Neg(v)
 	}
 	return v, true
+}
+
+// setSexagesimal sets v to s read as base 60, "1:30" being 90, and reports
+// whether every part of it was a number.
+func setSexagesimal(v *big.Int, s string) bool {
+	for _, p := range strings.Split(s, ":") {
+		d, err := strconv.ParseInt(p, 10, 64)
+		if err != nil {
+			return false
+		}
+		v.Mul(v, big.NewInt(60))
+		v.Add(v, big.NewInt(d))
+	}
+	return true
 }
 
 // parseFloat is SafeConstructor.construct_yaml_float.
@@ -599,18 +604,42 @@ func isoTimestamp(s string) (string, bool, error) {
 	if m == nil {
 		return "", false, nil
 	}
-	// Every group atoi reads matched digits only, so it cannot fail.
-	atoi := func(x string) int {
-		n, err := strconv.Atoi(x)
-		if err != nil {
-			return 0
-		}
-		return n
-	}
 	year, month, day := atoi(m[1]), atoi(m[2]), atoi(m[3])
 
 	// datetime.timezone(delta) is built before the datetime itself.
-	var tz string
+	tz, err := timestampZone(m)
+	if err != nil {
+		return "", false, err
+	}
+
+	err = checkDate(year, month, day)
+	if err != nil {
+		return "", false, err
+	}
+	out := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+	if m[4] == "" {
+		return out, true, nil
+	}
+	clock, err := timestampClock(m)
+	if err != nil {
+		return "", false, err
+	}
+	return out + clock + tz, true, nil
+}
+
+// atoi is the number in a group of timestampParts. Every group it reads
+// matched digits only, so it cannot fail.
+func atoi(x string) int {
+	n, err := strconv.Atoi(x)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// timestampZone is the isoformat of a timestamp's zone, from the groups of
+// timestampParts: "+HH:MM", "+00:00" for Z, or "" for none.
+func timestampZone(m []string) (string, error) {
 	switch {
 	case m[9] != "":
 		offset := atoi(m[10])*60 + atoi(m[11])
@@ -618,35 +647,33 @@ func isoTimestamp(s string) (string, bool, error) {
 			offset = -offset
 		}
 		if offset <= -24*60 || offset >= 24*60 {
-			return "", false, valueError(fmt.Sprintf("offset must be a timedelta strictly between "+
+			return "", valueError(fmt.Sprintf("offset must be a timedelta strictly between "+
 				"-timedelta(hours=24) and timedelta(hours=24), not %s.", timedeltaRepr(offset*60)))
 		}
 		sign := "+"
 		if offset < 0 {
 			sign, offset = "-", -offset
 		}
-		tz = fmt.Sprintf("%s%02d:%02d", sign, offset/60, offset%60)
+		return fmt.Sprintf("%s%02d:%02d", sign, offset/60, offset%60), nil
 	case m[8] == "Z":
-		tz = "+00:00"
+		return "+00:00", nil
 	}
+	return "", nil
+}
 
-	if err := checkDate(year, month, day); err != nil {
-		return "", false, err
-	}
-	out := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
-	if m[4] == "" {
-		return out, true, nil
-	}
+// timestampClock is the isoformat of a datetime's time, from the groups of
+// timestampParts: " HH:MM:SS", and the microseconds when there are any.
+func timestampClock(m []string) (string, error) {
 	hour, minute, second := atoi(m[4]), atoi(m[5]), atoi(m[6])
 	switch {
 	case hour > 23:
-		return "", false, errors.New("hour must be in 0..23")
+		return "", errors.New("hour must be in 0..23")
 	case minute > 59:
-		return "", false, errors.New("minute must be in 0..59")
+		return "", errors.New("minute must be in 0..59")
 	case second > 59:
-		return "", false, errors.New("second must be in 0..59")
+		return "", errors.New("second must be in 0..59")
 	}
-	out += fmt.Sprintf(" %02d:%02d:%02d", hour, minute, second)
+	out := fmt.Sprintf(" %02d:%02d:%02d", hour, minute, second)
 	if frac := m[7]; frac != "" {
 		if len(frac) > 6 {
 			frac = frac[:6]
@@ -656,7 +683,7 @@ func isoTimestamp(s string) (string, bool, error) {
 			out += "." + frac
 		}
 	}
-	return out + tz, true, nil
+	return out, nil
 }
 
 // valueError is a Python ValueError's message, kept verbatim (CPython's
@@ -742,29 +769,35 @@ func (v *Value) ToAny() any {
 		}
 		return out
 	case Map:
-		allStr := true
-		for _, p := range v.Pairs {
-			if p.Key.Kind != Str {
-				allStr = false
-				break
-			}
+		return mapToAny(v.Pairs)
+	}
+	return nil
+}
+
+// mapToAny is a mapping's pairs as ToAny returns them: a map[string]any
+// when every key is a string, else a map[any]any.
+func mapToAny(pairs []Pair) any {
+	allStr := true
+	for _, p := range pairs {
+		if p.Key.Kind != Str {
+			allStr = false
+			break
 		}
-		if allStr {
-			out := make(map[string]any, len(v.Pairs))
-			for _, p := range v.Pairs {
-				out[p.Key.Str] = p.Value.ToAny()
-			}
-			return out
-		}
-		out := make(map[any]any, len(v.Pairs))
-		for _, p := range v.Pairs {
-			k := p.Key.ToAny()
-			if b, ok := k.(*big.Int); ok {
-				k = b.String() // a *big.Int is not a usable map key
-			}
-			out[k] = p.Value.ToAny()
+	}
+	if allStr {
+		out := make(map[string]any, len(pairs))
+		for _, p := range pairs {
+			out[p.Key.Str] = p.Value.ToAny()
 		}
 		return out
 	}
-	return nil
+	out := make(map[any]any, len(pairs))
+	for _, p := range pairs {
+		k := p.Key.ToAny()
+		if b, ok := k.(*big.Int); ok {
+			k = b.String() // a *big.Int is not a usable map key
+		}
+		out[k] = p.Value.ToAny()
+	}
+	return out
 }
