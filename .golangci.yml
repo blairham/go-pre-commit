@@ -37,7 +37,6 @@ linters:
     #   prealloc
     #   gosec
     #   nestif
-    #   funlen
     #   thelper
     # Core linters (enabled by default)
     - errcheck # Check for unchecked errors
@@ -72,6 +71,7 @@ linters:
     # Security
 
     # Code complexity
+    - funlen # Reports overly long functions
     - gocognit # Reports high cognitive complexity
     - gocyclo # Reports high cyclomatic complexity
 
