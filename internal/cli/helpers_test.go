@@ -90,10 +90,10 @@ func TestIsPreCommitHook(t *testing.T) {
 	}
 }
 
-// --- sortedHookTypes tests ---
+// --- hookTypeChoices tests ---
 
-func TestSortedHookTypes(t *testing.T) {
-	types := sortedHookTypes()
+func TestHookTypeChoices(t *testing.T) {
+	types := hookTypeChoices()
 	if len(types) == 0 {
 		t.Fatal("expected non-empty hook types list")
 	}

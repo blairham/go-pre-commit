@@ -49,6 +49,10 @@ type argAction struct {
 	group    bool
 }
 
+// nargsRemainder is argparse's REMAINDER: every argument left, whatever it
+// looks like.
+const nargsRemainder = "..."
+
 // argSpec is an argparse parser: its prog and its actions.
 type argSpec struct {
 	prog    string
@@ -82,7 +86,7 @@ func (a argAction) formatArgs() string {
 		return "[" + m + "]"
 	case "*":
 		return "[" + m + " ...]"
-	case "...":
+	case nargsRemainder:
 		return "..."
 	case "parser":
 		return m + " ..."
@@ -220,16 +224,36 @@ func argparseError(s argSpec, msg string) int {
 
 // --- the parsers main.py builds ---
 
+// The subcommands main.py adds, by the name each is invoked as.
+const (
+	cmdAutoupdate       = "autoupdate"
+	cmdClean            = "clean"
+	cmdGC               = "gc"
+	cmdHazmat           = "hazmat"
+	cmdInitTemplateDir  = "init-templatedir"
+	cmdInstall          = "install"
+	cmdInstallHooks     = "install-hooks"
+	cmdMigrateConfig    = "migrate-config"
+	cmdRun              = "run"
+	cmdSampleConfig     = "sample-config"
+	cmdTryRepo          = "try-repo"
+	cmdUninstall        = "uninstall"
+	cmdValidateConfig   = "validate-config"
+	cmdValidateManifest = "validate-manifest"
+	cmdHelp             = "help"
+	cmdHookImpl         = "hook-impl"
+)
+
 // commandNames is the top-level parser's subcommand choices, in order.
 var commandNames = []string{
-	"autoupdate", "clean", "gc", "hazmat", "init-templatedir", "install",
-	"install-hooks", "migrate-config", "run", "sample-config", "try-repo",
-	"uninstall", "validate-config", "validate-manifest", "help", "hook-impl",
+	cmdAutoupdate, cmdClean, cmdGC, cmdHazmat, cmdInitTemplateDir, cmdInstall,
+	cmdInstallHooks, cmdMigrateConfig, cmdRun, cmdSampleConfig, cmdTryRepo,
+	cmdUninstall, cmdValidateConfig, cmdValidateManifest, cmdHelp, cmdHookImpl,
 }
 
 var topLevelSpec = argSpec{prog: "pre-commit", actions: []argAction{
-	{opts: []string{"-h", "--help"}, nargs: "0"},
-	{opts: []string{"-V", "--version"}, nargs: "0"},
+	helpAction,
+	versionAction,
 	{dest: "command", metavar: "{" + strings.Join(commandNames, ",") + "}", nargs: "parser"},
 }}
 
@@ -267,8 +291,9 @@ func checkChoice(choices []string) func(string) string {
 }
 
 var (
-	helpAction  = argAction{opts: []string{"-h", "--help"}, nargs: "0"}
-	colorAction = argAction{
+	helpAction    = argAction{opts: []string{"-h", "--help"}, nargs: "0"}
+	versionAction = argAction{opts: []string{"-V", "--version"}, nargs: "0"}
+	colorAction   = argAction{
 		opts: []string{"--color"}, dest: "color", metavar: "{auto,always,never}",
 		// type=color.use_color, which raises ValueError for anything else.
 		check: func(v string) string {
@@ -300,10 +325,7 @@ func runOptions() []argAction {
 			opts: []string{"--hook-stage"}, choices: stages,
 			// type=transform_stage runs first, then choices.
 			check: func(v string) string {
-				if to, ok := map[string]string{"commit": "pre-commit", "merge-commit": "pre-merge-commit", "push": "pre-push"}[v]; ok {
-					v = to
-				}
-				return checkChoice(stages)(v)
+				return checkChoice(stages)(string(config.TransformStage(config.Stage(v))))
 			},
 		},
 		opt("remote_branch", "--remote-branch"),
@@ -325,7 +347,7 @@ func runOptions() []argAction {
 
 // commandSpecs is each subparser main.py adds, keyed by command name.
 var commandSpecs = map[string]argSpec{
-	"autoupdate": {prog: "pre-commit autoupdate", actions: []argAction{
+	cmdAutoupdate: {prog: "pre-commit autoupdate", actions: []argAction{
 		helpAction, colorAction, configAction,
 		{opts: []string{"--bleeding-edge"}, nargs: "0"},
 		{opts: []string{"--freeze"}, nargs: "0"},
@@ -337,47 +359,47 @@ var commandSpecs = map[string]argSpec{
 			return ""
 		}},
 	}},
-	"clean": {prog: "pre-commit clean", actions: []argAction{helpAction, colorAction}},
-	"gc":    {prog: "pre-commit gc", actions: []argAction{helpAction, colorAction}},
-	"init-templatedir": {prog: "pre-commit init-templatedir", actions: []argAction{
+	cmdClean: {prog: "pre-commit clean", actions: []argAction{helpAction, colorAction}},
+	cmdGC:    {prog: "pre-commit gc", actions: []argAction{helpAction, colorAction}},
+	cmdInitTemplateDir: {prog: "pre-commit init-templatedir", actions: []argAction{
 		helpAction, colorAction, configAction,
 		{dest: "directory"},
 		{opts: []string{"--no-allow-missing-config"}, nargs: "0"},
 		hookTypeAction,
 	}},
-	"install": {prog: "pre-commit install", actions: []argAction{
+	cmdInstall: {prog: "pre-commit install", actions: []argAction{
 		helpAction, colorAction, configAction,
 		{opts: []string{"-f", "--overwrite"}, nargs: "0"},
 		{opts: []string{"--install-hooks"}, nargs: "0"},
 		hookTypeAction,
 		{opts: []string{"--allow-missing-config"}, nargs: "0"},
 	}},
-	"install-hooks":  {prog: "pre-commit install-hooks", actions: []argAction{helpAction, colorAction, configAction}},
-	"migrate-config": {prog: "pre-commit migrate-config", actions: []argAction{helpAction, colorAction, configAction}},
-	"run": {prog: "pre-commit run", actions: append(
+	cmdInstallHooks:  {prog: "pre-commit install-hooks", actions: []argAction{helpAction, colorAction, configAction}},
+	cmdMigrateConfig: {prog: "pre-commit migrate-config", actions: []argAction{helpAction, colorAction, configAction}},
+	cmdRun: {prog: "pre-commit run", actions: append(
 		[]argAction{helpAction, colorAction, configAction}, runOptions()...,
 	)},
-	"sample-config": {prog: "pre-commit sample-config", actions: []argAction{helpAction, colorAction}},
-	"try-repo": {prog: "pre-commit try-repo", actions: append([]argAction{
+	cmdSampleConfig: {prog: "pre-commit sample-config", actions: []argAction{helpAction, colorAction}},
+	cmdTryRepo: {prog: "pre-commit try-repo", actions: append([]argAction{
 		helpAction, colorAction, configAction,
 		{dest: "repo"},
 		{opts: []string{"--ref", "--rev"}, dest: "ref"},
 	}, runOptions()...)},
-	"uninstall": {prog: "pre-commit uninstall", actions: []argAction{
+	cmdUninstall: {prog: "pre-commit uninstall", actions: []argAction{
 		helpAction, colorAction, configAction, hookTypeAction,
 	}},
-	"validate-config": {prog: "pre-commit validate-config", actions: []argAction{
+	cmdValidateConfig: {prog: "pre-commit validate-config", actions: []argAction{
 		helpAction, colorAction, {dest: "filenames", nargs: "*"},
 	}},
-	"validate-manifest": {prog: "pre-commit validate-manifest", actions: []argAction{
+	cmdValidateManifest: {prog: "pre-commit validate-manifest", actions: []argAction{
 		helpAction, colorAction, {dest: "filenames", nargs: "*"},
 	}},
-	"hook-impl": {prog: "pre-commit hook-impl", actions: []argAction{
+	cmdHookImpl: {prog: "pre-commit hook-impl", actions: []argAction{
 		helpAction, colorAction, configAction,
 		{opts: []string{"--hook-type"}, dest: "hook_type", required: true},
 		{opts: []string{"--hook-dir"}, dest: "hook_dir"},
 		{opts: []string{"--skip-on-missing-config"}, nargs: "0"},
-		{dest: "rest", nargs: "..."},
+		{dest: "rest", nargs: nargsRemainder},
 	}},
 }
 
@@ -455,7 +477,7 @@ func (s argSpec) positionalCounts() (maxPos, minPos int) {
 			minPos++
 		case "?":
 			maxPos++
-		case "*", "...":
+		case "*", nargsRemainder:
 			maxPos = -1
 		}
 	}

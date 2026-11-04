@@ -37,7 +37,7 @@ type autoupdateFlags struct {
 
 func (c *AutoupdateCommand) Run(args []string) int {
 	var opts autoupdateFlags
-	if _, code, ok := parseArgs("autoupdate", &opts, args, args); !ok {
+	if _, code, ok := parseArgs(cmdAutoupdate, &opts, args, args); !ok {
 		return code
 	}
 	var err error

@@ -17,7 +17,7 @@ type SampleConfigCommand struct {
 
 func (c *SampleConfigCommand) Run(args []string) int {
 	var opts ColorFlags
-	if _, code, ok := parseArgs("sample-config", &opts, args, args); !ok {
+	if _, code, ok := parseArgs(cmdSampleConfig, &opts, args, args); !ok {
 		return code
 	}
 	fmt.Print(config.SampleConfig())

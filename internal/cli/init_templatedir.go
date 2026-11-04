@@ -25,7 +25,7 @@ type initTemplateDirFlags struct {
 
 func (c *InitTemplateDirCommand) Run(args []string) int {
 	var opts initTemplateDirFlags
-	remaining, code, ok := parseArgs("init-templatedir", &opts, args, args)
+	remaining, code, ok := parseArgs(cmdInitTemplateDir, &opts, args, args)
 	if !ok {
 		return code
 	}

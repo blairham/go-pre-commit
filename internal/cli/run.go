@@ -57,7 +57,7 @@ func (c *RunCommand) Run(args []string) int {
 
 	var opts runFlags
 
-	remaining, code, ok := parseArgs("run", &opts, args, expandFilesFlag(args))
+	remaining, code, ok := parseArgs(cmdRun, &opts, args, expandFilesFlag(args))
 	if !ok {
 		return code
 	}

@@ -19,7 +19,7 @@ type ValidateConfigCommand struct {
 
 func (c *ValidateConfigCommand) Run(args []string) int {
 	var opts ColorFlags
-	remaining, code, ok := parseArgs("validate-config", &opts, args, args)
+	remaining, code, ok := parseArgs(cmdValidateConfig, &opts, args, args)
 	if !ok {
 		return code
 	}
@@ -54,7 +54,7 @@ type ValidateManifestCommand struct {
 
 func (c *ValidateManifestCommand) Run(args []string) int {
 	var opts ColorFlags
-	remaining, code, ok := parseArgs("validate-manifest", &opts, args, args)
+	remaining, code, ok := parseArgs(cmdValidateManifest, &opts, args, args)
 	if !ok {
 		return code
 	}

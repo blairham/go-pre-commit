@@ -18,7 +18,7 @@ type CleanCommand struct {
 
 func (c *CleanCommand) Run(args []string) int {
 	var opts ColorFlags
-	if _, code, ok := parseArgs("clean", &opts, args, args); !ok {
+	if _, code, ok := parseArgs(cmdClean, &opts, args, args); !ok {
 		return code
 	}
 
