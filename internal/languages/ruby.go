@@ -156,24 +156,7 @@ func (r *Ruby) InstallEnvironment(prefix, version string, additionalDeps []strin
 	version = r.effectiveVersion(version)
 
 	if version != VersionSystem {
-		if err := installRbenv(prefix, envDir, version); err != nil {
-			return err
-		}
-		// rbenv init sets up rbenv's directories before anything installs.
-		if err := rubySetupCmd(prefix, envDir, version, "rbenv", "init", "-"); err != nil {
-			return err
-		}
-		if version != VersionDefault {
-			// upstream's _install_ruby: download a prebuilt ruby, and build
-			// one only when the download fails.
-			if err := rubySetupCmd(prefix, envDir, version, "rbenv", "download", version); err != nil {
-				if err := rubySetupCmd(prefix, envDir, version, "rbenv", "install", version); err != nil {
-					return err
-				}
-			}
-		}
-		// rbenv rehash sets up the shims after installing.
-		if err := rubySetupCmd(prefix, envDir, version, "rbenv", "rehash"); err != nil {
+		if err := installRubyWithRbenv(prefix, envDir, version); err != nil {
 			return err
 		}
 	}
@@ -199,6 +182,29 @@ func (r *Ruby) InstallEnvironment(prefix, version string, additionalDeps []strin
 	}
 	install = append(append(install, gems...), additionalDeps...)
 	return rubySetupCmd(prefix, envDir, version, install...)
+}
+
+// installRubyWithRbenv installs rbenv into envDir and, for any version but
+// the default, that ruby.
+func installRubyWithRbenv(prefix, envDir, version string) error {
+	if err := installRbenv(prefix, envDir, version); err != nil {
+		return err
+	}
+	// rbenv init sets up rbenv's directories before anything installs.
+	if err := rubySetupCmd(prefix, envDir, version, "rbenv", "init", "-"); err != nil {
+		return err
+	}
+	if version != VersionDefault {
+		// upstream's _install_ruby: download a prebuilt ruby, and build
+		// one only when the download fails.
+		if err := rubySetupCmd(prefix, envDir, version, "rbenv", "download", version); err != nil {
+			if err := rubySetupCmd(prefix, envDir, version, "rbenv", "install", version); err != nil {
+				return err
+			}
+		}
+	}
+	// rbenv rehash sets up the shims after installing.
+	return rubySetupCmd(prefix, envDir, version, "rbenv", "rehash")
 }
 
 // Run implements Language.

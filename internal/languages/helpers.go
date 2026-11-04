@@ -168,23 +168,22 @@ func ParseEntry(entry string) []string {
 
 	for i := 0; i < len(entry); i++ {
 		c := entry[i]
-		if inQuote {
-			if c == quoteChar {
-				inQuote = false
-			} else {
-				current.WriteByte(c)
-			}
-		} else if c == '\'' || c == '"' {
+		switch {
+		case inQuote && c == quoteChar:
+			inQuote = false
+		case inQuote:
+			current.WriteByte(c)
+		case c == '\'' || c == '"':
 			inQuote = true
 			quoteChar = c
 			wasQuoted = true
-		} else if c == ' ' || c == '\t' {
+		case c == ' ' || c == '\t':
 			if current.Len() > 0 || wasQuoted {
 				parts = append(parts, current.String())
 				current.Reset()
 				wasQuoted = false
 			}
-		} else {
+		default:
 			current.WriteByte(c)
 		}
 	}
