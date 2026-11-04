@@ -115,7 +115,7 @@ func (c *TryRepoCommand) Run(args []string) (code int) {
 	printTryConfig(repo, ref, hookCfgs)
 
 	resolver := repository.NewResolver(s, tryConfig)
-	hooks, err := resolver.ResolveAll(c.Meta.ctx(), tryConfig)
+	hooks, err := resolver.ResolveAll(tryConfig)
 	if err != nil {
 		return reportError(err)
 	}

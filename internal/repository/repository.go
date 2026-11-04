@@ -5,7 +5,6 @@
 package repository
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,7 +29,7 @@ func NewResolver(s *store.Store, cfg *config.Config) *Resolver {
 
 // ResolveAll resolves all repos in a config into a flat list of hooks.
 // Remote repos are cloned in parallel to reduce wall-clock time.
-func (r *Resolver) ResolveAll(ctx context.Context, cfg *config.Config) ([]*hook.Hook, error) {
+func (r *Resolver) ResolveAll(cfg *config.Config) ([]*hook.Hook, error) {
 	type repoResult struct {
 		hooks []*hook.Hook
 		err   error
@@ -50,7 +49,7 @@ func (r *Resolver) ResolveAll(ctx context.Context, cfg *config.Config) ([]*hook.
 			// Resolve local/meta repos inline — meta needs no I/O, and local
 			// only touches the shared store directory, which is serialized
 			// anyway.
-			hooks, err := r.resolveRepo(ctx, repo)
+			hooks, err := r.resolveRepo(repo)
 			results[i] = repoResult{hooks: hooks, err: err, index: i}
 			continue
 		}
@@ -59,7 +58,7 @@ func (r *Resolver) ResolveAll(ctx context.Context, cfg *config.Config) ([]*hook.
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			hooks, err := r.resolveRepo(ctx, repo)
+			hooks, err := r.resolveRepo(repo)
 			results[idx] = repoResult{hooks: hooks, err: err, index: idx}
 		}(i, repo)
 	}
@@ -77,14 +76,14 @@ func (r *Resolver) ResolveAll(ctx context.Context, cfg *config.Config) ([]*hook.
 	return allHooks, nil
 }
 
-func (r *Resolver) resolveRepo(ctx context.Context, repo *config.RepoConfig) ([]*hook.Hook, error) {
+func (r *Resolver) resolveRepo(repo *config.RepoConfig) ([]*hook.Hook, error) {
 	if repo.IsLocal() {
 		return r.resolveLocalRepo(repo)
 	}
 	if repo.IsMeta() {
 		return r.resolveMetaRepo(repo)
 	}
-	return r.resolveRemoteRepo(ctx, repo)
+	return r.resolveRemoteRepo(repo)
 }
 
 func (r *Resolver) resolveLocalRepo(repo *config.RepoConfig) ([]*hook.Hook, error) {
@@ -213,7 +212,7 @@ func makeMetaHook(hc *config.HookConfig) (*hook.Hook, error) {
 	}
 }
 
-func (r *Resolver) resolveRemoteRepo(ctx context.Context, repo *config.RepoConfig) ([]*hook.Hook, error) {
+func (r *Resolver) resolveRemoteRepo(repo *config.RepoConfig) ([]*hook.Hook, error) {
 	// Clone (or retrieve cached clone) via the store.
 	repoDir, err := r.Store.Clone(repo.Repo, repo.Rev)
 	if err != nil {

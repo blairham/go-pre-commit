@@ -292,7 +292,7 @@ func installAllHookEnvironments(ctx context.Context, cfgPath string) error {
 	s := store.New("")
 
 	resolver := repository.NewResolver(s, cfg)
-	hooks, err := resolver.ResolveAll(ctx, cfg)
+	hooks, err := resolver.ResolveAll(cfg)
 	if err != nil {
 		return err
 	}

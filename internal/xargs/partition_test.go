@@ -8,17 +8,13 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
 
-func repeat(s string, n int) []string {
-	out := make([]string, n)
-	for i := range out {
-		out[i] = s
-	}
-	return out
-}
+// repeatA is upstream's ('A',) * n.
+func repeatA(n int) []string { return slices.Repeat([]string{"A"}, n) }
 
 // The cases below are upstream's tests/xargs_test.py partition tests.
 
@@ -44,15 +40,15 @@ func TestPartition(t *testing.T) {
 		{
 			"target concurrency",
 			[]string{"foo"},
-			repeat("A", 22),
-			[][]string{repeat("A", 6), repeat("A", 6), repeat("A", 6), repeat("A", 4)},
+			repeatA(22),
+			[][]string{repeatA(6), repeatA(6), repeatA(6), repeatA(4)},
 			4, 50,
 		},
 		{
 			"target concurrency won't make tiny partitions",
 			[]string{"foo"},
-			repeat("A", 10),
-			[][]string{repeat("A", 4), repeat("A", 4), repeat("A", 2)},
+			repeatA(10),
+			[][]string{repeatA(4), repeatA(4), repeatA(2)},
 			4, 50,
 		},
 	}

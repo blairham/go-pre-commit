@@ -12,7 +12,7 @@ import (
 // writeModuleCache builds the shape `go install` leaves behind: files mode
 // 0444 inside directories mode 0555. Unlinking needs write+execute on the
 // parent directory, so a plain os.RemoveAll cannot clear this.
-func writeModuleCache(t *testing.T, root string) string {
+func writeModuleCache(t *testing.T, root string) {
 	t.Helper()
 
 	envDir := filepath.Join(root, "golangenv-default")
@@ -50,8 +50,6 @@ func writeModuleCache(t *testing.T, root string) string {
 			return nil
 		})
 	})
-
-	return envDir
 }
 
 // This is the precondition for the whole bug: the standard library call the
