@@ -389,7 +389,7 @@ var revLineRe = regexp.MustCompile(`^(\s+)rev:(\s*)(['"]?)([^\s#]+)(.*)(\r?\n)$`
 // its repo by position, rewritten in its own quoting style. A "# frozen:"
 // comment is replaced or dropped; any other comment is kept.
 func writeNewConfig(path string, infos []*revInfo) error {
-	original, err := os.ReadFile(path)
+	original, err := os.ReadFile(path) // #nosec G304 -- the config the user named
 	if err != nil {
 		return err
 	}
@@ -401,14 +401,14 @@ func writeNewConfig(path string, infos []*revInfo) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(path, reformatted, 0o644); err != nil {
+		if err := os.WriteFile(path, reformatted, 0o644); err != nil { // #nosec G306 G703 -- the user's config
 			return err
 		}
 		if updated, ok = rewriteRevLines(string(reformatted), infos); !ok {
 			return errors.New("could not find rev lines")
 		}
 	}
-	return os.WriteFile(path, []byte(updated), 0o644)
+	return os.WriteFile(path, []byte(updated), 0o644) // #nosec G306 G703 -- the user's config, as upstream
 }
 
 // rewriteRevLines applies infos to the rev lines of original, or reports

@@ -34,7 +34,6 @@ linters:
     # per pull request and shrink that list:
     #   errorlint
     #   prealloc
-    #   gosec
     #   nestif
     #   thelper
     # Core linters (enabled by default)
@@ -69,6 +68,7 @@ linters:
     - sloglint # Ensure consistent code style when using log/slog
 
     # Security
+    - gosec # Inspects source code for security problems
 
     # Code complexity
     - funlen # Reports overly long functions

@@ -253,7 +253,7 @@ func pythonVersionInfo(exe string) string {
 // readPyvenvCfg is upstream's _read_pyvenv_cfg: `key = value` lines, and a
 // line without exactly one `=` skipped.
 func readPyvenvCfg(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- a path in pre-commit's store
 	if err != nil {
 		return nil, err
 	}

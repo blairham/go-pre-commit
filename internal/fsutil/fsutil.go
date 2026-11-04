@@ -41,7 +41,7 @@ func RemoveAll(path string) error {
 			return nil
 		}
 		if mode := info.Mode().Perm(); mode&0o300 != 0o300 {
-			_ = os.Chmod(p, mode|0o300)
+			_ = os.Chmod(p, mode|0o300) //nolint:errcheck,gosec // best effort; the RemoveAll below reports
 		}
 		return nil
 	})

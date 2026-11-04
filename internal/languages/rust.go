@@ -150,7 +150,7 @@ func download(url, path string) (err error) {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755) // #nosec G302 G304 -- rustup-init
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func download(url, path string) (err error) {
 // and the builds run with a throwaway RUSTUP_HOME.
 func (r *Rust) InstallEnvironment(prefix, version string, additionalDeps []string) (err error) {
 	envDir := filepath.Join(prefix, r.EnvironmentDir()+"-"+version)
-	if err := os.MkdirAll(envDir, 0o755); err != nil {
+	if err := os.MkdirAll(envDir, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 		return err
 	}
 

@@ -177,12 +177,12 @@ func (s *Store) MakeLocal(deps []string) (string, error) {
 }
 
 func writeLocalResources(dest string) error {
-	if err := os.MkdirAll(dest, 0o755); err != nil {
+	if err := os.MkdirAll(dest, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 		return fmt.Errorf("failed to create local repo directory %s: %w", dest, err)
 	}
 	for name, contents := range localResources {
 		path := filepath.Join(dest, name)
-		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil { // #nosec G306 -- as upstream's open()
 			return fmt.Errorf("failed to write %s: %w", path, err)
 		}
 	}
@@ -192,10 +192,10 @@ func writeLocalResources(dest string) error {
 			return err
 		}
 		path := filepath.Join(dest, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 			return err
 		}
-		if err := os.WriteFile(path, data, 0o644); err != nil {
+		if err := os.WriteFile(path, data, 0o644); err != nil { // #nosec G306 -- as upstream's open()
 			return fmt.Errorf("failed to write %s: %w", path, err)
 		}
 	}

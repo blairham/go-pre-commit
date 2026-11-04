@@ -204,7 +204,7 @@ var legacyStages = map[Stage]Stage{
 // uses deprecated stage names, say so. A manifest that does not load is left
 // alone, as upstream does; the real load reports it properly.
 func WarnForStagesOnRepoInit(repo, directory string) {
-	data, err := os.ReadFile(filepath.Join(directory, ManifestFile))
+	data, err := os.ReadFile(filepath.Join(directory, ManifestFile)) // #nosec G304 -- a path in pre-commit's store
 	if err != nil {
 		return
 	}

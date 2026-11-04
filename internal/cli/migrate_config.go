@@ -52,7 +52,7 @@ func migrateConfigExit(path string, quiet bool, say func(string)) int {
 // names, each rewritten in place in the source text. Its messages go to
 // say, which is upstream's print().
 func migrateConfig(path string, quiet bool, say func(string)) error {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- the config the user named
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func migrateConfig(path string, quiet bool, say func(string)) error {
 	}
 
 	if contents != orig {
-		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil { // #nosec G306 G703 -- the user's config
 			return err
 		}
 		say("Configuration has been migrated.\n")

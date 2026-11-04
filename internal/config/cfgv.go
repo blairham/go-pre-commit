@@ -113,7 +113,7 @@ func loadFromFilename(
 	}
 
 	ctx := "File " + filename
-	data, err := os.ReadFile(filename)
+	data, err := os.ReadFile(filename) // #nosec G304 -- the config or manifest being loaded
 	if err != nil {
 		return nil, err // an OSError: nothing in the load path catches it
 	}

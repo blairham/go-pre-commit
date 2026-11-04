@@ -124,7 +124,7 @@ func MatchesTypes(tags map[string]bool, types, typesOr, excludeTypes []string) b
 }
 
 func isBinaryFile(path string) bool {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- a file being classified
 	if err != nil {
 		return false
 	}
@@ -147,7 +147,7 @@ func isBinaryFile(path string) bool {
 }
 
 func getShebangTags(path string) []string {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- a file being classified
 	if err != nil {
 		return nil
 	}

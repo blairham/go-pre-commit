@@ -107,10 +107,10 @@ func (m *Manager) stash() (bool, error) {
 	m.patchPath = filepath.Join(m.patchDir, fmt.Sprintf("patch%d-%d", time.Now().Unix(), os.Getpid()))
 	output.Warn("Unstaged files detected.")
 	output.Info("Stashing unstaged files to %s.", m.patchPath)
-	if err := os.MkdirAll(m.patchDir, 0o755); err != nil {
+	if err := os.MkdirAll(m.patchDir, 0o755); err != nil { // #nosec G301 -- as upstream's os.makedirs
 		return false, fmt.Errorf("creating patch directory: %w", err)
 	}
-	if err := os.WriteFile(m.patchPath, diff, 0o644); err != nil {
+	if err := os.WriteFile(m.patchPath, diff, 0o644); err != nil { // #nosec G306 -- as upstream's open()
 		m.patchPath = ""
 		return false, fmt.Errorf("writing patch: %w", err)
 	}

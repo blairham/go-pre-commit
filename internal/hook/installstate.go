@@ -35,11 +35,11 @@ func installStateMatches(envPath string, h *Hook) bool {
 	if _, err := os.Stat(filepath.Join(envPath, installStateV2)); err == nil {
 		return true
 	}
-	if data, err := os.ReadFile(filepath.Join(envPath, installStateV1)); err == nil &&
+	if data, err := os.ReadFile(filepath.Join(envPath, installStateV1)); err == nil && // #nosec G304 -- store path
 		installStateV1Matches(data, h.AdditionalDependencies) {
 		return true
 	}
-	data, err := os.ReadFile(filepath.Join(envPath, legacyInstallState))
+	data, err := os.ReadFile(filepath.Join(envPath, legacyInstallState)) // #nosec G304 -- a path in pre-commit's store
 	return err == nil && string(data) == h.InstallKey()
 }
 
@@ -65,13 +65,14 @@ func installStateV1Matches(data []byte, deps []string) bool {
 func writeInstallState(envPath string, deps []string) error {
 	v1 := filepath.Join(envPath, installStateV1)
 	staging := v1 + "staging"
-	if err := os.WriteFile(staging, installStateV1JSON(deps), 0o644); err != nil {
+	if err := os.WriteFile(staging, installStateV1JSON(deps), 0o644); err != nil { // #nosec G306 -- as upstream's open()
 		return err
 	}
 	if err := os.Rename(staging, v1); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(envPath, installStateV2), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	v2 := filepath.Join(envPath, installStateV2)
+	f, err := os.OpenFile(v2, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644) // #nosec G302 G304 -- upstream's open()
 	if err != nil {
 		return err
 	}

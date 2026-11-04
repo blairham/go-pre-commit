@@ -116,7 +116,7 @@ func extractZipMember(root *os.Root, f *zip.File) (err error) {
 }
 
 func openArchiveRoot(dest string) (*os.Root, error) {
-	if err := os.MkdirAll(dest, 0o755); err != nil {
+	if err := os.MkdirAll(dest, 0o755); err != nil { // #nosec G301 -- as upstream's extractall
 		return nil, err
 	}
 	return os.OpenRoot(dest)
