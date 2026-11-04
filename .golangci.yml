@@ -34,7 +34,6 @@ linters:
     # per pull request and shrink that list:
     #   goconst
     #   errorlint
-    #   nilerr
     #   prealloc
     #   gosec
     #   nestif
@@ -63,6 +62,7 @@ linters:
     - sqlclosecheck # Check that sql.Rows and sql.Stmt are closed
     - errname # Checks sentinel errors are prefixed with Err
     - forcetypeassert # Finds forced type assertions
+    - nilerr # Finds a nil return after a non-nil error check
     - nilnil # Checks for simultaneous return of nil error and nil value
     - noctx # Finds HTTP requests without context.Context
     - predeclared # Find code that shadows predeclared identifiers

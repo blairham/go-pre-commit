@@ -78,6 +78,16 @@ func Register(name string, lang Language) {
 
 // Get returns the language handler for the given name.
 func Get(name string) (Language, error) {
+	lang, ok := Lookup(name)
+	if !ok {
+		return nil, fmt.Errorf("unknown language: %q", name)
+	}
+	return lang, nil
+}
+
+// Lookup is Get for a caller to which an unknown language is not an error:
+// ok is false when no handler is registered under name or its alias.
+func Lookup(name string) (Language, bool) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 
@@ -95,10 +105,7 @@ func Get(name string) (Language, error) {
 	}
 
 	lang, ok := registry[normalized]
-	if !ok {
-		return nil, fmt.Errorf("unknown language: %q", name)
-	}
-	return lang, nil
+	return lang, ok
 }
 
 func init() {
