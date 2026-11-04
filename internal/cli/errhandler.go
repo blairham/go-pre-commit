@@ -135,7 +135,8 @@ func errorTypeAndMessage(err error) (string, string) {
 	}
 	var pe *fs.PathError
 	if errors.As(err, &pe) {
-		if errno, ok := pe.Err.(syscall.Errno); ok {
+		var errno syscall.Errno
+		if errors.As(pe.Err, &errno) {
 			return osErrorType(errno), osErrorMessage(errno, pe.Path)
 		}
 	}

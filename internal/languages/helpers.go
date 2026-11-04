@@ -62,7 +62,8 @@ func RunCommandEnv(ctx context.Context, dir string, env []string, name string, a
 	err := cmd.Run()
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
 			return -1, buf.Bytes(), err
@@ -121,7 +122,8 @@ func runHookArgv(ctx context.Context, dir string, argv, env, unset []string) (in
 	}
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
 			return -1, out, err

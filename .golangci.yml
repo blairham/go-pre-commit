@@ -32,7 +32,6 @@ linters:
   enable:
     # Not yet enabled here — overrides/go-pre-commit.yml says why. Adopt one
     # per pull request and shrink that list:
-    #   errorlint
     #   prealloc
     #   nestif
     #   thelper
@@ -58,6 +57,7 @@ linters:
     - rowserrcheck # Check whether Err of rows is checked
     - sqlclosecheck # Check that sql.Rows and sql.Stmt are closed
     - errname # Checks sentinel errors are prefixed with Err
+    - errorlint # Find code that will cause problems with error wrapping
     - forcetypeassert # Finds forced type assertions
     - nilerr # Finds a nil return after a non-nil error check
     - nilnil # Checks for simultaneous return of nil error and nil value
