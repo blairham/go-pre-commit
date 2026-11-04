@@ -4,7 +4,6 @@
 package repository
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -385,7 +384,7 @@ func TestResolveRemoteRepo_ClonePerDependencySet(t *testing.T) {
 		{ID: "vuln-too"},
 		{ID: "plain", AdditionalDependencies: []string{"example.com/extra@v1"}},
 	}}
-	hooks, err := r.resolveRemoteRepo(context.Background(), repo)
+	hooks, err := r.resolveRemoteRepo(repo)
 	if err != nil {
 		t.Fatalf("resolveRemoteRepo: %v", err)
 	}

@@ -103,7 +103,7 @@ func (c *RunCommand) Run(args []string) int {
 
 	// Resolve hooks.
 	resolver := repository.NewResolver(s, cfg)
-	hooks, err := resolver.ResolveAll(c.Meta.ctx(), cfg)
+	hooks, err := resolver.ResolveAll(cfg)
 	if err != nil {
 		return reportError(err)
 	}
