@@ -37,7 +37,7 @@ file was introduced; the full notes are on the
   removed. `go install ./...` runs in the clone, so it walked into that cache
   and refused any module there without a `go.mod` of its own. The install now
   removes those directories first, which also frees their disk space: nothing
-  has read them since the rename, and no upstream language uses the name.
+  has read them since the rename, and no upstream language uses the name. (#228)
 
 ## [4.7.1] - 2026-11-02
 
