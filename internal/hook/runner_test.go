@@ -760,13 +760,12 @@ func TestInstallEnvironmentsWipesStatelessLeftoverEnv(t *testing.T) {
 	}
 
 	// Simulate the poisoned state: env dir with a populated module cache but
-	// no install state. The junk module has its own go.mod, which is what
-	// breaks the `./...` pattern walk when it survives into the install.
+	// no install state. The junk module has no go.mod of its own (a module
+	// that predates modules), which is what breaks the `./...` pattern walk
+	// when it survives into the install; one with a go.mod is a nested module
+	// the walk skips, so it would pass with or without the wipe.
 	junk := filepath.Join(repoDir, "golangenv-system", "pkg", "mod", "example.com", "junk@v1.0.0")
 	if err := os.MkdirAll(junk, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(junk, "go.mod"), []byte("module example.com/junk\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(junk, "junk.go"), []byte("package junk\n"), 0o644); err != nil {

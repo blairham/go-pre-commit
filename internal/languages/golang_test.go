@@ -18,6 +18,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/blairham/go-pre-commit/v4/internal/fsutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -147,6 +149,93 @@ func TestGolangInstallRemovesModuleCache(t *testing.T) {
 		bin += ".exe"
 	}
 	if _, err := os.Stat(filepath.Join(envDir, "bin", bin)); err != nil {
+		t.Errorf("hook binary not installed into GOPATH/bin: %v", err)
+	}
+}
+
+// Releases before 4.7.1 named the env go_env-<version> (through 4.6.4 its
+// install state went in a bare go_env), and they left the module cache in
+// GOPATH/pkg. The rename left those dirs in the clone, where
+// `go install ./...` walks into the cache and refuses any module there with
+// no go.mod of its own: "pattern ./...: directory go_env-default/pkg/mod/...
+// outside main module or its selected dependencies". So the first install
+// after an upgrade failed until they were deleted by hand. They are removed
+// before installing, read-only as Go leaves a module cache, and nothing else
+// in the clone is touched.
+func TestGolangInstallRemovesLegacyEnvDirs(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go not available")
+	}
+	prefix := t.TempDir()
+	// Registered after TempDir, so it runs first: if the install leaves the
+	// read-only cache behind, TempDir's own cleanup could not remove it.
+	t.Cleanup(func() { _ = fsutil.RemoveAll(prefix) })
+	t.Setenv("GOFLAGS", "-mod=mod")
+	t.Setenv("GOPROXY", "off")
+	for name, body := range map[string]string{
+		"go.mod":  "module example.com/hook\n\ngo 1.21\n",
+		"main.go": "package main\n\nfunc main() {}\n",
+		// The hook's own source, under names that start like a legacy env.
+		filepath.Join("go_envoy", "envoy.go"): "package envoy\n",
+		"go_env-unix.go":                      "package main\n",
+	} {
+		path := filepath.Join(prefix, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A module cache as 4.7.0 left one: goutils@v1.1.1 predates modules, so
+	// its directory has no go.mod.
+	legacy := filepath.Join(prefix, "go_env-default")
+	module := filepath.Join(legacy, "pkg", "mod", "github.com", "!masterminds", "goutils@v1.1.1")
+	if err := os.MkdirAll(module, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(module, "goutils.go"), []byte("package goutils\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(legacy, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := filepath.Join(prefix, "go_env")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "install_state_v2"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Go makes its module cache read-only, directories included.
+	for _, dir := range []string{
+		module, filepath.Dir(module), filepath.Dir(filepath.Dir(module)),
+		filepath.Join(legacy, "pkg", "mod"), filepath.Join(legacy, "pkg"),
+	} {
+		if err := os.Chmod(dir, 0o555); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := (&Golang{}).InstallEnvironment(prefix, "system", nil); err != nil {
+		t.Fatalf("InstallEnvironment beside a legacy env: %v", err)
+	}
+
+	for _, gone := range []string{legacy, stateDir} {
+		if _, err := os.Lstat(gone); !os.IsNotExist(err) {
+			t.Errorf("legacy env %s should be removed, stat: %v", gone, err)
+		}
+	}
+	for _, kept := range []string{filepath.Join("go_envoy", "envoy.go"), "go_env-unix.go"} {
+		if _, err := os.Stat(filepath.Join(prefix, kept)); err != nil {
+			t.Errorf("the hook's own %s should be left alone: %v", kept, err)
+		}
+	}
+	bin := "hook"
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	if _, err := os.Stat(filepath.Join(prefix, "golangenv-system", "bin", bin)); err != nil {
 		t.Errorf("hook binary not installed into GOPATH/bin: %v", err)
 	}
 }

@@ -28,6 +28,16 @@ file was introduced; the full notes are on the
   recognized, so upgrading reinstalls nothing. The SQLite driver is
   `modernc.org/sqlite`, which is pure Go, so releases still build with
   `CGO_ENABLED=0`; the binary is about 4 MB larger. (#165)
+- The first install of a `language: golang` hook after upgrading from 4.7.0
+  or older no longer fails with `go install failed: ... pattern ./...:
+  directory go_env-default/pkg/mod/... outside main module or its selected
+  dependencies`. 4.7.1 renamed the env directory to upstream's `golangenv`
+  but left older releases' `go_env-<version>` and bare `go_env` directories
+  in each hook repo's clone, holding the module cache those releases never
+  removed. `go install ./...` runs in the clone, so it walked into that cache
+  and refused any module there without a `go.mod` of its own. The install now
+  removes those directories first, which also frees their disk space: nothing
+  has read them since the rename, and no upstream language uses the name. (#228)
 
 ## [4.7.1] - 2026-11-02
 
