@@ -13,6 +13,8 @@ file was introduced; the full notes are on the
 
 ## [Unreleased]
 
+## [4.7.2] - 2026-11-15
+
 ### Fixed
 
 - The store keeps upstream's index, the SQLite `db.db` with its `repos` and
@@ -626,7 +628,8 @@ file was introduced; the full notes are on the
 - First release of the rewrite: Python parity for `run` and `uninstall`, the
   `/v4` module path, and a GoReleaser release workflow.
 
-[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.7.1...HEAD
+[Unreleased]: https://github.com/blairham/go-pre-commit/compare/v4.7.2...HEAD
+[4.7.2]: https://github.com/blairham/go-pre-commit/compare/v4.7.1...v4.7.2
 [4.7.1]: https://github.com/blairham/go-pre-commit/compare/v4.7.0...v4.7.1
 [4.7.0]: https://github.com/blairham/go-pre-commit/compare/v4.6.17...v4.7.0
 [4.6.17]: https://github.com/blairham/go-pre-commit/compare/v4.6.16...v4.6.17
