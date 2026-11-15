@@ -232,6 +232,10 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 		goBin = "go"
 	}
 
+	if err := removeLegacyGoEnvs(prefix); err != nil {
+		return err
+	}
+
 	// Install the hook package.
 	cmd := command(goBin, "install", "./...")
 	cmd.Dir = prefix
@@ -253,6 +257,45 @@ func (g *Golang) InstallEnvironment(prefix, version string, additionalDeps []str
 	// As upstream: the module cache under GOPATH/pkg is not needed once the
 	// binaries are built, so it is removed to save disk space.
 	return fsutil.RemoveAll(filepath.Join(envDir, "pkg"))
+}
+
+// legacyGoEnvDir is the env directory's name before 4.7.1 took upstream's.
+const legacyGoEnvDir = "go_env"
+
+// removeLegacyGoEnvs removes the env dirs this port's releases before 4.7.1
+// left in a hook's clone, which no release since reads: go_env-<version>, and
+// the bare go_env that held their install state through 4.6.4. They are not
+// inert. Those releases also kept the module cache in GOPATH/pkg, and `go
+// install ./...` runs in the clone, so its pattern walks into that cache and
+// refuses any module there with no go.mod of its own ("directory
+// go_env-default/pkg/mod/... outside main module or its selected
+// dependencies"). The first install after an upgrade failed that way until
+// the dirs were deleted by hand. No upstream language names its env go_env,
+// so a store shared with Python pre-commit loses nothing.
+//
+// Only directories with those names are removed, and only in the clone.
+// Another version's golangenv is left alone even when a crashed install left
+// its pkg behind, as upstream leaves it: one clone's versions install in
+// parallel here, so that pkg may be a cache another install is filling. The
+// env being installed was already cleared by hook.InstallEnvironments, as by
+// upstream's _hook_install. A module cache is read-only, hence
+// fsutil.RemoveAll.
+func removeLegacyGoEnvs(prefix string) error {
+	entries, err := os.ReadDir(prefix)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !e.IsDir() || (name != legacyGoEnvDir && !strings.HasPrefix(name, legacyGoEnvDir+"-")) {
+			continue
+		}
+		path := filepath.Join(prefix, name)
+		if err := fsutil.RemoveAll(path); err != nil {
+			return fmt.Errorf("failed to remove %s, an env from an older release: %w", path, err)
+		}
+	}
+	return nil
 }
 
 // Run implements Language.
