@@ -40,10 +40,12 @@ jobs:
       # workflow's OIDC identity.
       id-token: write
       attestations: write # store the provenance in the repository's attestations
-    uses: blairham/.github/.github/workflows/go-release.yml@2a975269ebbb74aa0b4ec96f45773d7d68cc7bcc # v0.0.3
+    uses: blairham/.github/.github/workflows/go-release.yml@ed30c1599f3dae98165801429893d397069b433c # v0.0.4
     with:
       tag: ${{ inputs.tag }}
       snapshot: ${{ inputs.dry-run == true }}
+      # blairham/goreleaser, for homebrew_bottles (goreleaser/goreleaser#7342).
+      goreleaser-ref: 6b2bad9d43ac7c6469cd2607a8b79bbbcbbc4b80
       test-command: make test
     secrets:
       # A PAT with contents:write on blairham/homebrew-tap, so the formula can

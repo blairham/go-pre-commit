@@ -93,14 +93,14 @@ The synced config files (`.golangci.yml`, `.pre-commit-config.yaml`, `.editorcon
 
 **The repo-root `action.yml` is a public composite action.** It downloads the release binary and runs hooks — a drop-in for `pre-commit/action` with no Python setup. `aws-sso-config`, `aws-config-management`, and `ghorg` consume it in their own CI, so a breaking change to its inputs (`version`, `extra_args`, `cache`, `install-only`) breaks those repos. The `pre-commit` CI job dogfoods it against this repo.
 
-Releases: move `CHANGELOG.md`'s `[Unreleased]` under the version, push a `v*` tag → `release.yml` calls blairham/.github's `go-release.yml`, which runs the tests, then GoReleaser (`.goreleaser.yaml`) builds, signs, and notarizes, updates `blairham/homebrew-tap`, attests provenance, and publishes the tag's CHANGELOG section as the notes; then the moving `v4` alias tag follows.
+Releases: move `CHANGELOG.md`'s `[Unreleased]` under the version, push a `v*` tag → `release.yml` calls blairham/.github's `go-release.yml`, which runs the tests, then GoReleaser (`.goreleaser.yaml`) builds, signs, and notarizes, updates the `pre-commit` formula in `blairham/homebrew-tap` (a source build plus bottles of the release binaries, `homebrew_bottles`), attests provenance, and publishes the tag's CHANGELOG section as the notes; then the moving `v4` alias tag follows.
 
 ## Toolchain
 
 - `go.mod`'s `go` directive is authoritative and must match `.tool-versions`' `golang` pin **exactly** — enforced by the `check-go-version-sync` hook from [blairham/pre-commit-hooks](https://github.com/blairham/pre-commit-hooks), pinned by `rev` in `.pre-commit-config.yaml`
 - golangci-lint and gofumpt are pinned in `go.mod`'s `tool` block — invoke as `go tool <name>`, never a separately installed binary
 - Keep the `golangci-lint` pre-commit `rev` and the `go.mod` tool pin in lockstep
-- goreleaser is pinned in `.tool-versions`, not `go.mod`
+- goreleaser is pinned in `.tool-versions`, not `go.mod`. `.goreleaser.yaml` uses `homebrew_bottles`, which only the [blairham/goreleaser](https://github.com/blairham/goreleaser) fork parses (goreleaser/goreleaser#7342): official GoReleaser rejects the config, so `release.yml` passes `goreleaser-ref` to run the fork, and a local check or snapshot needs a build of that fork
 - At runtime the tool needs **git ≥ 2.31** (`ls-files --deduplicate`), the same floor as upstream; a change that uses a newer git feature must raise it in README.md and docs/parity.md too
 
 ## Key Dependencies
