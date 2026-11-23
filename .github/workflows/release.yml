@@ -1,24 +1,30 @@
 name: Release
 
-# A signed v* tag is the release. blairham/.github's go-release.yml builds and
-# publishes it: the tests, GoReleaser (.goreleaser.yaml: binaries for every
-# platform, notarized darwin builds, the Homebrew formula), a cosign-signed
-# checksums.txt and SLSA build provenance. The signing identity is
-# go-release.yml itself; SECURITY.md shows how to verify it. The notes are the
-# tag's section of CHANGELOG.md.
+# A release is release-please's: merging its release pull request tags vX.Y.Z
+# and calls this workflow (release-please.yml). blairham/.github's
+# go-release.yml builds and publishes it: the tests, GoReleaser
+# (.goreleaser.yaml: binaries for every platform, notarized darwin builds, the
+# Homebrew formula), a cosign-signed checksums.txt and SLSA build provenance.
+# The signing identity is go-release.yml itself; SECURITY.md shows how to
+# verify it. The notes are the tag's section of CHANGELOG.md, which
+# release-please wrote.
+#
+# Pushing a tag by hand releases nothing: there is one path to a release. That
+# also keeps the moving major alias (v4), which the alias job below pushes,
+# from ever starting a release of its own.
 on:
-  push:
-    tags:
-      # Full versions only. The moving major alias (v4) is a tag too, and
-      # matching "v*" would make every alias update kick off a second,
-      # duplicate release.
-      - "v[0-9]+.[0-9]+.[0-9]+*"
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v4.7.3). Must already exist."
+        required: true
+        type: string
   # Re-run a release for a tag that already exists — after a failed publish,
   # say — without moving or re-creating the tag; or dry-run the build.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. v4.6.17). Must already exist. Leave empty for a dry run."
+        description: "Tag to release (e.g. v4.7.3). Must already exist. Leave empty for a dry run."
         required: false
         type: string
       dry-run:
@@ -32,8 +38,35 @@ permissions:
   contents: read
 
 jobs:
+  # The version is release-please's answer, not a number someone typed: the
+  # tag must be the version its manifest records at that tag, so a release can
+  # only be the bump its commits call for, or the Release-As a maintainer
+  # gave it (CONTRIBUTING.md). A dry run builds whatever it is given and
+  # skips this.
+  version:
+    name: Version is release-please's
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: inputs.dry-run != true
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: The tag is the version release-please recorded
+        if: inputs.dry-run != true
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          want="v$(jq -r '."."' .release-please-manifest.json)"
+          if [ "$TAG" != "$want" ]; then
+            echo "::error::the tag is $TAG but .release-please-manifest.json at it records $want; release by merging release-please's pull request"
+            exit 1
+          fi
+
   release:
     name: Release
+    needs: version
     permissions:
       contents: write # the GitHub release and its assets
       # Keyless cosign and the provenance attestation both sign with the

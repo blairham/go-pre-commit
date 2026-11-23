@@ -243,19 +243,17 @@ There is no `lint` target: golangci-lint runs as a pre-commit hook (`pre-commit 
 
 ## Releasing
 
-Releases are automated with [GoReleaser](https://goreleaser.com) via the shared
-release workflow in [blairham/.github](https://github.com/blairham/.github). Move
-`CHANGELOG.md`'s `[Unreleased]` section under `## [X.Y.Z] - <date>` (the
-release notes are that section, and a release without one fails), then tag:
-
-```bash
-git tag -s v4.6.17
-git push origin v4.6.17
-```
-
-The release workflow also moves the `v4` alias tag to the new release, which is
-what `uses: blairham/go-pre-commit@v4` resolves to. Its tag trigger deliberately
-matches full versions only, so moving the alias does not start a second release.
+Releases are cut by [release-please](https://github.com/googleapis/release-please):
+every merge to `main` updates one standing release pull request with the next
+version and its `CHANGELOG.md` section, and merging that pull request is the
+release. It tags `vX.Y.Z` and runs the shared release workflow in
+[blairham/.github](https://github.com/blairham/.github), which builds with
+[GoReleaser](https://goreleaser.com), publishes the release with that section as
+its notes, and then moves the `v4` alias tag, which is what
+`uses: blairham/go-pre-commit@v4` resolves to. Never tag by hand: a pushed tag
+releases nothing. Pull request titles are Conventional Commits, and they are
+the changelog; see [CONTRIBUTING.md](CONTRIBUTING.md), including how a release
+keeps its version on the upstream parity line.
 
 CI builds, signs, and notarizes cross-platform binaries, publishes a GitHub release, and updates the Homebrew formula in [blairham/homebrew-tap](https://github.com/blairham/homebrew-tap) automatically. Versions track upstream parity: `v4.7.x` means feature parity with Python pre-commit 4.7.
 
