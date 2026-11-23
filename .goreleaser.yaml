@@ -120,33 +120,39 @@ changelog:
       - '^test:'
       - '^chore:'
 
-# A formula, not a cask. This is a CLI binary with no bundle, no installer and
-# no service; `brew test` is worth keeping, and formulae work on Homebrew for
-# Linux exactly as they do on macOS — which matters here, since this binary is
-# what CI runs on Linux runners.
+# The formula builds from the source archive below (`brew install -s`) and
+# pours bottles made from the release's darwin and linux binaries, the way
+# homebrew-core ships a CLI: a formula, not a cask, and not a formula that only
+# downloads a prebuilt archive. A formula rather than a cask because this is a
+# CLI binary with no bundle, no installer and no service; `brew test` is worth
+# keeping, and formulae work on Homebrew for Linux exactly as they do on macOS,
+# which matters here, since this binary is what CI runs on Linux runners.
 #
-# GoReleaser marks `brews` deprecated in favor of `homebrew_casks`, on the
-# grounds that formulae installing pre-compiled binaries are "hackyish" and
-# were only needed because Linuxbrew could not handle casks. There is no
-# announced removal date, and the Linuxbrew limitation is not our reason for
-# using them.
+# homebrew_bottles replaces GoReleaser's deprecated `brews`. It comes from
+# blairham/goreleaser (goreleaser/goreleaser#7342), which release.yml selects
+# with goreleaser-ref; official GoReleaser rejects this key. Its `install` is
+# the build-from-source step and is generated from the build below (main,
+# ldflags, CGO_ENABLED), so none is written here.
 #
 # Note there is no quarantine hook here: casks flag their downloads with
 # com.apple.quarantine and need it stripped, formulae do not.
-brews:
+homebrew_bottles:
   - name: pre-commit
+    ids:
+      - pre-commit
     repository:
       owner: blairham
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
     homepage: https://github.com/blairham/go-pre-commit
     description: A fast Go reimplementation of pre-commit
     license: Apache-2.0
-    install: |
-      bin.install "pre-commit"
     test: |
       system "#{bin}/pre-commit", "--version"
+
+# The tarball the formula's `url` points at, for building from source.
+source:
+  enabled: true
 
 release:
   draft: false

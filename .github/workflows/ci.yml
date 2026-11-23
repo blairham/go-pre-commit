@@ -41,7 +41,7 @@ concurrency:
 jobs:
   ci:
     name: CI
-    uses: blairham/.github/.github/workflows/go-ci.yml@2a975269ebbb74aa0b4ec96f45773d7d68cc7bcc # v0.0.3
+    uses: blairham/.github/.github/workflows/go-ci.yml@ed30c1599f3dae98165801429893d397069b433c # v0.0.4
     with:
       # The Makefile's test target: the race detector, verbose.
       test-command: make test
@@ -50,7 +50,7 @@ jobs:
   # classified rather than waiting for all of go-ci.
   changes:
     name: Changes
-    uses: blairham/.github/.github/workflows/go-changes.yml@2a975269ebbb74aa0b4ec96f45773d7d68cc7bcc # v0.0.3
+    uses: blairham/.github/.github/workflows/go-changes.yml@ed30c1599f3dae98165801429893d397069b433c # v0.0.4
 
   # Parity is this project's entire claim, so a change that breaks it fails
   # before review rather than after a merge to main.
