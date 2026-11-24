@@ -23,5 +23,6 @@ This project's contract is "behaves like Python pre-commit". Pick one:
 - [ ] If behavior changed, the differential parity suite still passes
 - [ ] Docs updated if this changes something a user can observe
 - [ ] I have signed the CLA (see CLA.md)
+- [ ] The title is a Conventional Commit (`feat:`, `fix:`, `feat!:`, `docs:` …) — it becomes the changelog entry
 
 Closes #

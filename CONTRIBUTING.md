@@ -99,6 +99,46 @@ config. Redirect with `t.TempDir()` and `t.Setenv` — including `PRE_COMMIT_HOM
 - Commits must be signed.
 - Every `.go` file carries the two-line SPDX header (`Apache-2.0`); the
   pre-commit hook fails without it.
+- **The pull request title is a [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/)**,
+  and it is the changelog entry and release-please's proposed version bump:
+  the repository squash-merges with the title as the commit subject, and
+  release-please reads the subjects. The required **PR title** check fails
+  one that is not.
+
+  | Title | Proposed bump | [`CHANGELOG.md`](CHANGELOG.md) |
+  |---|---|---|
+  | `feat!:` / `fix!:` (any type with `!`) | major | ⚠ Breaking Changes |
+  | `feat:` | minor | Added |
+  | `fix:` (a compatible security fix too) | patch | Fixed |
+  | `perf:` / `revert:` | patch | Performance / Reverted |
+  | `docs:` `ci:` `build:` `refactor:` `test:` `chore:` `style:` | none | hidden |
+
+  The text after the colon is the entry, so write it for someone upgrading.
+  A `BREAKING CHANGE: …` footer in the PR body also marks it breaking.
+- **Releases are release-please's.** Every merge updates one standing pull
+  request, `chore(main): release X.Y.Z`, with the next version and its
+  `CHANGELOG.md` section. Merging it is the release: it tags `vX.Y.Z`, and
+  `release-please.yml` calls `release.yml` to publish it and then move the
+  `v4` alias tag. Never tag by hand. `Release-As: X.Y.Z` in a PR body forces
+  a version. A title that went wrong after the merge is fixed on the merged
+  pull request: add the messages it should have had between
+  `BEGIN_COMMIT_OVERRIDE` and `END_COMMIT_OVERRIDE` in its body, **separated
+  by blank lines** (one message per line reads as a single message with the
+  rest as its body). release-please starts at the first
+  `BEGIN_COMMIT_OVERRIDE` anywhere in the body, so never write that word
+  elsewhere in a PR body, even in backticks, and the block replaces the
+  subject even of a conventional commit. The PR title check on the release
+  pull request reads each commit as release-please will and fails on any
+  message that is not a Conventional Commit.
+- **Versions track upstream parity, and release-please does not know that.**
+  `v4.7.x` means parity with Python pre-commit 4.7, so a release's version is
+  decided by what it brings to parity, not by commit types alone.
+  release-please's proposal is right for the usual release, `fix:` changes
+  inside the current parity line (4.7.2 → 4.7.3). When it is not — a `feat:`
+  that is still 4.7 parity would propose 4.8.0, and moving to 4.8 parity is a
+  deliberate step rather than a side effect of one `feat:` — put
+  `Release-As: X.Y.Z` in the body of a pull request merged before the
+  release, and release-please's pull request takes that version instead.
 
 ## Adding a language backend
 
